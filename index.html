@@ -111,9 +111,8 @@ input:focus,select:focus{outline:none;border-color:var(--accent2);}
 .loc-detail-stat strong{font-weight:600;}
 .progress-bar{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;width:80px;display:inline-block;vertical-align:middle;margin-left:6px;}
 .progress-fill{height:100%;border-radius:3px;transition:width .3s;}
-.price-tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--green);background:var(--green-bg);padding:1px 6px;border-radius:4px;font-family:"DM Mono",monospace;}
-.price-tag.synced{color:var(--green);}
-.price-tag.cached{color:var(--text3);background:var(--bg2);}
+.inv-input{width:70px;text-align:center;padding:4px 6px;font-size:13px;}
+.sync-info{background:var(--green-bg);border:1px solid #B8D8BC;border-radius:var(--radius);padding:10px 14px;font-size:12px;color:var(--green);margin-bottom:14px;display:flex;align-items:center;gap:8px;}
 </style>
 </head>
 <body>
@@ -149,9 +148,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent2);}
       <button class="back-btn" id="back-btn" onclick="goBack()">&#x2190; Back</button>
       <span id="page-title">Overview</span>
     </div>
-    <div id="price-sync-indicator" style="font-size:12px;color:var(--text3);display:none">
-      <span id="price-sync-text"></span>
-    </div>
+    <div id="sync-indicator" style="font-size:12px;color:var(--text3);display:none"><span id="sync-indicator-text"></span></div>
   </div>
   <div class="content">
 
@@ -182,7 +179,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent2);}
             <button class="btn btn-sm" onclick="exportCSV('inventory')">&#x2193; Export CSV</button>
           </div>
         </div>
-        <div class="sync-row"><div class="spinner" id="inv-spinner"></div><span id="inv-sync-msg">Ready.</span></div>
+        <div class="sync-row"><div class="spinner" id="inv-spinner"></div><span id="inv-sync-msg">Inventory is managed here. Sales from Square are deducted automatically on each sync.</span></div>
         <div class="tbl-wrap">
           <table><thead><tr><th>Item</th><th>Cat</th><th>Price</th><th class="qty-cell">Warehouse</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total</th></tr></thead>
           <tbody id="inv-table"></tbody></table>
@@ -207,6 +204,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent2);}
             <button class="btn btn-sm" onclick="exportLocCSV()">&#x2193; Export CSV</button>
           </div>
         </div>
+        <p style="font-size:12px;color:var(--text3);margin-bottom:12px">Click any quantity to edit it directly. Changes are saved automatically.</p>
         <table>
           <thead><tr><th>Item</th><th>Category</th><th>Price</th><th style="text-align:center">On Hand</th><th style="text-align:center">Par</th><th>Status</th></tr></thead>
           <tbody id="loc-detail-table"></tbody>
@@ -286,19 +284,19 @@ input:focus,select:focus{outline:none;border-color:var(--accent2);}
     <div class="section" id="sec-settings">
       <div class="worker-setup">
         <h3>&#x26A1; Cloudflare Worker &mdash; Live Sync</h3>
-        <p>Your Worker receives Square webhooks, keeps inventory updated in real time, and now also syncs prices automatically on every sync.</p>
+        <p>Your Worker tracks Square sales via webhooks. On each sync, the app deducts what sold since the last sync from your inventory counts. Prices also update automatically.</p>
         <div style="display:flex;gap:8px"><input type="url" id="worker-url" placeholder="https://your-worker.workers.dev" style="flex:1"><button class="btn btn-primary" onclick="saveWorkerUrl()">Save &amp; Test</button></div>
         <div class="worker-status" id="worker-status"></div>
       </div>
       <div class="card">
-        <div class="card-header"><span class="card-title">Square API Fallback</span></div>
-        <p style="font-size:12px;color:var(--text3);margin-bottom:12px">Direct Square connection used if Worker is unavailable.</p>
+        <div class="card-header"><span class="card-title">Square API (for prices)</span></div>
+        <p style="font-size:12px;color:var(--text3);margin-bottom:12px">Used only to pull prices from Square catalog. Not used for inventory counts.</p>
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
           <label style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Access Token</label>
           <div style="display:flex;gap:8px"><input type="password" id="sq-token" placeholder="Production access token" style="flex:1"><button class="btn btn-primary" onclick="saveToken()">Save</button></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          <label style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Location IDs</label>
+          <label style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Location IDs (for price lookup)</label>
           <table style="font-size:13px">
             <thead><tr><th>Location</th><th>Square Location ID</th></tr></thead>
             <tbody>
@@ -341,11 +339,9 @@ const LOC_ICONS=["&#x1F3ED;","&#x1F374;","&#x1F69A;","&#x1F69A;","&#x1F69A;"];
 const LOC_ACCENT=["loc-accent-0","loc-accent-1","loc-accent-2","loc-accent-3","loc-accent-4"];
 const REMOVED=["Delivery","Frozen Whole Pie"];
 
-// Default prices — overwritten on every sync from Square via Worker
 const DEFAULT_PRICES={"Apple Pie":30,"BBQ Meatballs":22,"Beef Enchiladas":20,"Beef Lasagna":20,"Blackberry Pie":30,"Bread Pudding":18,"Bread Pudding Sauce":7,"Breakfast Burritos":20,"Bumblebee Pie":30,"Cheesy Beef and Potatoes":20,"Cherry Pie":30,"Chicken Alfredo":20,"Chicken Enchiladas":20,"Chicken Pot Pie":20,"Chicken Spaghetti":20,"Chocolate Chip Cookie Dough":9,"Gourmet Potatoes":14,"Macaroni & Cheese":14,"Meatloaf":22,"Monster Cookie Dough":9,"Peach Pie":30,"Pint of Soup":7.5,"Poppy Seed Chicken":20,"Quart of Soup":12.5,"Strawberry Rhubarb Pie":30,"Sugar Free Bumblebee":30,"Sugar Free Cherry Pie":30,"Sugar Free Peach Pie":30};
-const SQUARE_QTY={"Apple Pie":2,"BBQ Meatballs":8,"Beef Enchiladas":7,"Beef Lasagna":21,"Blackberry Pie":4,"Bread Pudding":4,"Bread Pudding Sauce":11,"Breakfast Burritos":26,"Bumblebee Pie":2,"Cheesy Beef and Potatoes":17,"Cherry Pie":1,"Chicken Alfredo":37,"Chicken Enchiladas":47,"Chicken Pot Pie":51,"Chicken Spaghetti":118,"Chocolate Chip Cookie Dough":58,"Gourmet Potatoes":56,"Macaroni & Cheese":18,"Meatloaf":125,"Monster Cookie Dough":35,"Peach Pie":0,"Pint of Soup":0,"Poppy Seed Chicken":47,"Quart of Soup":0,"Strawberry Rhubarb Pie":0,"Sugar Free Bumblebee":0,"Sugar Free Cherry Pie":0,"Sugar Free Peach Pie":0};
-const CATALOG_NAMES=Object.keys(DEFAULT_PRICES);
 const DEFAULT_CATS={"Apple Pie":"Frozen Desserts","BBQ Meatballs":"Frozen Foods","Beef Enchiladas":"Frozen Foods","Beef Lasagna":"Frozen Foods","Blackberry Pie":"Frozen Desserts","Bread Pudding":"Frozen Desserts","Bread Pudding Sauce":"Frozen Desserts","Breakfast Burritos":"Frozen Foods","Bumblebee Pie":"Frozen Desserts","Cheesy Beef and Potatoes":"Frozen Foods","Cherry Pie":"Frozen Desserts","Chicken Alfredo":"Frozen Foods","Chicken Enchiladas":"Frozen Foods","Chicken Pot Pie":"Frozen Foods","Chicken Spaghetti":"Frozen Foods","Chocolate Chip Cookie Dough":"Frozen Desserts","Gourmet Potatoes":"Frozen Foods","Macaroni & Cheese":"Frozen Foods","Meatloaf":"Frozen Foods","Monster Cookie Dough":"Frozen Desserts","Peach Pie":"Frozen Desserts","Pint of Soup":"Frozen Foods","Poppy Seed Chicken":"Frozen Foods","Quart of Soup":"Frozen Foods","Strawberry Rhubarb Pie":"Frozen Desserts","Sugar Free Bumblebee":"Frozen Desserts","Sugar Free Cherry Pie":"Frozen Desserts","Sugar Free Peach Pie":"Frozen Desserts"};
+const CATALOG_NAMES=Object.keys(DEFAULT_PRICES);
 
 let S={
   token:"",workerUrl:WORKER_URL,
@@ -353,34 +349,43 @@ let S={
   items:[...CATALOG_NAMES],
   categories:{...DEFAULT_CATS},
   prices:{...DEFAULT_PRICES},
-  pricesSyncedAt:"",
-  inventory:{},sales:{},par:{},prodTargets:{},transfers:[],alerts:[],lastSync:""
+  // inventory: managed locally, never overwritten by Square
+  inventory:{},
+  // sales: cumulative totals from Worker (Square)
+  sales:{},
+  // salesBaseline: the sales totals at last sync — used to calculate delta
+  salesBaseline:{},
+  par:{},prodTargets:{},transfers:[],alerts:[],lastSync:""
 };
+
 CATALOG_NAMES.forEach(n=>{
-  S.inventory[n]={Warehouse:SQUARE_QTY[n]||0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+  S.inventory[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
   S.sales[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+  S.salesBaseline[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
   S.par[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
 });
 
 let currentLoc=null;
-let pricesSyncedFromSquare=false;
 
-function saveState(){try{localStorage.setItem("ws_inv_v1",JSON.stringify(S));}catch(e){}}
+function saveState(){try{localStorage.setItem("ws_inv_v2",JSON.stringify(S));}catch(e){}}
 function loadState(){
   try{
-    const raw=localStorage.getItem("ws_inv_v1");if(!raw)return;
-    const saved=JSON.parse(raw);
+    const raw=localStorage.getItem("ws_inv_v2");
+    // Also try old key for migration
+    const rawOld=!raw?localStorage.getItem("ws_inv_v1"):null;
+    const parsed=raw||rawOld;
+    if(!parsed)return;
+    const saved=JSON.parse(parsed);
     S.token=saved.token||"";S.workerUrl=saved.workerUrl||WORKER_URL;
     S.locationIds=saved.locationIds||S.locationIds;
     S.transfers=saved.transfers||[];S.alerts=saved.alerts||[];
     S.lastSync=saved.lastSync||"";S.prodTargets=saved.prodTargets||{};
-    S.pricesSyncedAt=saved.pricesSyncedAt||"";
-    // Restore prices — prefer saved (may include Square-synced prices)
-    if(saved.prices) S.prices={...DEFAULT_PRICES,...saved.prices};
-    if(saved.categories) S.categories={...DEFAULT_CATS,...saved.categories};
+    if(saved.prices)S.prices={...DEFAULT_PRICES,...saved.prices};
+    if(saved.categories)S.categories={...DEFAULT_CATS,...saved.categories};
     CATALOG_NAMES.forEach(n=>{
       if(saved.inventory?.[n])S.inventory[n]={...S.inventory[n],...saved.inventory[n]};
       if(saved.sales?.[n])S.sales[n]={...S.sales[n],...saved.sales[n]};
+      if(saved.salesBaseline?.[n])S.salesBaseline[n]={...S.salesBaseline[n],...saved.salesBaseline[n]};
       if(saved.par?.[n])S.par[n]={...S.par[n],...saved.par[n]};
     });
     if(saved.items)saved.items.forEach(name=>{
@@ -388,6 +393,7 @@ function loadState(){
         S.items.push(name);
         S.inventory[name]=saved.inventory?.[name]||{Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
         S.sales[name]=saved.sales?.[name]||{Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+        S.salesBaseline[name]=saved.salesBaseline?.[name]||{Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
         S.par[name]=saved.par?.[name]||{Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
       }
     });
@@ -395,135 +401,101 @@ function loadState(){
   S.alerts=S.alerts.filter(a=>S.items.includes(a.item));
 }
 
-// ── PRICE SYNC ────────────────────────────────────────────────────
-async function syncPrices(){
-  if(!S.workerUrl) return;
-  const ind=document.getElementById("price-sync-indicator");
-  const txt=document.getElementById("price-sync-text");
-  if(ind)ind.style.display="block";
-  if(txt)txt.textContent="Syncing prices from Square...";
-  try{
-    const res=await fetch(S.workerUrl+"/prices",{method:"GET",mode:"cors"});
-    if(!res.ok) throw new Error("Worker /prices returned "+res.status);
-    const data=await res.json();
-    if(data.prices && Object.keys(data.prices).length>0){
-      // Merge Square prices over defaults
-      Object.entries(data.prices).forEach(([item,price])=>{
-        if(!REMOVED.includes(item)) S.prices[item]=price;
-      });
-      S.pricesSyncedAt=new Date().toLocaleTimeString();
-      pricesSyncedFromSquare=true;
-      saveState();
-      if(txt)txt.textContent="&#x2713; Prices synced from Square ("+Object.keys(data.prices).length+" items)";
-      setTimeout(()=>{if(ind)ind.style.display="none";},4000);
-      renderAll();
-    } else {
-      if(txt)txt.textContent="No prices returned from Square";
-      setTimeout(()=>{if(ind)ind.style.display="none";},3000);
-    }
-  }catch(e){
-    console.warn("Price sync failed:",e.message);
-    if(txt)txt.textContent="Price sync unavailable — using cached prices";
-    setTimeout(()=>{if(ind)ind.style.display="none";},3000);
-  }
-}
-
-const TITLES={overview:"Overview",inventory:"Inventory",locations:"Locations",par:"Par Levels",alerts:"Alerts",transfers:"Transfers",production:"Production Planning",sales:"Sales",settings:"Settings"};
-
-function showSection(name,btn){
-  document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
-  document.querySelectorAll(".nav-item").forEach(b=>b.classList.remove("active"));
-  document.getElementById("sec-"+name).classList.add("active");
-  if(btn&&btn.classList&&btn.classList.contains("nav-item"))btn.classList.add("active");
-  document.getElementById("page-title").textContent=TITLES[name]||name;
-  document.getElementById("back-btn").style.display="none";
-  if(name==="inventory")renderInventory();
-  if(name==="locations")renderLocations();
-  if(name==="par")renderPar();
-  if(name==="production")renderProduction();
-  if(name==="sales")renderSales();
-  if(name==="transfers")renderTransfers();
-  if(name==="settings")renderSettings();
-}
-
-function openLocDetail(locName){
-  currentLoc=locName;
-  document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
-  document.getElementById("sec-loc-detail").classList.add("active");
-  document.getElementById("page-title").textContent=locName+" \u2014 Inventory";
-  document.getElementById("back-btn").style.display="inline-flex";
-  document.getElementById("loc-detail-cat-filter").value="";
-  renderLocDetail();
-}
-
-function goBack(){
-  showSection("locations",null);
-  document.querySelectorAll(".nav-item").forEach(b=>{if(b.textContent.includes("Locations"))b.classList.add("active");});
-}
-
-function setStatus(t,ok){const el=document.getElementById("conn-status");el.textContent=t;el.className="conn-status"+(ok?" live":"");}
-
+// ── SYNC ──────────────────────────────────────────────────────────
 async function syncNow(){
   const sp=document.getElementById("sync-spinner"),sm=document.getElementById("inv-sync-msg");
   sp.style.display="block";
 
-  if(S.workerUrl){
-    if(sm)sm.textContent="Syncing inventory via Worker...";
-    try{
-      const res=await fetch(S.workerUrl+"/inventory",{method:"GET",mode:"cors",headers:{"Authorization":"Bearer "+(S.token||"")}});
-      if(!res.ok)throw new Error("Worker returned "+res.status);
-      const data=await res.json();
-      Object.entries(data.inventory||{}).forEach(([item,locs])=>{
-        if(REMOVED.includes(item))return;
-        if(!S.items.includes(item)){S.items.push(item);S.inventory[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};}
-        Object.entries(locs).forEach(([loc,qty])=>{if(LOCS.includes(loc))S.inventory[item][loc]=qty;});
-      });
-      Object.entries(data.sales||{}).forEach(([item,locs])=>{
-        if(!S.sales[item])S.sales[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
-        Object.entries(locs).forEach(([loc,qty])=>{if(LOCS.includes(loc))S.sales[item][loc]=qty;});
-      });
-      S.lastSync=new Date().toLocaleString();
-      checkAlerts();saveState();renderAll();
-      setStatus("Live via Worker",true);
-      if(sm)sm.textContent="Inventory synced \u2014 "+new Date().toLocaleTimeString();
-    }catch(e){
-      if(sm)sm.textContent="Worker sync failed: "+e.message;
-      setStatus("Sync error",false);
-      sp.style.display="none";
-      return;
-    }
-    // Also sync prices on every inventory sync
-    await syncPrices();
+  if(!S.workerUrl){
     sp.style.display="none";
+    if(sm)sm.textContent="No Worker URL configured. Go to Settings.";
     return;
   }
 
-  // Fallback: direct Square
-  if(!S.token){sp.style.display="none";if(sm)sm.textContent="No Worker URL or token configured.";return;}
-  if(sm)sm.textContent="Syncing with Square directly...";
+  if(sm)sm.textContent="Fetching sales from Square...";
+  let totalDeducted=0;
+
   try{
-    const locIds=Object.values(S.locationIds).filter(Boolean);
-    if(!locIds.length){sp.style.display="none";if(sm)sm.textContent="No location IDs set.";return;}
-    const res=await fetch("https://connect.squareup.com/v2/inventory/counts/batch-retrieve",{method:"POST",headers:{"Authorization":"Bearer "+S.token,"Content-Type":"application/json","Square-Version":"2024-01-18"},body:JSON.stringify({location_ids:locIds})});
-    const data=await res.json();if(data.errors)throw new Error(data.errors[0].detail);
-    const catRes=await fetch("https://connect.squareup.com/v2/catalog/list?types=ITEM",{headers:{"Authorization":"Bearer "+S.token,"Square-Version":"2024-01-18"}});
-    const catData=await catRes.json();
-    const idToName={};
-    (catData.objects||[]).forEach(obj=>{
-      (obj.item_data?.variations||[]).forEach(v=>{idToName[v.id]=obj.item_data.name;});
-      // Also grab prices
-      const itemName=obj.item_data?.name;
-      if(itemName&&!REMOVED.includes(itemName)){
-        const priceMoney=obj.item_data?.variations?.[0]?.item_variation_data?.price_money;
-        if(priceMoney&&priceMoney.amount!=null) S.prices[itemName]=priceMoney.amount/100;
-      }
+    // Step 1: Fetch current sales totals from Worker
+    const res=await fetch(S.workerUrl+"/sales",{method:"GET",mode:"cors"});
+    if(!res.ok) throw new Error("Worker /sales returned "+res.status);
+    const data=await res.json();
+    const currentSales=data.sales||{};
+
+    // Step 2: For each item/location, calculate delta (what sold since last sync)
+    //         and deduct from inventory
+    S.items.forEach(item=>{
+      LOCS.forEach(loc=>{
+        const current=( currentSales[item]||{})[loc]||0;
+        const baseline=(S.salesBaseline[item]||{})[loc]||0;
+        const delta=Math.max(0,current-baseline); // units sold since last sync
+
+        if(delta>0){
+          // Deduct from app's own inventory
+          if(!S.inventory[item]) S.inventory[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+          S.inventory[item][loc]=Math.max(0,(S.inventory[item][loc]||0)-delta);
+          totalDeducted+=delta;
+          console.log(`Deducted ${delta}x ${item} @ ${loc} (sold since last sync)`);
+        }
+
+        // Update cumulative sales display
+        if(!S.sales[item]) S.sales[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+        S.sales[item][loc]=current;
+      });
     });
-    const idToLoc={};Object.entries(S.locationIds).forEach(([n,id])=>{if(id)idToLoc[id]=n;});
-    (data.counts||[]).forEach(c=>{const iN=idToName[c.catalog_object_id],lN=idToLoc[c.location_id];if(!iN||!lN||REMOVED.includes(iN))return;if(!S.items.includes(iN)){S.items.push(iN);S.inventory[iN]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[iN]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[iN]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};}S.inventory[iN][lN]=parseInt(c.quantity)||0;});
-    S.lastSync=new Date().toLocaleString();checkAlerts();saveState();renderAll();
-    setStatus("Live (Square direct)",true);if(sm)sm.textContent="Synced \u2014 "+new Date().toLocaleTimeString();
-  }catch(e){if(sm)sm.textContent="Sync failed: "+e.message;setStatus("Sync error",false);}
+
+    // Step 3: Update baseline to current sales totals
+    S.items.forEach(item=>{
+      if(!S.salesBaseline[item]) S.salesBaseline[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+      LOCS.forEach(loc=>{
+        S.salesBaseline[item][loc]=(currentSales[item]||{})[loc]||0;
+      });
+    });
+
+    S.lastSync=new Date().toLocaleString();
+    if(sm)sm.textContent=totalDeducted>0
+      ? `Synced \u2014 ${totalDeducted} units deducted from inventory based on Square sales`
+      : `Synced \u2014 No new sales since last sync`;
+    setStatus("Live",true);
+
+  }catch(e){
+    if(sm)sm.textContent="Sales sync failed: "+e.message;
+    setStatus("Sync error",false);
+    sp.style.display="none";
+    checkAlerts();saveState();renderAll();
+    return;
+  }
+
+  // Step 4: Sync prices from Worker
+  try{
+    const pRes=await fetch(S.workerUrl+"/prices",{method:"GET",mode:"cors"});
+    if(pRes.ok){
+      const pData=await pRes.json();
+      if(pData.prices&&Object.keys(pData.prices).length>0){
+        Object.entries(pData.prices).forEach(([item,price])=>{
+          if(!REMOVED.includes(item)) S.prices[item]=price;
+        });
+        showIndicator("\u2713 Prices updated from Square");
+      }
+    }
+  }catch(e){ console.warn("Price sync failed:",e.message); }
+
+  checkAlerts();saveState();renderAll();
   sp.style.display="none";
+}
+
+function showIndicator(msg){
+  const ind=document.getElementById("sync-indicator"),txt=document.getElementById("sync-indicator-text");
+  if(!ind||!txt)return;
+  ind.style.display="block";txt.textContent=msg;
+  setTimeout(()=>{ind.style.display="none";},4000);
+}
+
+// ── INLINE INVENTORY EDIT ─────────────────────────────────────────
+function updateInventory(item,loc,val){
+  if(!S.inventory[item])S.inventory[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+  S.inventory[item][loc]=Math.max(0,parseInt(val)||0);
+  checkAlerts();saveState();renderAll();
 }
 
 async function saveWorkerUrl(){
@@ -533,21 +505,16 @@ async function saveWorkerUrl(){
   st.style.display="block";st.className="worker-status";st.textContent="Testing...";
   try{
     const res=await fetch(url+"/health",{method:"GET",mode:"cors"});
-    if(res.ok){
-      S.workerUrl=url;saveState();
-      st.className="worker-status ok";
-      st.textContent="\u2713 Worker connected! Prices will sync automatically on every Sync Square.";
-      setStatus("Worker connected",true);
-    }else{
-      st.className="worker-status err";st.textContent="\u2717 Worker error "+res.status;
-    }
+    if(res.ok){S.workerUrl=url;saveState();st.className="worker-status ok";st.textContent="\u2713 Worker connected! Click Sync Square to pull sales data.";setStatus("Worker connected",true);}
+    else{st.className="worker-status err";st.textContent="\u2717 Worker error "+res.status;}
   }catch(e){st.className="worker-status err";st.textContent="\u2717 Cannot reach Worker: "+e.message;}
 }
 
+function setStatus(t,ok){const el=document.getElementById("conn-status");el.textContent=t;el.className="conn-status"+(ok?" live":"");}
 function saveToken(){const t=document.getElementById("sq-token").value.trim();if(!t)return;S.token=t;saveState();setStatus("Token saved",true);alert("Token saved!");}
 function saveLocations(){S.locationIds.Warehouse=document.getElementById("loc-wh").value.trim();S.locationIds.Restaurant=document.getElementById("loc-rs").value.trim();S.locationIds["Truck 1"]=document.getElementById("loc-t1").value.trim();S.locationIds["Truck 2"]=document.getElementById("loc-t2").value.trim();S.locationIds["Truck 3"]=document.getElementById("loc-t3").value.trim();saveState();alert("Location IDs saved!");}
-function addItem(){const name=prompt("Item name:");if(!name||!name.trim())return;const n=name.trim();if(S.items.includes(n)){alert("Already exists.");return;}S.items.push(n);S.inventory[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};saveState();renderAll();}
-function removeItem(name){if(!confirm("Remove "+name+"?"))return;S.items=S.items.filter(i=>i!==name);delete S.inventory[name];delete S.sales[name];delete S.par[name];S.alerts=S.alerts.filter(a=>a.item!==name);saveState();renderAll();}
+function addItem(){const name=prompt("Item name:");if(!name||!name.trim())return;const n=name.trim();if(S.items.includes(n)){alert("Already exists.");return;}S.items.push(n);S.inventory[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.salesBaseline[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};saveState();renderAll();}
+function removeItem(name){if(!confirm("Remove "+name+"?"))return;S.items=S.items.filter(i=>i!==name);delete S.inventory[name];delete S.sales[name];delete S.salesBaseline[name];delete S.par[name];S.alerts=S.alerts.filter(a=>a.item!==name);saveState();renderAll();}
 function savePar(){S.items.forEach(item=>{LOCS.forEach(loc=>{const el=document.getElementById("par-"+sl(item)+"-"+sl(loc));if(el){if(!S.par[item])S.par[item]={};S.par[item][loc]=parseInt(el.value)||0;}});});checkAlerts();saveState();renderAll();const btn=document.getElementById("par-save-btn");if(btn){btn.textContent="Saved \u2713";setTimeout(()=>btn.textContent="Save Par Levels",1500);}}
 function sl(s){return s.replace(/[^a-z0-9]/gi,"_");}
 function checkAlerts(){const na=[];S.items.forEach(item=>{LOCS.forEach(loc=>{const qty=(S.inventory[item]||{})[loc]||0,par=(S.par[item]||{})[loc]||0,key=item+"||"+loc;if(par>0&&qty<=par){const ex=S.alerts.find(a=>a.key===key);if(!ex)na.push({key,item,loc,qty,par,time:new Date().toLocaleTimeString(),type:qty===0?"out":"low"});else{ex.qty=qty;ex.type=qty===0?"out":"low";}}else S.alerts=S.alerts.filter(a=>a.key!==key);});});S.alerts=[...S.alerts,...na];}
@@ -557,6 +524,11 @@ function doTransfer(){const item=document.getElementById("xfr-item").value,from=
 function updateProdTarget(item,val){if(!S.prodTargets)S.prodTargets={};S.prodTargets[item]=parseInt(val)||0;saveState();}
 function esc(s){return String(s).replace(/'/g,"\\'");}
 function fmt(p){return p!=null?"$"+Number(p).toFixed(2):"—";}
+
+const TITLES={overview:"Overview",inventory:"Inventory",locations:"Locations",par:"Par Levels",alerts:"Alerts",transfers:"Transfers",production:"Production Planning",sales:"Sales",settings:"Settings"};
+function showSection(name,btn){document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));document.querySelectorAll(".nav-item").forEach(b=>b.classList.remove("active"));document.getElementById("sec-"+name).classList.add("active");if(btn&&btn.classList&&btn.classList.contains("nav-item"))btn.classList.add("active");document.getElementById("page-title").textContent=TITLES[name]||name;document.getElementById("back-btn").style.display="none";if(name==="inventory")renderInventory();if(name==="locations")renderLocations();if(name==="par")renderPar();if(name==="production")renderProduction();if(name==="sales")renderSales();if(name==="transfers")renderTransfers();if(name==="settings")renderSettings();}
+function openLocDetail(locName){currentLoc=locName;document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));document.getElementById("sec-loc-detail").classList.add("active");document.getElementById("page-title").textContent=locName+" \u2014 Inventory";document.getElementById("back-btn").style.display="inline-flex";document.getElementById("loc-detail-cat-filter").value="";renderLocDetail();}
+function goBack(){showSection("locations",null);document.querySelectorAll(".nav-item").forEach(b=>{if(b.textContent.includes("Locations"))b.classList.add("active");});}
 
 function renderAll(){renderOverview();renderLocations();if(currentLoc)renderLocDetail();renderInventory();renderPar();renderAlerts();renderTransfers();renderProduction();renderSales();renderSettings();}
 
@@ -594,7 +566,7 @@ function renderLocDetail(){
   let total=0,low=0,out=0,value=0;
   S.items.forEach(item=>{const q=(S.inventory[item]||{})[currentLoc]||0,p=(S.par[item]||{})[currentLoc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});
   const hdr=document.getElementById("loc-detail-header");
-  hdr.innerHTML=`<div class="loc-detail-icon" style="background:${["#E8F0FB","#EEF0FC","var(--green-bg)","var(--amber-bg)","#FCEEE8"][li]}">${LOC_ICONS[li]}</div><div style="flex:1"><div class="loc-detail-name">${currentLoc}</div><div class="loc-detail-stats"><div class="loc-detail-stat"><strong>${total}</strong> total units</div><div class="loc-detail-stat"><strong>$${value.toFixed(2)}</strong> inventory value</div><div class="loc-detail-stat"><strong>${out}</strong> out of stock</div><div class="loc-detail-stat"><strong>${low}</strong> below par</div>${pricesSyncedFromSquare?'<div class="loc-detail-stat" style="color:var(--green)">&#x2713; Prices live from Square</div>':''}</div></div><button class="btn btn-sm" onclick="exportLocCSV()">&#x2193; Export CSV</button>`;
+  hdr.innerHTML=`<div class="loc-detail-icon" style="background:${["#E8F0FB","#EEF0FC","var(--green-bg)","var(--amber-bg)","#FCEEE8"][li]}">${LOC_ICONS[li]}</div><div style="flex:1"><div class="loc-detail-name">${currentLoc}</div><div class="loc-detail-stats"><div class="loc-detail-stat"><strong>${total}</strong> units on hand</div><div class="loc-detail-stat"><strong>$${value.toFixed(2)}</strong> inventory value</div><div class="loc-detail-stat"><strong>${out}</strong> out of stock</div><div class="loc-detail-stat"><strong>${low}</strong> below par</div></div></div><button class="btn btn-sm" onclick="exportLocCSV()">&#x2193; Export CSV</button>`;
   document.getElementById("loc-detail-title").textContent=currentLoc+" Inventory";
   document.getElementById("loc-detail-table").innerHTML=items.map(item=>{
     const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0;
@@ -603,15 +575,19 @@ function renderLocDetail(){
     const statusText=qty===0?"Out of stock":par>0&&qty<=par?"Below par ("+qty+"/"+par+")":"In stock";
     const pct=par>0?Math.min(100,Math.round((qty/par)*100)):100;
     const barColor=qty===0?"var(--red)":par>0&&qty<=par?"var(--amber)":"var(--green)";
-    return`<tr><td style="font-weight:500">${item}</td><td><span class="cat-chip ${cat==="Frozen Foods"?"cc-food":"cc-dessert"}">${cat==="Frozen Foods"?"Food":"Dessert"}</span></td><td style="font-family:'DM Mono',monospace">${fmt(price)}</td><td style="text-align:center;font-weight:600;font-size:15px" class="${cls}">${qty}</td><td style="text-align:center;color:var(--text3)">${par||"\u2014"}</td><td><span class="${cls}">${statusText}</span>${par>0?`<div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${barColor}"></div></div>`:""}</td></tr>`;
+    return`<tr>
+      <td style="font-weight:500">${item}</td>
+      <td><span class="cat-chip ${cat==="Frozen Foods"?"cc-food":"cc-dessert"}">${cat==="Frozen Foods"?"Food":"Dessert"}</span></td>
+      <td style="font-family:'DM Mono',monospace">${fmt(price)}</td>
+      <td style="text-align:center">
+        <input type="number" class="inv-input" value="${qty}" min="0"
+          onchange="updateInventory('${esc(item)}','${currentLoc}',this.value)"
+          title="Click to edit">
+      </td>
+      <td style="text-align:center;color:var(--text3)">${par||"\u2014"}</td>
+      <td><span class="${cls}">${statusText}</span>${par>0?`<div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${barColor}"></div></div>`:""}</td>
+    </tr>`;
   }).join("");
-}
-
-function exportLocCSV(){
-  if(!currentLoc)return;
-  const rows=[["Item","Category","Price","On Hand","Par Level","Status","Inventory Value"]];
-  S.items.forEach(item=>{const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0,price=S.prices[item]||0;const status=qty===0?"Out of stock":par>0&&qty<=par?"Below par":"In stock";rows.push([item,S.categories[item]||"",price.toFixed(2),qty,par||"",status,(qty*price).toFixed(2)]);});
-  dl(currentLoc.replace(/\s+/g,"_")+"_inventory_"+new Date().toISOString().slice(0,10)+".csv",rows);
 }
 
 function renderInventory(){
@@ -624,6 +600,7 @@ function renderInventory(){
   }).join("");
 }
 
+function exportLocCSV(){if(!currentLoc)return;const rows=[["Item","Category","Price","On Hand","Par Level","Status","Inventory Value"]];S.items.forEach(item=>{const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0,price=S.prices[item]||0;const status=qty===0?"Out of stock":par>0&&qty<=par?"Below par":"In stock";rows.push([item,S.categories[item]||"",price.toFixed(2),qty,par||"",status,(qty*price).toFixed(2)]);});dl(currentLoc.replace(/\s+/g,"_")+"_inventory_"+new Date().toISOString().slice(0,10)+".csv",rows);}
 function renderPar(){document.getElementById("par-table-body").innerHTML=S.items.map(item=>{const cols=LOCS.map(loc=>{const id="par-"+sl(item)+"-"+sl(loc);return`<td class="par-cell"><input type="number" class="par-input" id="${id}" value="${(S.par[item]||{})[loc]||0}" min="0"></td>`;}).join("");return`<tr><td style="font-weight:500;white-space:nowrap;padding-right:16px">${item}</td>${cols}</tr>`;}).join("");}
 function renderAlerts(){document.getElementById("alerts-list").innerHTML=S.alerts.length?S.alerts.map(a=>{const li=LOCS.indexOf(a.loc),cls=a.type==="out"?"danger":"warn";return`<div class="alert-bar ${cls}"><div class="alert-body"><div class="alert-title">${a.type==="out"?"Out of stock":"Below par"}: ${a.item} @ <span class="loc-chip ${LC[li]}">${a.loc}</span></div><div class="alert-sub">Current: ${a.qty} &middot; Par: ${a.par} &middot; ${a.time}</div></div><button class="alert-dismiss" onclick="dismissAlert('${esc(a.key)}')">&#x00D7;</button></div>`;}).join(""):'<div class="empty-state">&#x2713; All locations are at or above par</div>';}
 function renderTransfers(){document.getElementById("xfr-item").innerHTML=S.items.map(i=>`<option>${i}</option>`).join("");document.getElementById("xfr-log").innerHTML=S.transfers.length?S.transfers.map(t=>{const fi=LOCS.indexOf(t.from),ti=LOCS.indexOf(t.to);return`<tr><td style="color:var(--text3);font-family:'DM Mono',monospace;font-size:12px">${t.time}</td><td style="font-weight:500">${t.item}</td><td><span class="loc-chip ${LC[fi]}">${t.from}</span></td><td><span class="loc-chip ${LC[ti]}">${t.to}</span></td><td style="font-weight:600">${t.qty}</td></tr>`;}).join(""):'<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:20px">No transfers yet.</td></tr>';}
