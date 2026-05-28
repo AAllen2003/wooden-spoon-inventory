@@ -50,21 +50,18 @@ body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);min
 .metric-value.amber{color:var(--amber);}
 .metric-value.red{color:var(--red);}
 .metric-value.green{color:var(--green);}
-
-/* ── LOCATION CARDS ── */
 .loc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px;}
 .loc-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;cursor:pointer;transition:all .15s;box-shadow:var(--shadow);position:relative;overflow:hidden;}
 .loc-card:hover{border-color:var(--accent2);box-shadow:0 4px 16px rgba(0,0,0,.12);transform:translateY(-1px);}
 .loc-card-accent{position:absolute;top:0;left:0;right:0;height:3px;}
 .loc-card-name{font-size:15px;font-weight:600;margin-bottom:4px;letter-spacing:-.01em;}
-.loc-card-sub{font-size:12px;color:var(--text3);margin-bottom:14px;}
+.loc-card-sub{font-size:12px;margin-bottom:14px;font-weight:500;}
 .loc-card-stats{display:flex;gap:16px;}
 .loc-stat{display:flex;flex-direction:column;gap:2px;}
 .loc-stat-val{font-size:18px;font-weight:600;line-height:1;}
 .loc-stat-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:600;}
 .loc-card-arrow{position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:18px;color:var(--text3);opacity:.5;}
 .loc-card:hover .loc-card-arrow{opacity:1;color:var(--accent);}
-
 table{width:100%;border-collapse:collapse;font-size:13px;}
 th{text-align:left;padding:8px 10px;color:var(--text3);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);white-space:nowrap;}
 td{padding:9px 10px;border-bottom:1px solid var(--bg2);vertical-align:middle;}
@@ -109,11 +106,14 @@ input:focus,select:focus{outline:none;border-color:var(--accent2);}
 .loc-detail-header{display:flex;align-items:center;gap:14px;margin-bottom:20px;padding:18px 22px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow);}
 .loc-detail-icon{width:48px;height:48px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
 .loc-detail-name{font-size:20px;font-weight:600;letter-spacing:-.02em;}
-.loc-detail-stats{display:flex;gap:20px;margin-top:4px;}
+.loc-detail-stats{display:flex;gap:20px;margin-top:4px;flex-wrap:wrap;}
 .loc-detail-stat{font-size:12px;color:var(--text2);}
 .loc-detail-stat strong{font-weight:600;}
 .progress-bar{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;width:80px;display:inline-block;vertical-align:middle;margin-left:6px;}
 .progress-fill{height:100%;border-radius:3px;transition:width .3s;}
+.price-tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--green);background:var(--green-bg);padding:1px 6px;border-radius:4px;font-family:"DM Mono",monospace;}
+.price-tag.synced{color:var(--green);}
+.price-tag.cached{color:var(--text3);background:var(--bg2);}
 </style>
 </head>
 <body>
@@ -149,7 +149,9 @@ input:focus,select:focus{outline:none;border-color:var(--accent2);}
       <button class="back-btn" id="back-btn" onclick="goBack()">&#x2190; Back</button>
       <span id="page-title">Overview</span>
     </div>
-    <div style="display:flex;gap:8px;align-items:center" id="topbar-actions"></div>
+    <div id="price-sync-indicator" style="font-size:12px;color:var(--text3);display:none">
+      <span id="price-sync-text"></span>
+    </div>
   </div>
   <div class="content">
 
@@ -164,13 +166,13 @@ input:focus,select:focus{outline:none;border-color:var(--accent2);}
       </div>
       <div id="overview-alerts"></div>
       <div class="card">
-        <div class="card-header"><span class="card-title">Location Summary</span><button class="btn btn-sm" onclick="showSection('locations',document.querySelector('.nav-item:nth-child(3))'))">View all locations &#x2192;</button></div>
-        <table><thead><tr><th>Location</th><th>Items</th><th>Below Par</th><th>Out of Stock</th><th>Status</th></tr></thead>
+        <div class="card-header"><span class="card-title">Location Summary</span></div>
+        <table><thead><tr><th>Location</th><th>Items</th><th>Below Par</th><th>Out of Stock</th><th>Status</th><th></th></tr></thead>
         <tbody id="loc-summary"></tbody></table>
       </div>
     </div>
 
-    <!-- INVENTORY (all locations) -->
+    <!-- INVENTORY -->
     <div class="section" id="sec-inventory">
       <div class="card">
         <div class="card-header">
@@ -188,13 +190,13 @@ input:focus,select:focus{outline:none;border-color:var(--accent2);}
       </div>
     </div>
 
-    <!-- LOCATIONS overview -->
+    <!-- LOCATIONS -->
     <div class="section" id="sec-locations">
       <p style="font-size:13px;color:var(--text2);margin-bottom:16px">Click any location to see its full inventory breakdown.</p>
       <div class="loc-grid" id="loc-grid"></div>
     </div>
 
-    <!-- LOCATION DETAIL (dynamic) -->
+    <!-- LOCATION DETAIL -->
     <div class="section" id="sec-loc-detail">
       <div class="loc-detail-header" id="loc-detail-header"></div>
       <div class="card">
@@ -284,7 +286,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent2);}
     <div class="section" id="sec-settings">
       <div class="worker-setup">
         <h3>&#x26A1; Cloudflare Worker &mdash; Live Sync</h3>
-        <p>Your Worker receives Square webhooks and keeps inventory updated in real time.</p>
+        <p>Your Worker receives Square webhooks, keeps inventory updated in real time, and now also syncs prices automatically on every sync.</p>
         <div style="display:flex;gap:8px"><input type="url" id="worker-url" placeholder="https://your-worker.workers.dev" style="flex:1"><button class="btn btn-primary" onclick="saveWorkerUrl()">Save &amp; Test</button></div>
         <div class="worker-status" id="worker-status"></div>
       </div>
@@ -338,29 +340,30 @@ const LC=["lc-0","lc-1","lc-2","lc-3","lc-4"];
 const LOC_ICONS=["&#x1F3ED;","&#x1F374;","&#x1F69A;","&#x1F69A;","&#x1F69A;"];
 const LOC_ACCENT=["loc-accent-0","loc-accent-1","loc-accent-2","loc-accent-3","loc-accent-4"];
 const REMOVED=["Delivery","Frozen Whole Pie"];
-const CATALOG=[
-  {name:"Apple Pie",cat:"Frozen Desserts",price:30},{name:"BBQ Meatballs",cat:"Frozen Foods",price:22},
-  {name:"Beef Enchiladas",cat:"Frozen Foods",price:20},{name:"Beef Lasagna",cat:"Frozen Foods",price:20},
-  {name:"Blackberry Pie",cat:"Frozen Desserts",price:30},{name:"Bread Pudding",cat:"Frozen Desserts",price:18},
-  {name:"Bread Pudding Sauce",cat:"Frozen Desserts",price:7},{name:"Breakfast Burritos",cat:"Frozen Foods",price:20},
-  {name:"Bumblebee Pie",cat:"Frozen Desserts",price:30},{name:"Cheesy Beef and Potatoes",cat:"Frozen Foods",price:20},
-  {name:"Cherry Pie",cat:"Frozen Desserts",price:30},{name:"Chicken Alfredo",cat:"Frozen Foods",price:20},
-  {name:"Chicken Enchiladas",cat:"Frozen Foods",price:20},{name:"Chicken Pot Pie",cat:"Frozen Foods",price:20},
-  {name:"Chicken Spaghetti",cat:"Frozen Foods",price:20},{name:"Chocolate Chip Cookie Dough",cat:"Frozen Desserts",price:9},
-  {name:"Gourmet Potatoes",cat:"Frozen Foods",price:14},{name:"Macaroni & Cheese",cat:"Frozen Foods",price:14},
-  {name:"Meatloaf",cat:"Frozen Foods",price:22},{name:"Monster Cookie Dough",cat:"Frozen Desserts",price:9},
-  {name:"Peach Pie",cat:"Frozen Desserts",price:30},{name:"Pint of Soup",cat:"Frozen Foods",price:7.5},
-  {name:"Poppy Seed Chicken",cat:"Frozen Foods",price:20},{name:"Quart of Soup",cat:"Frozen Foods",price:12.5},
-  {name:"Strawberry Rhubarb Pie",cat:"Frozen Desserts",price:30},{name:"Sugar Free Bumblebee",cat:"Frozen Desserts",price:30},
-  {name:"Sugar Free Cherry Pie",cat:"Frozen Desserts",price:30},{name:"Sugar Free Peach Pie",cat:"Frozen Desserts",price:30}
-];
+
+// Default prices — overwritten on every sync from Square via Worker
+const DEFAULT_PRICES={"Apple Pie":30,"BBQ Meatballs":22,"Beef Enchiladas":20,"Beef Lasagna":20,"Blackberry Pie":30,"Bread Pudding":18,"Bread Pudding Sauce":7,"Breakfast Burritos":20,"Bumblebee Pie":30,"Cheesy Beef and Potatoes":20,"Cherry Pie":30,"Chicken Alfredo":20,"Chicken Enchiladas":20,"Chicken Pot Pie":20,"Chicken Spaghetti":20,"Chocolate Chip Cookie Dough":9,"Gourmet Potatoes":14,"Macaroni & Cheese":14,"Meatloaf":22,"Monster Cookie Dough":9,"Peach Pie":30,"Pint of Soup":7.5,"Poppy Seed Chicken":20,"Quart of Soup":12.5,"Strawberry Rhubarb Pie":30,"Sugar Free Bumblebee":30,"Sugar Free Cherry Pie":30,"Sugar Free Peach Pie":30};
 const SQUARE_QTY={"Apple Pie":2,"BBQ Meatballs":8,"Beef Enchiladas":7,"Beef Lasagna":21,"Blackberry Pie":4,"Bread Pudding":4,"Bread Pudding Sauce":11,"Breakfast Burritos":26,"Bumblebee Pie":2,"Cheesy Beef and Potatoes":17,"Cherry Pie":1,"Chicken Alfredo":37,"Chicken Enchiladas":47,"Chicken Pot Pie":51,"Chicken Spaghetti":118,"Chocolate Chip Cookie Dough":58,"Gourmet Potatoes":56,"Macaroni & Cheese":18,"Meatloaf":125,"Monster Cookie Dough":35,"Peach Pie":0,"Pint of Soup":0,"Poppy Seed Chicken":47,"Quart of Soup":0,"Strawberry Rhubarb Pie":0,"Sugar Free Bumblebee":0,"Sugar Free Cherry Pie":0,"Sugar Free Peach Pie":0};
+const CATALOG_NAMES=Object.keys(DEFAULT_PRICES);
+const DEFAULT_CATS={"Apple Pie":"Frozen Desserts","BBQ Meatballs":"Frozen Foods","Beef Enchiladas":"Frozen Foods","Beef Lasagna":"Frozen Foods","Blackberry Pie":"Frozen Desserts","Bread Pudding":"Frozen Desserts","Bread Pudding Sauce":"Frozen Desserts","Breakfast Burritos":"Frozen Foods","Bumblebee Pie":"Frozen Desserts","Cheesy Beef and Potatoes":"Frozen Foods","Cherry Pie":"Frozen Desserts","Chicken Alfredo":"Frozen Foods","Chicken Enchiladas":"Frozen Foods","Chicken Pot Pie":"Frozen Foods","Chicken Spaghetti":"Frozen Foods","Chocolate Chip Cookie Dough":"Frozen Desserts","Gourmet Potatoes":"Frozen Foods","Macaroni & Cheese":"Frozen Foods","Meatloaf":"Frozen Foods","Monster Cookie Dough":"Frozen Desserts","Peach Pie":"Frozen Desserts","Pint of Soup":"Frozen Foods","Poppy Seed Chicken":"Frozen Foods","Quart of Soup":"Frozen Foods","Strawberry Rhubarb Pie":"Frozen Desserts","Sugar Free Bumblebee":"Frozen Desserts","Sugar Free Cherry Pie":"Frozen Desserts","Sugar Free Peach Pie":"Frozen Desserts"};
 
-let S={token:"",workerUrl:WORKER_URL,locationIds:{Warehouse:"",Restaurant:"","Truck 1":"","Truck 2":"","Truck 3":""},items:CATALOG.map(c=>c.name),categories:Object.fromEntries(CATALOG.map(c=>[c.name,c.cat])),prices:Object.fromEntries(CATALOG.map(c=>[c.name,c.price])),inventory:{},sales:{},par:{},prodTargets:{},transfers:[],alerts:[],lastSync:""};
-CATALOG.forEach(c=>{S.inventory[c.name]={Warehouse:SQUARE_QTY[c.name]||0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[c.name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[c.name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};});
+let S={
+  token:"",workerUrl:WORKER_URL,
+  locationIds:{Warehouse:"",Restaurant:"","Truck 1":"","Truck 2":"","Truck 3":""},
+  items:[...CATALOG_NAMES],
+  categories:{...DEFAULT_CATS},
+  prices:{...DEFAULT_PRICES},
+  pricesSyncedAt:"",
+  inventory:{},sales:{},par:{},prodTargets:{},transfers:[],alerts:[],lastSync:""
+};
+CATALOG_NAMES.forEach(n=>{
+  S.inventory[n]={Warehouse:SQUARE_QTY[n]||0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+  S.sales[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+  S.par[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+});
 
-let currentSection="overview";
 let currentLoc=null;
+let pricesSyncedFromSquare=false;
 
 function saveState(){try{localStorage.setItem("ws_inv_v1",JSON.stringify(S));}catch(e){}}
 function loadState(){
@@ -368,12 +371,61 @@ function loadState(){
     const raw=localStorage.getItem("ws_inv_v1");if(!raw)return;
     const saved=JSON.parse(raw);
     S.token=saved.token||"";S.workerUrl=saved.workerUrl||WORKER_URL;
-    S.locationIds=saved.locationIds||S.locationIds;S.transfers=saved.transfers||[];S.alerts=saved.alerts||[];S.lastSync=saved.lastSync||"";S.prodTargets=saved.prodTargets||{};
-    CATALOG.forEach(c=>{if(saved.inventory?.[c.name])S.inventory[c.name]={...S.inventory[c.name],...saved.inventory[c.name]};if(saved.sales?.[c.name])S.sales[c.name]={...S.sales[c.name],...saved.sales[c.name]};if(saved.par?.[c.name])S.par[c.name]={...S.par[c.name],...saved.par[c.name]};});
-    if(saved.items)saved.items.forEach(name=>{if(!S.items.includes(name)&&!REMOVED.includes(name)){S.items.push(name);S.inventory[name]=saved.inventory?.[name]||{Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[name]=saved.sales?.[name]||{Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[name]=saved.par?.[name]||{Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};}});
-    if(saved.categories)Object.assign(S.categories,saved.categories);if(saved.prices)Object.assign(S.prices,saved.prices);
+    S.locationIds=saved.locationIds||S.locationIds;
+    S.transfers=saved.transfers||[];S.alerts=saved.alerts||[];
+    S.lastSync=saved.lastSync||"";S.prodTargets=saved.prodTargets||{};
+    S.pricesSyncedAt=saved.pricesSyncedAt||"";
+    // Restore prices — prefer saved (may include Square-synced prices)
+    if(saved.prices) S.prices={...DEFAULT_PRICES,...saved.prices};
+    if(saved.categories) S.categories={...DEFAULT_CATS,...saved.categories};
+    CATALOG_NAMES.forEach(n=>{
+      if(saved.inventory?.[n])S.inventory[n]={...S.inventory[n],...saved.inventory[n]};
+      if(saved.sales?.[n])S.sales[n]={...S.sales[n],...saved.sales[n]};
+      if(saved.par?.[n])S.par[n]={...S.par[n],...saved.par[n]};
+    });
+    if(saved.items)saved.items.forEach(name=>{
+      if(!S.items.includes(name)&&!REMOVED.includes(name)){
+        S.items.push(name);
+        S.inventory[name]=saved.inventory?.[name]||{Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+        S.sales[name]=saved.sales?.[name]||{Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+        S.par[name]=saved.par?.[name]||{Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+      }
+    });
   }catch(e){console.error(e);}
   S.alerts=S.alerts.filter(a=>S.items.includes(a.item));
+}
+
+// ── PRICE SYNC ────────────────────────────────────────────────────
+async function syncPrices(){
+  if(!S.workerUrl) return;
+  const ind=document.getElementById("price-sync-indicator");
+  const txt=document.getElementById("price-sync-text");
+  if(ind)ind.style.display="block";
+  if(txt)txt.textContent="Syncing prices from Square...";
+  try{
+    const res=await fetch(S.workerUrl+"/prices",{method:"GET",mode:"cors"});
+    if(!res.ok) throw new Error("Worker /prices returned "+res.status);
+    const data=await res.json();
+    if(data.prices && Object.keys(data.prices).length>0){
+      // Merge Square prices over defaults
+      Object.entries(data.prices).forEach(([item,price])=>{
+        if(!REMOVED.includes(item)) S.prices[item]=price;
+      });
+      S.pricesSyncedAt=new Date().toLocaleTimeString();
+      pricesSyncedFromSquare=true;
+      saveState();
+      if(txt)txt.textContent="&#x2713; Prices synced from Square ("+Object.keys(data.prices).length+" items)";
+      setTimeout(()=>{if(ind)ind.style.display="none";},4000);
+      renderAll();
+    } else {
+      if(txt)txt.textContent="No prices returned from Square";
+      setTimeout(()=>{if(ind)ind.style.display="none";},3000);
+    }
+  }catch(e){
+    console.warn("Price sync failed:",e.message);
+    if(txt)txt.textContent="Price sync unavailable — using cached prices";
+    setTimeout(()=>{if(ind)ind.style.display="none";},3000);
+  }
 }
 
 const TITLES={overview:"Overview",inventory:"Inventory",locations:"Locations",par:"Par Levels",alerts:"Alerts",transfers:"Transfers",production:"Production Planning",sales:"Sales",settings:"Settings"};
@@ -385,7 +437,6 @@ function showSection(name,btn){
   if(btn&&btn.classList&&btn.classList.contains("nav-item"))btn.classList.add("active");
   document.getElementById("page-title").textContent=TITLES[name]||name;
   document.getElementById("back-btn").style.display="none";
-  currentSection=name;
   if(name==="inventory")renderInventory();
   if(name==="locations")renderLocations();
   if(name==="par")renderPar();
@@ -399,8 +450,7 @@ function openLocDetail(locName){
   currentLoc=locName;
   document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
   document.getElementById("sec-loc-detail").classList.add("active");
-  const li=LOCS.indexOf(locName);
-  document.getElementById("page-title").textContent=locName+" — Inventory";
+  document.getElementById("page-title").textContent=locName+" \u2014 Inventory";
   document.getElementById("back-btn").style.display="inline-flex";
   document.getElementById("loc-detail-cat-filter").value="";
   renderLocDetail();
@@ -416,36 +466,84 @@ function setStatus(t,ok){const el=document.getElementById("conn-status");el.text
 async function syncNow(){
   const sp=document.getElementById("sync-spinner"),sm=document.getElementById("inv-sync-msg");
   sp.style.display="block";
+
   if(S.workerUrl){
-    if(sm)sm.textContent="Syncing via Worker...";
+    if(sm)sm.textContent="Syncing inventory via Worker...";
     try{
       const res=await fetch(S.workerUrl+"/inventory",{method:"GET",mode:"cors",headers:{"Authorization":"Bearer "+(S.token||"")}});
       if(!res.ok)throw new Error("Worker returned "+res.status);
       const data=await res.json();
-      Object.entries(data.inventory||{}).forEach(([item,locs])=>{if(REMOVED.includes(item))return;if(!S.items.includes(item)){S.items.push(item);S.inventory[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};}Object.entries(locs).forEach(([loc,qty])=>{if(LOCS.includes(loc))S.inventory[item][loc]=qty;});});
-      Object.entries(data.sales||{}).forEach(([item,locs])=>{if(!S.sales[item])S.sales[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};Object.entries(locs).forEach(([loc,qty])=>{if(LOCS.includes(loc))S.sales[item][loc]=qty;});});
-      S.lastSync=new Date().toLocaleString();checkAlerts();saveState();renderAll();setStatus("Live via Worker",true);if(sm)sm.textContent="Synced via Worker \u2014 "+new Date().toLocaleTimeString();
-    }catch(e){if(sm)sm.textContent="Worker sync failed: "+e.message;setStatus("Sync error",false);}
-    sp.style.display="none";return;
+      Object.entries(data.inventory||{}).forEach(([item,locs])=>{
+        if(REMOVED.includes(item))return;
+        if(!S.items.includes(item)){S.items.push(item);S.inventory[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};}
+        Object.entries(locs).forEach(([loc,qty])=>{if(LOCS.includes(loc))S.inventory[item][loc]=qty;});
+      });
+      Object.entries(data.sales||{}).forEach(([item,locs])=>{
+        if(!S.sales[item])S.sales[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+        Object.entries(locs).forEach(([loc,qty])=>{if(LOCS.includes(loc))S.sales[item][loc]=qty;});
+      });
+      S.lastSync=new Date().toLocaleString();
+      checkAlerts();saveState();renderAll();
+      setStatus("Live via Worker",true);
+      if(sm)sm.textContent="Inventory synced \u2014 "+new Date().toLocaleTimeString();
+    }catch(e){
+      if(sm)sm.textContent="Worker sync failed: "+e.message;
+      setStatus("Sync error",false);
+      sp.style.display="none";
+      return;
+    }
+    // Also sync prices on every inventory sync
+    await syncPrices();
+    sp.style.display="none";
+    return;
   }
+
+  // Fallback: direct Square
   if(!S.token){sp.style.display="none";if(sm)sm.textContent="No Worker URL or token configured.";return;}
-  if(sm)sm.textContent="Syncing with Square...";
+  if(sm)sm.textContent="Syncing with Square directly...";
   try{
     const locIds=Object.values(S.locationIds).filter(Boolean);
     if(!locIds.length){sp.style.display="none";if(sm)sm.textContent="No location IDs set.";return;}
     const res=await fetch("https://connect.squareup.com/v2/inventory/counts/batch-retrieve",{method:"POST",headers:{"Authorization":"Bearer "+S.token,"Content-Type":"application/json","Square-Version":"2024-01-18"},body:JSON.stringify({location_ids:locIds})});
     const data=await res.json();if(data.errors)throw new Error(data.errors[0].detail);
     const catRes=await fetch("https://connect.squareup.com/v2/catalog/list?types=ITEM",{headers:{"Authorization":"Bearer "+S.token,"Square-Version":"2024-01-18"}});
-    const catData=await catRes.json();const idToName={};
-    (catData.objects||[]).forEach(obj=>{(obj.item_data?.variations||[]).forEach(v=>{idToName[v.id]=obj.item_data.name;});});
+    const catData=await catRes.json();
+    const idToName={};
+    (catData.objects||[]).forEach(obj=>{
+      (obj.item_data?.variations||[]).forEach(v=>{idToName[v.id]=obj.item_data.name;});
+      // Also grab prices
+      const itemName=obj.item_data?.name;
+      if(itemName&&!REMOVED.includes(itemName)){
+        const priceMoney=obj.item_data?.variations?.[0]?.item_variation_data?.price_money;
+        if(priceMoney&&priceMoney.amount!=null) S.prices[itemName]=priceMoney.amount/100;
+      }
+    });
     const idToLoc={};Object.entries(S.locationIds).forEach(([n,id])=>{if(id)idToLoc[id]=n;});
     (data.counts||[]).forEach(c=>{const iN=idToName[c.catalog_object_id],lN=idToLoc[c.location_id];if(!iN||!lN||REMOVED.includes(iN))return;if(!S.items.includes(iN)){S.items.push(iN);S.inventory[iN]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[iN]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[iN]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};}S.inventory[iN][lN]=parseInt(c.quantity)||0;});
-    S.lastSync=new Date().toLocaleString();checkAlerts();saveState();renderAll();setStatus("Live (Square direct)",true);if(sm)sm.textContent="Synced \u2014 "+new Date().toLocaleTimeString();
+    S.lastSync=new Date().toLocaleString();checkAlerts();saveState();renderAll();
+    setStatus("Live (Square direct)",true);if(sm)sm.textContent="Synced \u2014 "+new Date().toLocaleTimeString();
   }catch(e){if(sm)sm.textContent="Sync failed: "+e.message;setStatus("Sync error",false);}
   sp.style.display="none";
 }
 
-async function saveWorkerUrl(){const url=document.getElementById("worker-url").value.trim().replace(/\/+$/,"");if(!url){alert("Please enter your Worker URL.");return;}const st=document.getElementById("worker-status");st.style.display="block";st.className="worker-status";st.textContent="Testing...";try{const res=await fetch(url+"/health",{method:"GET",mode:"cors"});if(res.ok){S.workerUrl=url;saveState();st.className="worker-status ok";st.textContent="\u2713 Worker connected! Click Sync Square to pull live data.";setStatus("Worker connected",true);}else{st.className="worker-status err";st.textContent="\u2717 Worker error "+res.status;}}catch(e){st.className="worker-status err";st.textContent="\u2717 Cannot reach Worker: "+e.message;}}
+async function saveWorkerUrl(){
+  const url=document.getElementById("worker-url").value.trim().replace(/\/+$/,"");
+  if(!url){alert("Please enter your Worker URL.");return;}
+  const st=document.getElementById("worker-status");
+  st.style.display="block";st.className="worker-status";st.textContent="Testing...";
+  try{
+    const res=await fetch(url+"/health",{method:"GET",mode:"cors"});
+    if(res.ok){
+      S.workerUrl=url;saveState();
+      st.className="worker-status ok";
+      st.textContent="\u2713 Worker connected! Prices will sync automatically on every Sync Square.";
+      setStatus("Worker connected",true);
+    }else{
+      st.className="worker-status err";st.textContent="\u2717 Worker error "+res.status;
+    }
+  }catch(e){st.className="worker-status err";st.textContent="\u2717 Cannot reach Worker: "+e.message;}
+}
+
 function saveToken(){const t=document.getElementById("sq-token").value.trim();if(!t)return;S.token=t;saveState();setStatus("Token saved",true);alert("Token saved!");}
 function saveLocations(){S.locationIds.Warehouse=document.getElementById("loc-wh").value.trim();S.locationIds.Restaurant=document.getElementById("loc-rs").value.trim();S.locationIds["Truck 1"]=document.getElementById("loc-t1").value.trim();S.locationIds["Truck 2"]=document.getElementById("loc-t2").value.trim();S.locationIds["Truck 3"]=document.getElementById("loc-t3").value.trim();saveState();alert("Location IDs saved!");}
 function addItem(){const name=prompt("Item name:");if(!name||!name.trim())return;const n=name.trim();if(S.items.includes(n)){alert("Already exists.");return;}S.items.push(n);S.inventory[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};saveState();renderAll();}
@@ -458,6 +556,7 @@ function dismissAllAlerts(){S.alerts=[];saveState();renderAll();}
 function doTransfer(){const item=document.getElementById("xfr-item").value,from=document.getElementById("xfr-from").value,to=document.getElementById("xfr-to").value,qty=parseInt(document.getElementById("xfr-qty").value)||0;if(!item)return;if(from===to){alert("From and To must differ.");return;}if(qty<1){alert("Qty must be at least 1.");return;}const avail=(S.inventory[item]||{})[from]||0;if(qty>avail){alert("Only "+avail+" available at "+from+".");return;}S.inventory[item][from]-=qty;S.inventory[item][to]=(S.inventory[item][to]||0)+qty;S.transfers.unshift({time:new Date().toLocaleTimeString(),item,from,to,qty});if(S.transfers.length>200)S.transfers=S.transfers.slice(0,200);checkAlerts();saveState();renderAll();}
 function updateProdTarget(item,val){if(!S.prodTargets)S.prodTargets={};S.prodTargets[item]=parseInt(val)||0;saveState();}
 function esc(s){return String(s).replace(/'/g,"\\'");}
+function fmt(p){return p!=null?"$"+Number(p).toFixed(2):"—";}
 
 function renderAll(){renderOverview();renderLocations();if(currentLoc)renderLocDetail();renderInventory();renderPar();renderAlerts();renderTransfers();renderProduction();renderSales();renderSettings();}
 
@@ -470,31 +569,20 @@ function renderOverview(){
   if(S.alerts.length>0){oa.innerHTML=S.alerts.slice(0,4).map(a=>{const li=LOCS.indexOf(a.loc),cls=a.type==="out"?"danger":"warn";return`<div class="alert-bar ${cls}"><div class="alert-body"><div class="alert-title">${a.type==="out"?"Out of stock":"Below par"}: ${a.item} @ <span class="loc-chip ${LC[li]}">${a.loc}</span></div><div class="alert-sub">Stock: ${a.qty} &middot; Par: ${a.par} &middot; ${a.time}</div></div><button class="alert-dismiss" onclick="dismissAlert('${esc(a.key)}')">&#x00D7;</button></div>`;}).join("");if(S.alerts.length>4)oa.innerHTML+=`<p style="font-size:12px;color:var(--text3);margin-bottom:12px">+${S.alerts.length-4} more alerts</p>`;}
   else{oa.innerHTML=S.items.length?'<div class="alert-bar success" style="margin-bottom:12px"><span>&#x2713;</span><div class="alert-body">All locations are at or above par.</div></div>':"";}
   document.getElementById("loc-summary").innerHTML=LOCS.map((loc,i)=>{
-    let lLow=0,lOut=0,lTotal=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;lTotal+=q;if(q===0&&p>0)lOut++;else if(p>0&&q<=p)lLow++;});
+    let lLow=0,lOut=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)lOut++;else if(p>0&&q<=p)lLow++;});
     const status=lOut>0?'<span class="stock-out">Action needed</span>':lLow>0?'<span class="stock-low">Low stock</span>':'<span class="stock-ok">All good</span>';
     return`<tr style="cursor:pointer" onclick="openLocDetail('${loc}')"><td><span class="loc-chip ${LC[i]}">${loc}</span></td><td>${S.items.length}</td><td>${lLow||"\u2014"}</td><td>${lOut||"\u2014"}</td><td>${status}</td><td style="color:var(--text3);font-size:12px">View &#x2192;</td></tr>`;
   }).join("");
 }
 
 function renderLocations(){
-  const grid=document.getElementById("loc-grid");
-  if(!grid)return;
+  const grid=document.getElementById("loc-grid");if(!grid)return;
   grid.innerHTML=LOCS.map((loc,i)=>{
     let total=0,low=0,out=0,value=0;
     S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});
     const statusColor=out>0?"var(--red)":low>0?"var(--amber)":"var(--green)";
     const statusText=out>0?out+" out of stock":low>0?low+" below par":"All good";
-    return`<div class="loc-card" onclick="openLocDetail('${loc}')">
-      <div class="loc-card-accent ${LOC_ACCENT[i]}"></div>
-      <div class="loc-card-name">${loc}</div>
-      <div class="loc-card-sub" style="color:${statusColor};font-weight:500">${statusText}</div>
-      <div class="loc-card-stats">
-        <div class="loc-stat"><div class="loc-stat-val">${total}</div><div class="loc-stat-label">Units</div></div>
-        <div class="loc-stat"><div class="loc-stat-val">$${value.toFixed(0)}</div><div class="loc-stat-label">Value</div></div>
-        <div class="loc-stat"><div class="loc-stat-val">${S.items.length}</div><div class="loc-stat-label">SKUs</div></div>
-      </div>
-      <div class="loc-card-arrow">&#x2192;</div>
-    </div>`;
+    return`<div class="loc-card" onclick="openLocDetail('${loc}')"><div class="loc-card-accent ${LOC_ACCENT[i]}"></div><div class="loc-card-name">${loc}</div><div class="loc-card-sub" style="color:${statusColor}">${statusText}</div><div class="loc-card-stats"><div class="loc-stat"><div class="loc-stat-val">${total}</div><div class="loc-stat-label">Units</div></div><div class="loc-stat"><div class="loc-stat-val">$${value.toFixed(0)}</div><div class="loc-stat-label">Value</div></div><div class="loc-stat"><div class="loc-stat-val">${S.items.length}</div><div class="loc-stat-label">SKUs</div></div></div><div class="loc-card-arrow">&#x2192;</div></div>`;
   }).join("");
 }
 
@@ -503,72 +591,48 @@ function renderLocDetail(){
   const li=LOCS.indexOf(currentLoc);
   const filter=document.getElementById("loc-detail-cat-filter")?.value||"";
   const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;
-
-  // Header
   let total=0,low=0,out=0,value=0;
   S.items.forEach(item=>{const q=(S.inventory[item]||{})[currentLoc]||0,p=(S.par[item]||{})[currentLoc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});
   const hdr=document.getElementById("loc-detail-header");
-  hdr.innerHTML=`
-    <div class="loc-detail-icon" style="background:${['#E8F0FB','#EEF0FC','var(--green-bg)','var(--amber-bg)','#FCEEE8'][li]}">${LOC_ICONS[li]}</div>
-    <div style="flex:1">
-      <div class="loc-detail-name">${currentLoc}</div>
-      <div class="loc-detail-stats">
-        <div class="loc-detail-stat"><strong>${total}</strong> total units</div>
-        <div class="loc-detail-stat"><strong>$${value.toFixed(2)}</strong> inventory value</div>
-        <div class="loc-detail-stat"><strong>${out}</strong> out of stock</div>
-        <div class="loc-detail-stat"><strong>${low}</strong> below par</div>
-      </div>
-    </div>
-    <button class="btn btn-sm" onclick="exportLocCSV()">&#x2193; Export CSV</button>
-  `;
-
+  hdr.innerHTML=`<div class="loc-detail-icon" style="background:${["#E8F0FB","#EEF0FC","var(--green-bg)","var(--amber-bg)","#FCEEE8"][li]}">${LOC_ICONS[li]}</div><div style="flex:1"><div class="loc-detail-name">${currentLoc}</div><div class="loc-detail-stats"><div class="loc-detail-stat"><strong>${total}</strong> total units</div><div class="loc-detail-stat"><strong>$${value.toFixed(2)}</strong> inventory value</div><div class="loc-detail-stat"><strong>${out}</strong> out of stock</div><div class="loc-detail-stat"><strong>${low}</strong> below par</div>${pricesSyncedFromSquare?'<div class="loc-detail-stat" style="color:var(--green)">&#x2713; Prices live from Square</div>':''}</div></div><button class="btn btn-sm" onclick="exportLocCSV()">&#x2193; Export CSV</button>`;
   document.getElementById("loc-detail-title").textContent=currentLoc+" Inventory";
-
-  // Table
   document.getElementById("loc-detail-table").innerHTML=items.map(item=>{
-    const qty=(S.inventory[item]||{})[currentLoc]||0;
-    const par=(S.par[item]||{})[currentLoc]||0;
-    const cat=S.categories[item]||"";
-    const price=S.prices[item]||0;
+    const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0;
+    const cat=S.categories[item]||"",price=S.prices[item]||0;
     const cls=qty===0?"stock-out":par>0&&qty<=par?"stock-low":"stock-ok";
     const statusText=qty===0?"Out of stock":par>0&&qty<=par?"Below par ("+qty+"/"+par+")":"In stock";
     const pct=par>0?Math.min(100,Math.round((qty/par)*100)):100;
     const barColor=qty===0?"var(--red)":par>0&&qty<=par?"var(--amber)":"var(--green)";
-    return`<tr>
-      <td style="font-weight:500">${item}</td>
-      <td><span class="cat-chip ${cat==="Frozen Foods"?"cc-food":"cc-dessert"}">${cat==="Frozen Foods"?"Food":"Dessert"}</span></td>
-      <td style="color:var(--text3);font-family:'DM Mono',monospace">$${price.toFixed(2)}</td>
-      <td style="text-align:center;font-weight:600;font-size:15px" class="${cls}">${qty}</td>
-      <td style="text-align:center;color:var(--text3)">${par||"\u2014"}</td>
-      <td>
-        <span class="${cls}">${statusText}</span>
-        ${par>0?`<div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${barColor}"></div></div>`:""}
-      </td>
-    </tr>`;
+    return`<tr><td style="font-weight:500">${item}</td><td><span class="cat-chip ${cat==="Frozen Foods"?"cc-food":"cc-dessert"}">${cat==="Frozen Foods"?"Food":"Dessert"}</span></td><td style="font-family:'DM Mono',monospace">${fmt(price)}</td><td style="text-align:center;font-weight:600;font-size:15px" class="${cls}">${qty}</td><td style="text-align:center;color:var(--text3)">${par||"\u2014"}</td><td><span class="${cls}">${statusText}</span>${par>0?`<div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${barColor}"></div></div>`:""}</td></tr>`;
   }).join("");
 }
 
 function exportLocCSV(){
   if(!currentLoc)return;
-  const rows=[["Item","Category","Price","On Hand","Par Level","Status"]];
-  S.items.forEach(item=>{
-    const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0;
-    const status=qty===0?"Out of stock":par>0&&qty<=par?"Below par":"In stock";
-    rows.push([item,S.categories[item]||"",S.prices[item]||"",qty,par||"",status]);
-  });
+  const rows=[["Item","Category","Price","On Hand","Par Level","Status","Inventory Value"]];
+  S.items.forEach(item=>{const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0,price=S.prices[item]||0;const status=qty===0?"Out of stock":par>0&&qty<=par?"Below par":"In stock";rows.push([item,S.categories[item]||"",price.toFixed(2),qty,par||"",status,(qty*price).toFixed(2)]);});
   dl(currentLoc.replace(/\s+/g,"_")+"_inventory_"+new Date().toISOString().slice(0,10)+".csv",rows);
 }
 
-function renderInventory(){const filter=document.getElementById("inv-cat-filter")?.value||"";const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;document.getElementById("inv-table").innerHTML=items.map(item=>{const cols=LOCS.map(loc=>{const qty=(S.inventory[item]||{})[loc]||0,par=(S.par[item]||{})[loc]||0;const cls=qty===0?"stock-out":par>0&&qty<=par?"stock-low":"stock-ok";const pn=par>0?`<span class="qty-par">par ${par}</span>`:"";return`<td class="qty-cell"><span class="qty-val ${cls}">${qty}</span>${pn}</td>`;}).join("");const total=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0);const cat=S.categories[item]||"";return`<tr><td style="font-weight:500;white-space:nowrap">${item}</td><td><span class="cat-chip ${cat==="Frozen Foods"?"cc-food":"cc-dessert"}">${cat==="Frozen Foods"?"Food":"Dessert"}</span></td><td style="color:var(--text3);font-family:'DM Mono',monospace">$${(S.prices[item]||0).toFixed(2)}</td>${cols}<td class="qty-cell" style="font-weight:600">${total}</td></tr>`;}).join("");}
+function renderInventory(){
+  const filter=document.getElementById("inv-cat-filter")?.value||"";
+  const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;
+  document.getElementById("inv-table").innerHTML=items.map(item=>{
+    const cols=LOCS.map(loc=>{const qty=(S.inventory[item]||{})[loc]||0,par=(S.par[item]||{})[loc]||0;const cls=qty===0?"stock-out":par>0&&qty<=par?"stock-low":"stock-ok";const pn=par>0?`<span class="qty-par">par ${par}</span>`:"";return`<td class="qty-cell"><span class="qty-val ${cls}">${qty}</span>${pn}</td>`;}).join("");
+    const total=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0),cat=S.categories[item]||"";
+    return`<tr><td style="font-weight:500;white-space:nowrap">${item}</td><td><span class="cat-chip ${cat==="Frozen Foods"?"cc-food":"cc-dessert"}">${cat==="Frozen Foods"?"Food":"Dessert"}</span></td><td style="font-family:'DM Mono',monospace">${fmt(S.prices[item])}</td>${cols}<td class="qty-cell" style="font-weight:600">${total}</td></tr>`;
+  }).join("");
+}
+
 function renderPar(){document.getElementById("par-table-body").innerHTML=S.items.map(item=>{const cols=LOCS.map(loc=>{const id="par-"+sl(item)+"-"+sl(loc);return`<td class="par-cell"><input type="number" class="par-input" id="${id}" value="${(S.par[item]||{})[loc]||0}" min="0"></td>`;}).join("");return`<tr><td style="font-weight:500;white-space:nowrap;padding-right:16px">${item}</td>${cols}</tr>`;}).join("");}
 function renderAlerts(){document.getElementById("alerts-list").innerHTML=S.alerts.length?S.alerts.map(a=>{const li=LOCS.indexOf(a.loc),cls=a.type==="out"?"danger":"warn";return`<div class="alert-bar ${cls}"><div class="alert-body"><div class="alert-title">${a.type==="out"?"Out of stock":"Below par"}: ${a.item} @ <span class="loc-chip ${LC[li]}">${a.loc}</span></div><div class="alert-sub">Current: ${a.qty} &middot; Par: ${a.par} &middot; ${a.time}</div></div><button class="alert-dismiss" onclick="dismissAlert('${esc(a.key)}')">&#x00D7;</button></div>`;}).join(""):'<div class="empty-state">&#x2713; All locations are at or above par</div>';}
 function renderTransfers(){document.getElementById("xfr-item").innerHTML=S.items.map(i=>`<option>${i}</option>`).join("");document.getElementById("xfr-log").innerHTML=S.transfers.length?S.transfers.map(t=>{const fi=LOCS.indexOf(t.from),ti=LOCS.indexOf(t.to);return`<tr><td style="color:var(--text3);font-family:'DM Mono',monospace;font-size:12px">${t.time}</td><td style="font-weight:500">${t.item}</td><td><span class="loc-chip ${LC[fi]}">${t.from}</span></td><td><span class="loc-chip ${LC[ti]}">${t.to}</span></td><td style="font-weight:600">${t.qty}</td></tr>`;}).join(""):'<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:20px">No transfers yet.</td></tr>';}
 function renderProduction(){document.getElementById("prod-table").innerHTML=S.items.map(item=>{const total=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0),totalPar=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0),target=S.prodTargets?.[item]||0,need=Math.max(0,target-total),parGap=Math.max(0,totalPar-total),sc=total===0?"stock-out":totalPar>0&&total<=totalPar?"stock-low":"stock-ok",action=need>0?`<span class="stock-low">Make ${need}</span>`:parGap>0?`<span class="stock-low">Need ${parGap} for par</span>`:`<span class="stock-ok">&#x2713; On target</span>`;return`<tr><td style="font-weight:500">${item}</td><td style="text-align:center" class="${sc}">${total}</td><td style="text-align:center;color:var(--text3)">${totalPar||"\u2014"}</td><td style="text-align:center"><input type="number" min="0" value="${target}" style="width:75px;text-align:center" onchange="updateProdTarget('${esc(item)}',this.value)"></td><td>${action}</td></tr>`;}).join("");}
-function renderSales(){document.getElementById("sales-table").innerHTML=S.items.map(item=>{const cols=LOCS.map(loc=>`<td class="qty-cell">${(S.sales[item]||{})[loc]||0}</td>`).join("");const total=LOCS.reduce((s,l)=>s+(S.sales[item]?.[l]||0),0),rev=total*(S.prices[item]||0);return`<tr><td style="font-weight:500">${item}</td><td style="color:var(--text3);font-family:'DM Mono',monospace">$${(S.prices[item]||0).toFixed(2)}</td>${cols}<td class="qty-cell" style="font-weight:600">${total}</td><td class="qty-cell stock-ok" style="font-family:'DM Mono',monospace">$${rev.toFixed(2)}</td></tr>`;}).join("");}
-function renderSettings(){const wu=document.getElementById("worker-url");if(wu&&S.workerUrl)wu.value=S.workerUrl;["loc-wh","loc-rs","loc-t1","loc-t2","loc-t3"].forEach((id,i)=>{const el=document.getElementById(id);if(el)el.value=Object.values(S.locationIds)[i]||"";});if(S.workerUrl)setStatus("Worker configured",true);else if(S.token)setStatus("Token saved",true);document.getElementById("item-count").textContent="("+S.items.length+" items)";document.getElementById("items-list").innerHTML=S.items.map(item=>`<div class="item-row"><span style="flex:1;font-weight:500">${item}</span><span class="cat-chip ${(S.categories[item]||"")==="Frozen Foods"?"cc-food":"cc-dessert"}">${(S.categories[item]||"")==="Frozen Foods"?"Food":"Dessert"}</span><button class="btn btn-xs btn-danger" onclick="removeItem('${esc(item)}')">Remove</button></div>`).join("");}
+function renderSales(){document.getElementById("sales-table").innerHTML=S.items.map(item=>{const cols=LOCS.map(loc=>`<td class="qty-cell">${(S.sales[item]||{})[loc]||0}</td>`).join("");const total=LOCS.reduce((s,l)=>s+(S.sales[item]?.[l]||0),0),rev=total*(S.prices[item]||0);return`<tr><td style="font-weight:500">${item}</td><td style="font-family:'DM Mono',monospace">${fmt(S.prices[item])}</td>${cols}<td class="qty-cell" style="font-weight:600">${total}</td><td class="qty-cell stock-ok" style="font-family:'DM Mono',monospace">$${rev.toFixed(2)}</td></tr>`;}).join("");}
+function renderSettings(){const wu=document.getElementById("worker-url");if(wu&&S.workerUrl)wu.value=S.workerUrl;["loc-wh","loc-rs","loc-t1","loc-t2","loc-t3"].forEach((id,i)=>{const el=document.getElementById(id);if(el)el.value=Object.values(S.locationIds)[i]||"";});if(S.workerUrl)setStatus("Worker configured",true);else if(S.token)setStatus("Token saved",true);document.getElementById("item-count").textContent="("+S.items.length+" items)";document.getElementById("items-list").innerHTML=S.items.map(item=>`<div class="item-row"><span style="flex:1;font-weight:500">${item}</span><span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--text3)">${fmt(S.prices[item])}</span><span class="cat-chip ${(S.categories[item]||"")==="Frozen Foods"?"cc-food":"cc-dessert"}">${(S.categories[item]||"")==="Frozen Foods"?"Food":"Dessert"}</span><button class="btn btn-xs btn-danger" onclick="removeItem('${esc(item)}')">Remove</button></div>`).join("");}
 
 function dl(filename,rows){const csv=rows.map(r=>r.map(v=>{const s=String(v==null?"":v);return s.includes(",")||s.includes('"')||s.includes("\n")?'"'+s.replace(/"/g,'""')+'"':s;}).join(",")).join("\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download=filename;a.click();}
-function exportCSV(type){const d=new Date().toISOString().slice(0,10);if(type==="inventory"){const rows=[["Item","Category","Price","Warehouse","Restaurant","Truck 1","Truck 2","Truck 3","Total"]];S.items.forEach(item=>{const t=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0);rows.push([item,S.categories[item]||"",S.prices[item]||"",...LOCS.map(l=>S.inventory[item]?.[l]||0),t]);});dl(`inventory_${d}.csv`,rows);}else if(type==="par"){const rows=[["Item","Category","Price","Warehouse","Restaurant","Truck 1","Truck 2","Truck 3","Total Par","Par Value ($)"]];S.items.forEach(item=>{const tp=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0);rows.push([item,S.categories[item]||"",S.prices[item]||"",...LOCS.map(l=>S.par[item]?.[l]||0),tp,(tp*(S.prices[item]||0)).toFixed(2)]);});const grand=S.items.reduce((s,item)=>s+LOCS.reduce((ss,l)=>ss+(S.par[item]?.[l]||0),0)*(S.prices[item]||0),0);rows.push([]);rows.push(["TOTAL PAR INVENTORY VALUE","","","","","","","","","$"+grand.toFixed(2)]);dl(`par_levels_${d}.csv`,rows);}else if(type==="sales"){const rows=[["Item","Category","Price","Warehouse","Restaurant","Truck 1","Truck 2","Truck 3","Total Sold","Revenue ($)"]];S.items.forEach(item=>{const t=LOCS.reduce((s,l)=>s+(S.sales[item]?.[l]||0),0);rows.push([item,S.categories[item]||"",S.prices[item]||"",...LOCS.map(l=>S.sales[item]?.[l]||0),t,(t*(S.prices[item]||0)).toFixed(2)]);});dl(`sales_${d}.csv`,rows);}else if(type==="production"){const rows=[["Item","Category","Price","On Hand","Total Par","Par Gap","Production Target","Need to Make"]];S.items.forEach(item=>{const oh=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0),tp=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0),tgt=S.prodTargets?.[item]||0;rows.push([item,S.categories[item]||"",S.prices[item]||"",oh,tp,Math.max(0,tp-oh),tgt,Math.max(0,tgt-oh)]);});dl(`production_${d}.csv`,rows);}else if(type==="transfers"){const rows=[["Time","Item","From","To","Quantity"]];S.transfers.forEach(t=>rows.push([t.time,t.item,t.from,t.to,t.qty]));dl(`transfers_${d}.csv`,rows);}}
+function exportCSV(type){const d=new Date().toISOString().slice(0,10);if(type==="inventory"){const rows=[["Item","Category","Price","Warehouse","Restaurant","Truck 1","Truck 2","Truck 3","Total"]];S.items.forEach(item=>{const t=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0);rows.push([item,S.categories[item]||"",fmt(S.prices[item]),...LOCS.map(l=>S.inventory[item]?.[l]||0),t]);});dl(`inventory_${d}.csv`,rows);}else if(type==="par"){const rows=[["Item","Category","Price","Warehouse","Restaurant","Truck 1","Truck 2","Truck 3","Total Par","Par Value ($)"]];S.items.forEach(item=>{const tp=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0);rows.push([item,S.categories[item]||"",fmt(S.prices[item]),...LOCS.map(l=>S.par[item]?.[l]||0),tp,(tp*(S.prices[item]||0)).toFixed(2)]);});const grand=S.items.reduce((s,item)=>s+LOCS.reduce((ss,l)=>ss+(S.par[item]?.[l]||0),0)*(S.prices[item]||0),0);rows.push([]);rows.push(["TOTAL PAR INVENTORY VALUE","","","","","","","","","$"+grand.toFixed(2)]);dl(`par_levels_${d}.csv`,rows);}else if(type==="sales"){const rows=[["Item","Category","Price","Warehouse","Restaurant","Truck 1","Truck 2","Truck 3","Total Sold","Revenue ($)"]];S.items.forEach(item=>{const t=LOCS.reduce((s,l)=>s+(S.sales[item]?.[l]||0),0);rows.push([item,S.categories[item]||"",fmt(S.prices[item]),...LOCS.map(l=>S.sales[item]?.[l]||0),t,(t*(S.prices[item]||0)).toFixed(2)]);});dl(`sales_${d}.csv`,rows);}else if(type==="production"){const rows=[["Item","Category","Price","On Hand","Total Par","Par Gap","Production Target","Need to Make"]];S.items.forEach(item=>{const oh=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0),tp=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0),tgt=S.prodTargets?.[item]||0;rows.push([item,S.categories[item]||"",fmt(S.prices[item]),oh,tp,Math.max(0,tp-oh),tgt,Math.max(0,tgt-oh)]);});dl(`production_${d}.csv`,rows);}else if(type==="transfers"){const rows=[["Time","Item","From","To","Quantity"]];S.transfers.forEach(t=>rows.push([t.time,t.item,t.from,t.to,t.qty]));dl(`transfers_${d}.csv`,rows);}}
 
 loadState();
 renderAll();
