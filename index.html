@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Wooden Spoon — Inventory Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F7F5F0;--bg2:#EFECE5;--bg3:#E5E1D8;--surface:#FFFFFF;--border:#D8D3C8;--border2:#C8C2B4;--text:#1C1A16;--text2:#6B6458;--text3:#9C9488;--accent:#8B5E3C;--accent2:#C4845A;--accent-bg:#F5EDE5;--green:#3D6B45;--green-bg:#EBF2EC;--amber:#8B6914;--amber-bg:#FBF4E0;--red:#8B2020;--red-bg:#FBECEC;--blue:#1E4D8C;--blue-bg:#E8EFF9;--radius:8px;--radius-lg:12px;--shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.06);}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.5;}
+.shell{display:flex;min-height:100vh;}
+.sidebar{width:220px;min-width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;}
+.brand{padding:24px 20px 20px;border-bottom:1px solid var(--border);}
+.brand-name{font-size:15px;font-weight:600;color:var(--accent);letter-spacing:-.02em;}
+.brand-sub{font-size:11px;color:var(--text3);margin-top:2px;font-family:"DM Mono",monospace;text-transform:uppercase;letter-spacing:.08em;}
+.nav{flex:1;padding:12px 0;overflow-y:auto;}
+.nav-label{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;padding:10px 20px 4px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 20px;font-size:13px;color:var(--text2);cursor:pointer;border:none;background:none;width:100%;text-align:left;transition:all .12s;position:relative;font-family:"DM Sans",sans-serif;}
+.nav-item:hover{background:var(--bg);color:var(--text);}
+.nav-item.active{background:var(--accent-bg);color:var(--accent);font-weight:500;}
+.nav-item.active::before{content:"";position:absolute;left:0;top:4px;bottom:4px;width:3px;background:var(--accent);border-radius:0 2px 2px 0;}
+.nav-badge{margin-left:auto;background:var(--red-bg);color:var(--red);font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px;display:none;}
+.sidebar-footer{padding:16px 20px;border-top:1px solid var(--border);}
+.sync-btn{width:100%;padding:8px 14px;background:var(--accent);color:white;border:none;border-radius:var(--radius);font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:opacity .15s;font-family:"DM Sans",sans-serif;}
+.sync-btn:hover{opacity:.88;}
+.conn-status{font-size:11px;color:var(--text3);margin-top:8px;text-align:center;font-family:"DM Mono",monospace;}
+.conn-status.live{color:var(--green);}
+.main{margin-left:220px;flex:1;min-height:100vh;display:flex;flex-direction:column;}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 32px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;}
+.page-title{font-size:15px;font-weight:600;letter-spacing:-.02em;}
+.content{padding:28px 32px;flex:1;}
+.btn{padding:7px 14px;border-radius:var(--radius);font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:"DM Sans",sans-serif;display:inline-flex;align-items:center;gap:6px;transition:all .12s;white-space:nowrap;}
+.btn:hover{background:var(--bg2);border-color:var(--border2);}
+.btn-primary{background:var(--accent);color:white;border-color:var(--accent);}
+.btn-primary:hover{opacity:.88;background:var(--accent);}
+.btn-sm{padding:5px 10px;font-size:12px;}
+.btn-xs{padding:3px 8px;font-size:11px;}
+.btn-danger{background:var(--red-bg);color:var(--red);border-color:#F5C0C0;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow);}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap;}
+.card-title{font-size:14px;font-weight:600;letter-spacing:-.01em;}
+.metrics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;}
+.metric{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 20px;box-shadow:var(--shadow);}
+.metric-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:600;margin-bottom:8px;}
+.metric-value{font-size:26px;font-weight:600;letter-spacing:-.03em;line-height:1;}
+.metric-value.amber{color:var(--amber);}
+.metric-value.red{color:var(--red);}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;padding:8px 10px;color:var(--text3);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);white-space:nowrap;}
+td{padding:9px 10px;border-bottom:1px solid var(--bg2);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:var(--bg);}
+.loc-chip{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap;}
+.lc-0{background:#E8F0FB;color:#1E4D8C;}.lc-1{background:#EEF0FC;color:#3730A3;}.lc-2{background:var(--green-bg);color:var(--green);}.lc-3{background:var(--amber-bg);color:var(--amber);}.lc-4{background:#FCEEE8;color:#7C3010;}
+.cat-chip{display:inline-flex;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:500;}
+.cc-food{background:#EEEDFE;color:#3730A3;}.cc-dessert{background:var(--amber-bg);color:var(--amber);}
+.stock-ok{color:var(--green);font-weight:500;}.stock-low{color:var(--amber);font-weight:600;}.stock-out{color:var(--red);font-weight:600;}
+input[type=text],input[type=password],input[type=number],input[type=url],select{font-family:"DM Sans",sans-serif;font-size:13px;padding:7px 10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);color:var(--text);}
+input:focus,select:focus{outline:none;border-color:var(--accent2);}
+.par-input{width:62px;text-align:center;}
+.par-cell{text-align:center;}
+.alert-bar{display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-radius:var(--radius);margin-bottom:10px;font-size:13px;}
+.alert-bar.danger{background:var(--red-bg);color:var(--red);border:1px solid #F5C0C0;}
+.alert-bar.warn{background:var(--amber-bg);color:var(--amber);border:1px solid #F0D878;}
+.alert-bar.info{background:var(--blue-bg);color:var(--blue);border:1px solid #B8D0F0;}
+.alert-bar.success{background:var(--green-bg);color:var(--green);border:1px solid #B8D8BC;}
+.alert-body{flex:1;}.alert-title{font-weight:600;margin-bottom:2px;}.alert-sub{font-size:12px;opacity:.8;}
+.alert-dismiss{background:none;border:none;cursor:pointer;font-size:18px;color:inherit;opacity:.5;padding:0;line-height:1;margin-left:auto;}
+.spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;display:none;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.sync-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text3);margin-bottom:14px;font-family:"DM Mono",monospace;}
+.transfer-grid{display:grid;grid-template-columns:1fr 1fr 1fr 80px auto;gap:10px;align-items:end;margin-bottom:16px;}
+.fg{display:flex;flex-direction:column;gap:5px;}
+.fg label{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;}
+.qty-cell{text-align:center;}.qty-val{font-weight:500;}.qty-par{font-size:10px;color:var(--text3);font-family:"DM Mono",monospace;display:block;}
+.section{display:none;}.section.active{display:block;}
+.worker-setup{background:var(--blue-bg);border:1px solid #B8D0F0;border-radius:var(--radius-lg);padding:18px 22px;margin-bottom:16px;}
+.worker-setup h3{font-size:14px;font-weight:600;color:var(--blue);margin-bottom:4px;}
+.worker-setup p{font-size:12px;color:#2D5FA0;margin-bottom:12px;}
+.worker-status{font-size:12px;margin-top:8px;padding:6px 10px;border-radius:6px;display:none;}
+.worker-status.ok{background:var(--green-bg);color:var(--green);}
+.worker-status.err{background:var(--red-bg);color:var(--red);}
+.export-strip{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;background:var(--bg2);border-radius:var(--radius);align-items:center;}
+.export-strip span{font-size:12px;color:var(--text2);flex:1;}
+.empty-state{text-align:center;padding:40px;color:var(--text3);font-size:13px;}
+.item-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;margin-bottom:6px;background:var(--surface);}
+.tbl-wrap{overflow-x:auto;}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-name">&#x1F944; The Wooden Spoon</div>
+    <div class="brand-sub">Inventory Manager</div>
+  </div>
+  <nav class="nav">
+    <div class="nav-label">Dashboard</div>
+    <button class="nav-item active" onclick="showSection('overview',this)"><span>&#x1F4CA;</span> Overview</button>
+    <button class="nav-item" onclick="showSection('inventory',this)"><span>&#x1F4E6;</span> Inventory</button>
+    <button class="nav-item" onclick="showSection('par',this)"><span>&#x1F3AF;</span> Par Levels</button>
+    <button class="nav-item" onclick="showSection('alerts',this)"><span>&#x1F514;</span> Alerts <span class="nav-badge" id="nav-alert-badge">0</span></button>
+    <div class="nav-label">Operations</div>
+    <button class="nav-item" onclick="showSection('transfers',this)"><span>&#x1F504;</span> Transfers</button>
+    <button class="nav-item" onclick="showSection('production',this)"><span>&#x1F373;</span> Production</button>
+    <button class="nav-item" onclick="showSection('sales',this)"><span>&#x1F4B0;</span> Sales</button>
+    <div class="nav-label">System</div>
+    <button class="nav-item" onclick="showSection('settings',this)"><span>&#x2699;&#xFE0F;</span> Settings</button>
+  </nav>
+  <div class="sidebar-footer">
+    <button class="sync-btn" onclick="syncNow()"><span id="sync-spinner" class="spinner" style="border-color:rgba(255,255,255,.3);border-top-color:white"></span>&#x21BB; Sync Square</button>
+    <div class="conn-status" id="conn-status">Not connected</div>
+  </div>
+</aside>
+<main class="main">
+  <div class="topbar">
+    <div class="page-title" id="page-title">Overview</div>
+  </div>
+  <div class="content">
+
+    <div class="section active" id="sec-overview">
+      <div class="metrics-grid">
+        <div class="metric"><div class="metric-label">Total SKUs</div><div class="metric-value" id="m-skus">0</div></div>
+        <div class="metric"><div class="metric-label">Below Par</div><div class="metric-value amber" id="m-low">0</div></div>
+        <div class="metric"><div class="metric-label">Out of Stock</div><div class="metric-value red" id="m-out">0</div></div>
+        <div class="metric"><div class="metric-label">Active Alerts</div><div class="metric-value red" id="m-alerts">0</div></div>
+        <div class="metric"><div class="metric-label">Last Synced</div><div class="metric-value" style="font-size:13px;padding-top:6px" id="m-sync">Never</div></div>
+      </div>
+      <div id="overview-alerts"></div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Location Summary</span></div>
+        <table><thead><tr><th>Location</th><th>Items</th><th>Below Par</th><th>Out of Stock</th><th>Status</th></tr></thead><tbody id="loc-summary"></tbody></table>
+      </div>
+    </div>
+
+    <div class="section" id="sec-inventory">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Inventory by Item &amp; Location</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <select id="inv-cat-filter" onchange="renderInventory()"><option value="">All categories</option><option>Frozen Foods</option><option>Frozen Desserts</option></select>
+            <button class="btn btn-sm" onclick="exportCSV('inventory')">&#x2193; Export CSV</button>
+          </div>
+        </div>
+        <div class="sync-row"><div class="spinner" id="inv-spinner"></div><span id="inv-sync-msg">Ready.</span></div>
+        <div class="tbl-wrap">
+          <table><thead><tr><th>Item</th><th>Cat</th><th>Price</th><th class="qty-cell">Warehouse</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total</th></tr></thead><tbody id="inv-table"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="sec-par">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Par Levels by Item &amp; Location</span>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sm" onclick="exportCSV('par')">&#x2193; Export CSV</button>
+            <button class="btn btn-sm btn-primary" id="par-save-btn" onclick="savePar()">Save Par Levels</button>
+          </div>
+        </div>
+        <p style="font-size:12px;color:var(--text3);margin-bottom:14px">Set minimum stock per location. Alerts fire instantly when stock drops to or below par.</p>
+        <div class="tbl-wrap">
+          <table><thead><tr><th>Item</th><th class="par-cell">Warehouse</th><th class="par-cell">Restaurant</th><th class="par-cell">Truck 1</th><th class="par-cell">Truck 2</th><th class="par-cell">Truck 3</th></tr></thead><tbody id="par-table-body"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="sec-alerts">
+      <div class="card">
+        <div class="card-header"><span class="card-title">&#x1F514; Active Alerts</span><button class="btn btn-sm" onclick="dismissAllAlerts()">Dismiss All</button></div>
+        <div id="alerts-list"></div>
+      </div>
+    </div>
+
+    <div class="section" id="sec-transfers">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Transfer Inventory</span></div>
+        <div class="transfer-grid">
+          <div class="fg"><label>Item</label><select id="xfr-item"></select></div>
+          <div class="fg"><label>From</label><select id="xfr-from"><option>Warehouse</option><option>Restaurant</option><option>Truck 1</option><option>Truck 2</option><option>Truck 3</option></select></div>
+          <div class="fg"><label>To</label><select id="xfr-to"><option>Restaurant</option><option>Warehouse</option><option>Truck 1</option><option>Truck 2</option><option>Truck 3</option></select></div>
+          <div class="fg"><label>Qty</label><input type="number" id="xfr-qty" value="1" min="1" style="width:70px"></div>
+          <div class="fg"><label>&nbsp;</label><button class="btn btn-primary" onclick="doTransfer()">Transfer &#x2192;</button></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Transfer Log</span><button class="btn btn-sm" onclick="exportCSV('transfers')">&#x2193; Export CSV</button></div>
+        <table><thead><tr><th>Time</th><th>Item</th><th>From</th><th>To</th><th>Qty</th></tr></thead><tbody id="xfr-log"></tbody></table>
+      </div>
+    </div>
+
+    <div class="section" id="sec-production">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Production Planning</span><button class="btn btn-sm" onclick="exportCSV('production')">&#x2193; Export CSV</button></div>
+        <p style="font-size:12px;color:var(--text3);margin-bottom:14px">Set production targets. App shows what to make to meet targets and cover par levels.</p>
+        <div class="tbl-wrap">
+          <table><thead><tr><th>Item</th><th style="text-align:center">On Hand</th><th style="text-align:center">Total Par</th><th style="text-align:center">Target</th><th>Action Needed</th></tr></thead><tbody id="prod-table"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="sec-sales">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Sales by Item &amp; Location</span><button class="btn btn-sm" onclick="exportCSV('sales')">&#x2193; Export CSV</button></div>
+        <div class="tbl-wrap">
+          <table><thead><tr><th>Item</th><th>Price</th><th class="qty-cell">Warehouse</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total Sold</th><th class="qty-cell">Revenue</th></tr></thead><tbody id="sales-table"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="sec-settings">
+      <div class="worker-setup">
+        <h3>&#x26A1; Cloudflare Worker &#x2014; Live Sync</h3>
+        <p>Your Worker receives Square webhooks and keeps inventory updated in real time.</p>
+        <div style="display:flex;gap:8px">
+          <input type="url" id="worker-url" placeholder="https://your-worker.workers.dev" style="flex:1">
+          <button class="btn btn-primary" onclick="saveWorkerUrl()">Save &amp; Test</button>
+        </div>
+        <div class="worker-status" id="worker-status"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Square API Fallback</span></div>
+        <p style="font-size:12px;color:var(--text3);margin-bottom:12px">Direct Square connection used if Worker is unavailable.</p>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+          <label style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Access Token</label>
+          <div style="display:flex;gap:8px"><input type="password" id="sq-token" placeholder="Production access token" style="flex:1"><button class="btn btn-primary" onclick="saveToken()">Save</button></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <label style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Location IDs</label>
+          <table style="font-size:13px">
+            <thead><tr><th>Location</th><th>Square Location ID</th></tr></thead>
+            <tbody>
+              <tr><td><span class="loc-chip lc-0">Warehouse</span></td><td><input id="loc-wh" placeholder="LXXXXXXXXXXXXX" style="width:220px;margin:3px 0"></td></tr>
+              <tr><td><span class="loc-chip lc-1">Restaurant</span></td><td><input id="loc-rs" placeholder="LXXXXXXXXXXXXX" style="width:220px;margin:3px 0"></td></tr>
+              <tr><td><span class="loc-chip lc-2">Truck 1</span></td><td><input id="loc-t1" placeholder="LXXXXXXXXXXXXX" style="width:220px;margin:3px 0"></td></tr>
+              <tr><td><span class="loc-chip lc-3">Truck 2</span></td><td><input id="loc-t2" placeholder="LXXXXXXXXXXXXX" style="width:220px;margin:3px 0"></td></tr>
+              <tr><td><span class="loc-chip lc-4">Truck 3</span></td><td><input id="loc-t3" placeholder="LXXXXXXXXXXXXX" style="width:220px;margin:3px 0"></td></tr>
+            </tbody>
+          </table>
+          <button class="btn btn-primary" style="align-self:flex-start;margin-top:4px" onclick="saveLocations()">Save Locations</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Items <span style="font-size:12px;color:var(--text3);font-weight:400" id="item-count"></span></span><button class="btn btn-sm btn-primary" onclick="addItem()">+ Add Item</button></div>
+        <div id="items-list"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Export Data</span></div>
+        <div class="export-strip">
+          <span>Download any dataset as CSV.</span>
+          <button class="btn btn-sm" onclick="exportCSV('inventory')">&#x2193; Inventory</button>
+          <button class="btn btn-sm" onclick="exportCSV('par')">&#x2193; Par Levels</button>
+          <button class="btn btn-sm" onclick="exportCSV('sales')">&#x2193; Sales</button>
+          <button class="btn btn-sm" onclick="exportCSV('production')">&#x2193; Production</button>
+          <button class="btn btn-sm" onclick="exportCSV('transfers')">&#x2193; Transfers</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+</div>
+<script>
+const WORKER_URL="https://dawn-union-f0b2.asa-allen.workers.dev";
+const LOCS=["Warehouse","Restaurant","Truck 1","Truck 2","Truck 3"];
+const LC=["lc-0","lc-1","lc-2","lc-3","lc-4"];
+const REMOVED=["Delivery","Frozen Whole Pie"];
+const CATALOG=[
+  {name:"Apple Pie",cat:"Frozen Desserts",price:30},{name:"BBQ Meatballs",cat:"Frozen Foods",price:22},
+  {name:"Beef Enchiladas",cat:"Frozen Foods",price:20},{name:"Beef Lasagna",cat:"Frozen Foods",price:20},
+  {name:"Blackberry Pie",cat:"Frozen Desserts",price:30},{name:"Bread Pudding",cat:"Frozen Desserts",price:18},
+  {name:"Bread Pudding Sauce",cat:"Frozen Desserts",price:7},{name:"Breakfast Burritos",cat:"Frozen Foods",price:20},
+  {name:"Bumblebee Pie",cat:"Frozen Desserts",price:30},{name:"Cheesy Beef and Potatoes",cat:"Frozen Foods",price:20},
+  {name:"Cherry Pie",cat:"Frozen Desserts",price:30},{name:"Chicken Alfredo",cat:"Frozen Foods",price:20},
+  {name:"Chicken Enchiladas",cat:"Frozen Foods",price:20},{name:"Chicken Pot Pie",cat:"Frozen Foods",price:20},
+  {name:"Chicken Spaghetti",cat:"Frozen Foods",price:20},{name:"Chocolate Chip Cookie Dough",cat:"Frozen Desserts",price:9},
+  {name:"Gourmet Potatoes",cat:"Frozen Foods",price:14},{name:"Macaroni & Cheese",cat:"Frozen Foods",price:14},
+  {name:"Meatloaf",cat:"Frozen Foods",price:22},{name:"Monster Cookie Dough",cat:"Frozen Desserts",price:9},
+  {name:"Peach Pie",cat:"Frozen Desserts",price:30},{name:"Pint of Soup",cat:"Frozen Foods",price:7.5},
+  {name:"Poppy Seed Chicken",cat:"Frozen Foods",price:20},{name:"Quart of Soup",cat:"Frozen Foods",price:12.5},
+  {name:"Strawberry Rhubarb Pie",cat:"Frozen Desserts",price:30},{name:"Sugar Free Bumblebee",cat:"Frozen Desserts",price:30},
+  {name:"Sugar Free Cherry Pie",cat:"Frozen Desserts",price:30},{name:"Sugar Free Peach Pie",cat:"Frozen Desserts",price:30}
+];
+const SQUARE_QTY={"Apple Pie":2,"BBQ Meatballs":8,"Beef Enchiladas":7,"Beef Lasagna":21,"Blackberry Pie":4,"Bread Pudding":4,"Bread Pudding Sauce":11,"Breakfast Burritos":26,"Bumblebee Pie":2,"Cheesy Beef and Potatoes":17,"Cherry Pie":1,"Chicken Alfredo":37,"Chicken Enchiladas":47,"Chicken Pot Pie":51,"Chicken Spaghetti":118,"Chocolate Chip Cookie Dough":58,"Gourmet Potatoes":56,"Macaroni & Cheese":18,"Meatloaf":125,"Monster Cookie Dough":35,"Peach Pie":0,"Pint of Soup":0,"Poppy Seed Chicken":47,"Quart of Soup":0,"Strawberry Rhubarb Pie":0,"Sugar Free Bumblebee":0,"Sugar Free Cherry Pie":0,"Sugar Free Peach Pie":0};
+
+let S={token:"",workerUrl:WORKER_URL,locationIds:{Warehouse:"",Restaurant:"","Truck 1":"","Truck 2":"","Truck 3":""},items:CATALOG.map(c=>c.name),categories:Object.fromEntries(CATALOG.map(c=>[c.name,c.cat])),prices:Object.fromEntries(CATALOG.map(c=>[c.name,c.price])),inventory:{},sales:{},par:{},prodTargets:{},transfers:[],alerts:[],lastSync:""};
+CATALOG.forEach(c=>{S.inventory[c.name]={Warehouse:SQUARE_QTY[c.name]||0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[c.name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[c.name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};});
+
+function saveState(){try{localStorage.setItem("ws_inv_v1",JSON.stringify(S));}catch(e){}}
+function loadState(){
+  try{
+    const raw=localStorage.getItem("ws_inv_v1");if(!raw)return;
+    const saved=JSON.parse(raw);
+    S.token=saved.token||"";S.workerUrl=saved.workerUrl||WORKER_URL;
+    S.locationIds=saved.locationIds||S.locationIds;S.transfers=saved.transfers||[];S.alerts=saved.alerts||[];S.lastSync=saved.lastSync||"";S.prodTargets=saved.prodTargets||{};
+    CATALOG.forEach(c=>{if(saved.inventory?.[c.name])S.inventory[c.name]={...S.inventory[c.name],...saved.inventory[c.name]};if(saved.sales?.[c.name])S.sales[c.name]={...S.sales[c.name],...saved.sales[c.name]};if(saved.par?.[c.name])S.par[c.name]={...S.par[c.name],...saved.par[c.name]};});
+    if(saved.items)saved.items.forEach(name=>{if(!S.items.includes(name)&&!REMOVED.includes(name)){S.items.push(name);S.inventory[name]=saved.inventory?.[name]||{Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[name]=saved.sales?.[name]||{Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[name]=saved.par?.[name]||{Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};}});
+    if(saved.categories)Object.assign(S.categories,saved.categories);if(saved.prices)Object.assign(S.prices,saved.prices);
+  }catch(e){console.error(e);}
+  S.alerts=S.alerts.filter(a=>S.items.includes(a.item));
+}
+
+const TITLES={overview:"Overview",inventory:"Inventory",par:"Par Levels",alerts:"Alerts",transfers:"Transfers",production:"Production Planning",sales:"Sales",settings:"Settings"};
+function showSection(name,btn){document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));document.querySelectorAll(".nav-item").forEach(b=>b.classList.remove("active"));document.getElementById("sec-"+name).classList.add("active");if(btn)btn.classList.add("active");document.getElementById("page-title").textContent=TITLES[name]||name;if(name==="inventory")renderInventory();if(name==="par")renderPar();if(name==="production")renderProduction();if(name==="sales")renderSales();if(name==="transfers")renderTransfers();if(name==="settings")renderSettings();}
+
+function setStatus(t,ok){const el=document.getElementById("conn-status");el.textContent=t;el.className="conn-status"+(ok?" live":"");}
+
+async function syncNow(){
+  const sp=document.getElementById("sync-spinner"),sm=document.getElementById("inv-sync-msg");
+  sp.style.display="block";
+  if(S.workerUrl){
+    if(sm)sm.textContent="Syncing via Worker...";
+    try{
+      const res=await fetch(S.workerUrl+"/inventory",{method:"GET",mode:"cors",headers:{"Authorization":"Bearer "+(S.token||"")}});
+      if(!res.ok)throw new Error("Worker returned "+res.status);
+      const data=await res.json();
+      Object.entries(data.inventory||{}).forEach(([item,locs])=>{if(REMOVED.includes(item))return;if(!S.items.includes(item)){S.items.push(item);S.inventory[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};}Object.entries(locs).forEach(([loc,qty])=>{if(LOCS.includes(loc))S.inventory[item][loc]=qty;});});
+      Object.entries(data.sales||{}).forEach(([item,locs])=>{if(!S.sales[item])S.sales[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};Object.entries(locs).forEach(([loc,qty])=>{if(LOCS.includes(loc))S.sales[item][loc]=qty;});});
+      S.lastSync=new Date().toLocaleString();checkAlerts();saveState();renderAll();setStatus("Live via Worker",true);if(sm)sm.textContent="Synced via Worker — "+new Date().toLocaleTimeString();
+    }catch(e){if(sm)sm.textContent="Worker sync failed: "+e.message;setStatus("Sync error",false);}
+    sp.style.display="none";return;
+  }
+  if(!S.token){sp.style.display="none";if(sm)sm.textContent="No Worker URL or token configured.";return;}
+  if(sm)sm.textContent="Syncing with Square...";
+  try{
+    const locIds=Object.values(S.locationIds).filter(Boolean);
+    if(!locIds.length){sp.style.display="none";if(sm)sm.textContent="No location IDs set.";return;}
+    const res=await fetch("https://connect.squareup.com/v2/inventory/counts/batch-retrieve",{method:"POST",headers:{"Authorization":"Bearer "+S.token,"Content-Type":"application/json","Square-Version":"2024-01-18"},body:JSON.stringify({location_ids:locIds})});
+    const data=await res.json();if(data.errors)throw new Error(data.errors[0].detail);
+    const catRes=await fetch("https://connect.squareup.com/v2/catalog/list?types=ITEM",{headers:{"Authorization":"Bearer "+S.token,"Square-Version":"2024-01-18"}});
+    const catData=await catRes.json();const idToName={};
+    (catData.objects||[]).forEach(obj=>{(obj.item_data?.variations||[]).forEach(v=>{idToName[v.id]=obj.item_data.name+(obj.item_data.variations.length>1?" - "+v.item_variation_data.name:"");});});
+    const idToLoc={};Object.entries(S.locationIds).forEach(([n,id])=>{if(id)idToLoc[id]=n;});
+    (data.counts||[]).forEach(c=>{const iN=idToName[c.catalog_object_id],lN=idToLoc[c.location_id];if(!iN||!lN||REMOVED.includes(iN))return;if(!S.items.includes(iN)){S.items.push(iN);S.inventory[iN]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[iN]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[iN]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};}S.inventory[iN][lN]=parseInt(c.quantity)||0;});
+    S.lastSync=new Date().toLocaleString();checkAlerts();saveState();renderAll();setStatus("Live (Square direct)",true);if(sm)sm.textContent="Synced with Square — "+new Date().toLocaleTimeString();
+  }catch(e){if(sm)sm.textContent="Sync failed: "+e.message;setStatus("Sync error",false);}
+  sp.style.display="none";
+}
+
+async function saveWorkerUrl(){const url=document.getElementById("worker-url").value.trim().replace(/\/+$/,"");if(!url){alert("Please enter your Worker URL.");return;}const st=document.getElementById("worker-status");st.style.display="block";st.className="worker-status";st.textContent="Testing...";try{const res=await fetch(url+"/health",{method:"GET",mode:"cors"});if(res.ok){S.workerUrl=url;saveState();st.className="worker-status ok";st.textContent="Connected! Click Sync Square to pull live data.";setStatus("Worker connected",true);}else{st.className="worker-status err";st.textContent="Worker error "+res.status;}}catch(e){st.className="worker-status err";st.textContent="Cannot reach Worker: "+e.message;}}
+function saveToken(){const t=document.getElementById("sq-token").value.trim();if(!t)return;S.token=t;saveState();setStatus("Token saved",true);alert("Token saved!");}
+function saveLocations(){S.locationIds.Warehouse=document.getElementById("loc-wh").value.trim();S.locationIds.Restaurant=document.getElementById("loc-rs").value.trim();S.locationIds["Truck 1"]=document.getElementById("loc-t1").value.trim();S.locationIds["Truck 2"]=document.getElementById("loc-t2").value.trim();S.locationIds["Truck 3"]=document.getElementById("loc-t3").value.trim();saveState();alert("Location IDs saved!");}
+function addItem(){const name=prompt("Item name:");if(!name||!name.trim())return;const n=name.trim();if(S.items.includes(n)){alert("Already exists.");return;}S.items.push(n);S.inventory[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};saveState();renderAll();}
+function removeItem(name){if(!confirm("Remove "+name+"?"))return;S.items=S.items.filter(i=>i!==name);delete S.inventory[name];delete S.sales[name];delete S.par[name];S.alerts=S.alerts.filter(a=>a.item!==name);saveState();renderAll();}
+function savePar(){S.items.forEach(item=>{LOCS.forEach(loc=>{const el=document.getElementById("par-"+slugify(item)+"-"+slugify(loc));if(el){if(!S.par[item])S.par[item]={};S.par[item][loc]=parseInt(el.value)||0;}});});checkAlerts();saveState();renderAll();const btn=document.getElementById("par-save-btn");if(btn){btn.textContent="Saved \u2713";setTimeout(()=>btn.textContent="Save Par Levels",1500);}}
+function slugify(s){return s.replace(/[^a-z0-9]/gi,"_");}
+function checkAlerts(){const na=[];S.items.forEach(item=>{LOCS.forEach(loc=>{const qty=(S.inventory[item]||{})[loc]||0,par=(S.par[item]||{})[loc]||0,key=item+"||"+loc;if(par>0&&qty<=par){const ex=S.alerts.find(a=>a.key===key);if(!ex)na.push({key,item,loc,qty,par,time:new Date().toLocaleTimeString(),type:qty===0?"out":"low"});else{ex.qty=qty;ex.type=qty===0?"out":"low";}}else S.alerts=S.alerts.filter(a=>a.key!==key);});});S.alerts=[...S.alerts,...na];}
+function dismissAlert(key){S.alerts=S.alerts.filter(a=>a.key!==key);saveState();renderAll();}
+function dismissAllAlerts(){S.alerts=[];saveState();renderAll();}
+function doTransfer(){const item=document.getElementById("xfr-item").value,from=document.getElementById("xfr-from").value,to=document.getElementById("xfr-to").value,qty=parseInt(document.getElementById("xfr-qty").value)||0;if(!item)return;if(from===to){alert("From and To must differ.");return;}if(qty<1){alert("Qty must be at least 1.");return;}const avail=(S.inventory[item]||{})[from]||0;if(qty>avail){alert("Only "+avail+" available at "+from+".");return;}S.inventory[item][from]-=qty;S.inventory[item][to]=(S.inventory[item][to]||0)+qty;S.transfers.unshift({time:new Date().toLocaleTimeString(),item,from,to,qty});if(S.transfers.length>200)S.transfers=S.transfers.slice(0,200);checkAlerts();saveState();renderAll();}
+function updateProdTarget(item,val){if(!S.prodTargets)S.prodTargets={};S.prodTargets[item]=parseInt(val)||0;saveState();}
+function esc(s){return String(s).replace(/'/g,"\'");}
+
+function renderAll(){renderOverview();renderInventory();renderPar();renderAlerts();renderTransfers();renderProduction();renderSales();renderSettings();}
+function renderOverview(){
+  let low=0,out=0;S.items.forEach(item=>{LOCS.forEach(loc=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});});
+  const aa=S.alerts.length;
+  document.getElementById("m-skus").textContent=S.items.length;document.getElementById("m-low").textContent=low;document.getElementById("m-out").textContent=out;document.getElementById("m-alerts").textContent=aa;document.getElementById("m-sync").textContent=S.lastSync||"Never";
+  const badge=document.getElementById("nav-alert-badge");badge.style.display=aa>0?"inline":"none";badge.textContent=aa;
+  const oa=document.getElementById("overview-alerts");
+  if(S.alerts.length>0){oa.innerHTML=S.alerts.slice(0,5).map(a=>{const li=LOCS.indexOf(a.loc),cls=a.type==="out"?"danger":"warn";return`<div class="alert-bar ${cls}"><div class="alert-body"><div class="alert-title">${a.type==="out"?"Out of stock":"Below par"}: ${a.item} @ <span class="loc-chip ${LC[li]}">${a.loc}</span></div><div class="alert-sub">Stock: ${a.qty} &middot; Par: ${a.par} &middot; ${a.time}</div></div><button class="alert-dismiss" onclick="dismissAlert('${esc(a.key)}')">&#x00D7;</button></div>`;}).join("");if(S.alerts.length>5)oa.innerHTML+=`<p style="font-size:12px;color:var(--text3);margin-bottom:12px">+${S.alerts.length-5} more alerts</p>`;}
+  else{oa.innerHTML=S.items.length?"<div class=\"alert-bar success\" style=\"margin-bottom:12px\"><span>&#x2713;</span><div class=\"alert-body\">All locations are at or above par.</div></div>":"";}
+  document.getElementById("loc-summary").innerHTML=LOCS.map((loc,i)=>{let lLow=0,lOut=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)lOut++;else if(p>0&&q<=p)lLow++;});const status=lOut>0?"<span class=\"stock-out\">Action needed</span>":lLow>0?"<span class=\"stock-low\">Low stock</span>":"<span class=\"stock-ok\">All good</span>";return`<tr><td><span class="loc-chip ${LC[i]}">${loc}</span></td><td>${S.items.length}</td><td>${lLow||"\u2014"}</td><td>${lOut||"\u2014"}</td><td>${status}</td></tr>`;}).join("");
+}
+function renderInventory(){const filter=document.getElementById("inv-cat-filter")?.value||"";const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;document.getElementById("inv-table").innerHTML=items.map(item=>{const cols=LOCS.map(loc=>{const qty=(S.inventory[item]||{})[loc]||0,par=(S.par[item]||{})[loc]||0;const cls=qty===0?"stock-out":par>0&&qty<=par?"stock-low":"stock-ok";const pn=par>0?`<span class="qty-par">par ${par}</span>`:"";return`<td class="qty-cell"><span class="qty-val ${cls}">${qty}</span>${pn}</td>`;}).join("");const total=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0);const cat=S.categories[item]||"";return`<tr><td style="font-weight:500;white-space:nowrap">${item}</td><td><span class="cat-chip ${cat==="Frozen Foods"?"cc-food":"cc-dessert"}">${cat==="Frozen Foods"?"Food":"Dessert"}</span></td><td style="color:var(--text3);font-family:'DM Mono',monospace">$${(S.prices[item]||0).toFixed(2)}</td>${cols}<td class="qty-cell" style="font-weight:600">${total}</td></tr>`;}).join("");}
+function renderPar(){document.getElementById("par-table-body").innerHTML=S.items.map(item=>{const cols=LOCS.map(loc=>{const id="par-"+slugify(item)+"-"+slugify(loc);return`<td class="par-cell"><input type="number" class="par-input" id="${id}" value="${(S.par[item]||{})[loc]||0}" min="0"></td>`;}).join("");return`<tr><td style="font-weight:500;white-space:nowrap;padding-right:16px">${item}</td>${cols}</tr>`;}).join("");}
+function renderAlerts(){document.getElementById("alerts-list").innerHTML=S.alerts.length?S.alerts.map(a=>{const li=LOCS.indexOf(a.loc),cls=a.type==="out"?"danger":"warn";return`<div class="alert-bar ${cls}"><div class="alert-body"><div class="alert-title">${a.type==="out"?"Out of stock":"Below par"}: ${a.item} @ <span class="loc-chip ${LC[li]}">${a.loc}</span></div><div class="alert-sub">Current: ${a.qty} &middot; Par: ${a.par} &middot; Detected ${a.time}</div></div><button class="alert-dismiss" onclick="dismissAlert('${esc(a.key)}')">&#x00D7;</button></div>`;}).join(""):"<div class=\"empty-state\">&#x2713; All locations are at or above par</div>";}
+function renderTransfers(){document.getElementById("xfr-item").innerHTML=S.items.map(i=>`<option>${i}</option>`).join("");document.getElementById("xfr-log").innerHTML=S.transfers.length?S.transfers.map(t=>{const fi=LOCS.indexOf(t.from),ti=LOCS.indexOf(t.to);return`<tr><td style="color:var(--text3);font-family:'DM Mono',monospace;font-size:12px">${t.time}</td><td style="font-weight:500">${t.item}</td><td><span class="loc-chip ${LC[fi]}">${t.from}</span></td><td><span class="loc-chip ${LC[ti]}">${t.to}</span></td><td style="font-weight:600">${t.qty}</td></tr>`;}).join(""):"<tr><td colspan=\"5\" style=\"color:var(--text3);text-align:center;padding:20px\">No transfers yet.</td></tr>";}
+function renderProduction(){document.getElementById("prod-table").innerHTML=S.items.map(item=>{const total=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0),totalPar=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0),target=S.prodTargets?.[item]||0,need=Math.max(0,target-total),parGap=Math.max(0,totalPar-total),sc=total===0?"stock-out":totalPar>0&&total<=totalPar?"stock-low":"stock-ok",action=need>0?`<span class="stock-low">Make ${need}</span>`:parGap>0?`<span class="stock-low">Need ${parGap} for par</span>`:`<span class="stock-ok">&#x2713; On target</span>`;return`<tr><td style="font-weight:500">${item}</td><td style="text-align:center" class="${sc}">${total}</td><td style="text-align:center;color:var(--text3)">${totalPar||"\u2014"}</td><td style="text-align:center"><input type="number" min="0" value="${target}" style="width:75px;text-align:center" onchange="updateProdTarget('${esc(item)}',this.value)"></td><td>${action}</td></tr>`;}).join("");}
+function renderSales(){document.getElementById("sales-table").innerHTML=S.items.map(item=>{const cols=LOCS.map(loc=>`<td class="qty-cell">${(S.sales[item]||{})[loc]||0}</td>`).join("");const total=LOCS.reduce((s,l)=>s+(S.sales[item]?.[l]||0),0),rev=total*(S.prices[item]||0);return`<tr><td style="font-weight:500">${item}</td><td style="color:var(--text3);font-family:'DM Mono',monospace">$${(S.prices[item]||0).toFixed(2)}</td>${cols}<td class="qty-cell" style="font-weight:600">${total}</td><td class="qty-cell stock-ok" style="font-family:'DM Mono',monospace">$${rev.toFixed(2)}</td></tr>`;}).join("");}
+function renderSettings(){const wu=document.getElementById("worker-url");if(wu&&S.workerUrl)wu.value=S.workerUrl;["loc-wh","loc-rs","loc-t1","loc-t2","loc-t3"].forEach((id,i)=>{const el=document.getElementById(id);if(el)el.value=Object.values(S.locationIds)[i]||"";});if(S.workerUrl)setStatus("Worker configured",true);else if(S.token)setStatus("Token saved",true);document.getElementById("item-count").textContent="("+S.items.length+" items)";document.getElementById("items-list").innerHTML=S.items.map(item=>`<div class="item-row"><span style="flex:1;font-weight:500">${item}</span><span class="cat-chip ${(S.categories[item]||"")==="Frozen Foods"?"cc-food":"cc-dessert"}">${(S.categories[item]||"")==="Frozen Foods"?"Food":"Dessert"}</span><button class="btn btn-xs btn-danger" onclick="removeItem('${esc(item)}')">Remove</button></div>`).join("");}
+
+function dl(filename,rows){const csv=rows.map(r=>r.map(v=>{const s=String(v==null?"":v);return s.includes(",")||s.includes('"')|| s.includes("\n")?'"'+s.replace(/"/g,'""')+'"':s;}).join(",")).join("\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download=filename;a.click();}
+function exportCSV(type){const d=new Date().toISOString().slice(0,10);if(type==="inventory"){const rows=[["Item","Category","Price","Warehouse","Restaurant","Truck 1","Truck 2","Truck 3","Total"]];S.items.forEach(item=>{const t=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0);rows.push([item,S.categories[item]||"",S.prices[item]||"",...LOCS.map(l=>S.inventory[item]?.[l]||0),t]);});dl(`inventory_${d}.csv`,rows);}else if(type==="par"){const rows=[["Item","Category","Price","Warehouse","Restaurant","Truck 1","Truck 2","Truck 3","Total Par","Par Value ($)"]];S.items.forEach(item=>{const tp=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0);rows.push([item,S.categories[item]||"",S.prices[item]||"",...LOCS.map(l=>S.par[item]?.[l]||0),tp,(tp*(S.prices[item]||0)).toFixed(2)]);});const grand=S.items.reduce((s,item)=>s+LOCS.reduce((ss,l)=>ss+(S.par[item]?.[l]||0),0)*(S.prices[item]||0),0);rows.push([]);rows.push(["TOTAL PAR INVENTORY VALUE","","","","","","","","","$"+grand.toFixed(2)]);dl(`par_levels_${d}.csv`,rows);}else if(type==="sales"){const rows=[["Item","Category","Price","Warehouse","Restaurant","Truck 1","Truck 2","Truck 3","Total Sold","Revenue ($)"]];S.items.forEach(item=>{const t=LOCS.reduce((s,l)=>s+(S.sales[item]?.[l]||0),0);rows.push([item,S.categories[item]||"",S.prices[item]||"",...LOCS.map(l=>S.sales[item]?.[l]||0),t,(t*(S.prices[item]||0)).toFixed(2)]);});dl(`sales_${d}.csv`,rows);}else if(type==="production"){const rows=[["Item","Category","Price","On Hand","Total Par","Par Gap","Production Target","Need to Make"]];S.items.forEach(item=>{const oh=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0),tp=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0),tgt=S.prodTargets?.[item]||0;rows.push([item,S.categories[item]||"",S.prices[item]||"",oh,tp,Math.max(0,tp-oh),tgt,Math.max(0,tgt-oh)]);});dl(`production_${d}.csv`,rows);}else if(type==="transfers"){const rows=[["Time","Item","From","To","Quantity"]];S.transfers.forEach(t=>rows.push([t.time,t.item,t.from,t.to,t.qty]));dl(`transfers_${d}.csv`,rows);}}
+
+loadState();
+renderAll();
+if(S.workerUrl)setStatus("Worker configured",true);
+</script>
+</body>
+</html>
