@@ -7,24 +7,23 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
 <style>
+
 :root{
-  --bg:#FDF6EE; --bg2:#F5EBDe; --surface:#FFFCF8; --border:#E2CDB0; --border2:#CEB898;
+  --bg:#fbe5cb; --bg2:#f3ddc3; --surface:#ffffff; --border:#844f06; --border2:#784300;
   --text:#1C0F06; --text2:#5C3D22; --text3:#9C7A58;
-  --sidebar:#1A3328; --sidebar-border:rgba(255,255,255,.08); --sidebar-text:#D8EBD8; --sidebar-text2:#8AB898;
-  --accent:#C42B2B;
+  --sidebar:#5e3303; --sidebar-border:rgba(255,255,255,.08); --sidebar-text:#ffffff; --sidebar-text2:#ffffff;
+  --accent:#9f7014;
   --green:#2A6B3A; --green-bg:#E8F4EB; --amber:#B05A00; --amber-bg:#FFF0DC; --red:#A82020; --red-bg:#FBECEC;
   --radius:6px; --radius-lg:10px;
   --shadow:0 1px 4px rgba(0,0,0,.07); --shadow-md:0 3px 12px rgba(0,0,0,.1);
   --font-display:'Abril Fatface',serif; --font-body:'Lato',sans-serif;
-  /* Location badge colors */
-  --badge-warehouse-bg:#E0EEF8; --badge-warehouse-text:#1A3A6B;
-  --badge-restaurant-bg:#EBE8FB; --badge-restaurant-text:#3B2E8C;
-  --badge-truck1-bg:#E8F4EB;    --badge-truck1-text:#2A6B3A;
-  --badge-truck2-bg:#FFF0DC;    --badge-truck2-text:#B05A00;
-  --badge-truck3-bg:#FCEEE8;    --badge-truck3-text:#7C3010;
-  /* Category badge colors */
-  --badge-food-bg:#EBE8FB;      --badge-food-text:#3B2E8C;
-  --badge-dessert-bg:#FFF0DC;   --badge-dessert-text:#B05A00;
+  --badge-warehouse-bg:#ffffff; --badge-warehouse-text:#000000;
+  --badge-restaurant-bg:#ffffff; --badge-restaurant-text:#000000;
+  --badge-truck1-bg:#ffffff; --badge-truck1-text:#000000;
+  --badge-truck2-bg:#ffffff; --badge-truck2-text:#000000;
+  --badge-truck3-bg:#ffffff; --badge-truck3-text:#000000;
+  --badge-food-bg:#ffffff; --badge-food-text:#000000;
+  --badge-dessert-bg:#ffffff; --badge-dessert-text:#000000;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.5;}
@@ -84,8 +83,6 @@ th{text-align:left;padding:9px 12px;color:var(--text3);font-weight:700;font-size
 td{padding:10px 12px;border-bottom:1px solid var(--bg2);vertical-align:middle;}
 tr:last-child td{border-bottom:none;}
 tbody tr:hover td{background:var(--bg);}
-
-/* Location & Category badges — use CSS variables */
 .loc-chip{display:inline-flex;align-items:center;padding:3px 9px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}
 .lc-0{background:var(--badge-warehouse-bg);color:var(--badge-warehouse-text);}
 .lc-1{background:var(--badge-restaurant-bg);color:var(--badge-restaurant-text);}
@@ -95,7 +92,6 @@ tbody tr:hover td{background:var(--bg);}
 .cat-chip{display:inline-flex;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
 .cc-food{background:var(--badge-food-bg);color:var(--badge-food-text);}
 .cc-dessert{background:var(--badge-dessert-bg);color:var(--badge-dessert-text);}
-
 .stock-ok{color:var(--green);font-weight:700;}.stock-low{color:var(--amber);font-weight:700;}.stock-out{color:var(--red);font-weight:700;}
 input[type=text],input[type=password],input[type=number],input[type=url],select{font-family:var(--font-body);font-size:13px;padding:7px 10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);color:var(--text);}
 input:focus,select:focus{outline:none;border-color:var(--accent);}
@@ -137,8 +133,6 @@ input:focus,select:focus{outline:none;border-color:var(--accent);}
 .inv-input{width:72px;text-align:center;padding:5px 6px;font-size:13px;font-weight:700;}
 .section-intro{font-size:12px;color:var(--text3);margin-bottom:16px;font-style:italic;line-height:1.6;}
 .sync-ind{font-size:11px;color:var(--green);font-weight:700;display:none;text-transform:uppercase;letter-spacing:.05em;}
-
-/* ── COLOR SETTINGS ── */
 .color-settings-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:16px;}
 .color-group{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 18px;}
 .color-group-title{font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:14px;}
@@ -148,16 +142,15 @@ input:focus,select:focus{outline:none;border-color:var(--accent);}
 input[type=color]{width:36px;height:30px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;padding:2px;background:var(--surface);flex-shrink:0;}
 .color-hex{width:76px;font-size:11px;font-family:monospace;padding:4px 7px;text-transform:uppercase;flex-shrink:0;}
 .badge-preview{display:inline-flex;padding:3px 9px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;border:none;margin-right:6px;flex-shrink:0;}
-.color-preview-bar{height:36px;border-radius:var(--radius);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin-bottom:14px;transition:all .2s;}
+.color-preview-bar{height:36px;border-radius:var(--radius);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin-bottom:14px;}
 .theme-presets{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;}
 .preset-btn{padding:7px 13px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font-body);text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:8px;transition:all .12s;}
 .preset-btn:hover{background:var(--bg2);}
 .preset-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
 .badge-pair-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
 .badge-pair-row:last-child{margin-bottom:0;}
-.badge-pair-label{font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.07em;width:90px;flex-shrink:0;}
-.badge-pair-controls{display:flex;align-items:center;gap:6px;flex:1;}
 .badge-pair-sub{font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.06em;width:22px;flex-shrink:0;}
+.badge-pair-controls{display:flex;align-items:center;gap:6px;flex:1;}
 </style>
 </head>
 <body>
@@ -186,7 +179,6 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--border);border-r
     <div class="conn-status" id="conn-status">Not connected</div>
   </div>
 </aside>
-
 <main class="main">
   <div class="topbar">
     <div class="page-title">
@@ -196,8 +188,6 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--border);border-r
     <span class="sync-ind" id="sync-ind">&#x2713; Prices updated from Square</span>
   </div>
   <div class="content">
-
-    <!-- OVERVIEW -->
     <div class="section active" id="sec-overview">
       <div class="metrics-grid">
         <div class="metric"><div class="metric-label">Total SKUs</div><div class="metric-value" id="m-skus">0</div></div>
@@ -209,12 +199,9 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--border);border-r
       <div id="overview-alerts"></div>
       <div class="card">
         <div class="card-header"><span class="card-title">Location Summary</span></div>
-        <table><thead><tr><th>Location</th><th>Items</th><th>Below Par</th><th>Out of Stock</th><th>Status</th><th></th></tr></thead>
-        <tbody id="loc-summary"></tbody></table>
+        <table><thead><tr><th>Location</th><th>Items</th><th>Below Par</th><th>Out of Stock</th><th>Status</th><th></th></tr></thead><tbody id="loc-summary"></tbody></table>
       </div>
     </div>
-
-    <!-- INVENTORY -->
     <div class="section" id="sec-inventory">
       <div class="card">
         <div class="card-header">
@@ -225,20 +212,13 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--border);border-r
           </div>
         </div>
         <div class="sync-row"><div class="inv-spinner" id="inv-spinner"></div><span id="inv-sync-msg">Sales from Square are deducted automatically on each sync.</span></div>
-        <div class="tbl-wrap">
-          <table><thead><tr><th>Item</th><th>Category</th><th>Price</th><th class="qty-cell">Warehouse</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total</th></tr></thead>
-          <tbody id="inv-table"></tbody></table>
-        </div>
+        <div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Category</th><th>Price</th><th class="qty-cell">Warehouse</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total</th></tr></thead><tbody id="inv-table"></tbody></table></div>
       </div>
     </div>
-
-    <!-- LOCATIONS -->
     <div class="section" id="sec-locations">
       <p class="section-intro">Click any location card to view its full inventory, edit quantities, and see stock health at a glance.</p>
       <div class="loc-grid" id="loc-grid"></div>
     </div>
-
-    <!-- LOCATION DETAIL -->
     <div class="section" id="sec-loc-detail">
       <div class="loc-detail-header" id="loc-detail-header"></div>
       <div class="card">
@@ -250,12 +230,9 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--border);border-r
           </div>
         </div>
         <p class="section-intro">Click any quantity to edit it directly. Changes save automatically.</p>
-        <table><thead><tr><th>Item</th><th>Category</th><th>Price</th><th style="text-align:center">On Hand</th><th style="text-align:center">Par</th><th>Status</th></tr></thead>
-        <tbody id="loc-detail-table"></tbody></table>
+        <table><thead><tr><th>Item</th><th>Category</th><th>Price</th><th style="text-align:center">On Hand</th><th style="text-align:center">Par</th><th>Status</th></tr></thead><tbody id="loc-detail-table"></tbody></table>
       </div>
     </div>
-
-    <!-- PAR LEVELS -->
     <div class="section" id="sec-par">
       <div class="card">
         <div class="card-header">
@@ -266,22 +243,15 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--border);border-r
           </div>
         </div>
         <p class="section-intro">Set the minimum quantity for each item at each location. Alerts fire the moment stock drops to or below par.</p>
-        <div class="tbl-wrap">
-          <table><thead><tr><th>Item</th><th class="par-cell">Warehouse</th><th class="par-cell">Restaurant</th><th class="par-cell">Truck 1</th><th class="par-cell">Truck 2</th><th class="par-cell">Truck 3</th></tr></thead>
-          <tbody id="par-table-body"></tbody></table>
-        </div>
+        <div class="tbl-wrap"><table><thead><tr><th>Item</th><th class="par-cell">Warehouse</th><th class="par-cell">Restaurant</th><th class="par-cell">Truck 1</th><th class="par-cell">Truck 2</th><th class="par-cell">Truck 3</th></tr></thead><tbody id="par-table-body"></tbody></table></div>
       </div>
     </div>
-
-    <!-- ALERTS -->
     <div class="section" id="sec-alerts">
       <div class="card">
         <div class="card-header"><span class="card-title">Active Alerts</span><button class="btn btn-sm btn-danger" onclick="dismissAllAlerts()">Dismiss All</button></div>
         <div id="alerts-list"></div>
       </div>
     </div>
-
-    <!-- TRANSFERS -->
     <div class="section" id="sec-transfers">
       <div class="card">
         <div class="card-header"><span class="card-title">Transfer Inventory</span></div>
@@ -295,49 +265,27 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--border);border-r
       </div>
       <div class="card">
         <div class="card-header"><span class="card-title">Transfer Log</span><button class="btn btn-sm" onclick="exportCSV('transfers')"><i class="ti ti-download" aria-hidden="true"></i> Export</button></div>
-        <table><thead><tr><th>Time</th><th>Item</th><th>From</th><th>To</th><th>Qty</th></tr></thead>
-        <tbody id="xfr-log"></tbody></table>
+        <table><thead><tr><th>Time</th><th>Item</th><th>From</th><th>To</th><th>Qty</th></tr></thead><tbody id="xfr-log"></tbody></table>
       </div>
     </div>
-
-    <!-- PRODUCTION -->
     <div class="section" id="sec-production">
       <div class="card">
         <div class="card-header"><span class="card-title">Production Planning</span><button class="btn btn-sm" onclick="exportCSV('production')"><i class="ti ti-download" aria-hidden="true"></i> Export</button></div>
         <p class="section-intro">Set production targets per item. The app shows what needs to be made to meet targets and keep all locations above par.</p>
-        <div class="tbl-wrap">
-          <table><thead><tr><th>Item</th><th style="text-align:center">On Hand</th><th style="text-align:center">Total Par</th><th style="text-align:center">Target</th><th>Action Needed</th></tr></thead>
-          <tbody id="prod-table"></tbody></table>
-        </div>
+        <div class="tbl-wrap"><table><thead><tr><th>Item</th><th style="text-align:center">On Hand</th><th style="text-align:center">Total Par</th><th style="text-align:center">Target</th><th>Action Needed</th></tr></thead><tbody id="prod-table"></tbody></table></div>
       </div>
     </div>
-
-    <!-- SALES -->
     <div class="section" id="sec-sales">
       <div class="card">
         <div class="card-header"><span class="card-title">Sales by Item &amp; Location</span><button class="btn btn-sm" onclick="exportCSV('sales')"><i class="ti ti-download" aria-hidden="true"></i> Export</button></div>
-        <div class="tbl-wrap">
-          <table><thead><tr><th>Item</th><th>Price</th><th class="qty-cell">Warehouse</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total Sold</th><th class="qty-cell">Revenue</th></tr></thead>
-          <tbody id="sales-table"></tbody></table>
-        </div>
+        <div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Price</th><th class="qty-cell">Warehouse</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total Sold</th><th class="qty-cell">Revenue</th></tr></thead><tbody id="sales-table"></tbody></table></div>
       </div>
     </div>
-
-    <!-- SETTINGS -->
     <div class="section" id="sec-settings">
-
-      <!-- APP COLORS -->
       <div class="card">
-        <div class="card-header">
-          <span class="card-title">App Colors</span>
-          <button class="btn btn-sm btn-danger" onclick="resetColors()"><i class="ti ti-refresh" aria-hidden="true"></i> Reset All to Default</button>
-        </div>
-        <p class="section-intro">All changes apply instantly and save automatically. Use preset themes for quick changes, or customize any color individually.</p>
-
-        <div class="color-preview-bar" id="color-preview-bar" style="background:var(--sidebar);color:rgba(255,255,255,.9)">
-          Preview &mdash; The Wooden Spoon Inventory Manager
-        </div>
-
+        <div class="card-header"><span class="card-title">App Colors</span><button class="btn btn-sm btn-danger" onclick="resetColors()"><i class="ti ti-refresh" aria-hidden="true"></i> Reset to Default</button></div>
+        <p class="section-intro">All changes apply instantly and save automatically. Use preset themes for quick changes, or customize individually.</p>
+        <div class="color-preview-bar" id="color-preview-bar" style="background:var(--sidebar);color:rgba(255,255,255,.9)">Preview &mdash; The Wooden Spoon Inventory Manager</div>
         <p style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">Quick Presets</p>
         <div class="theme-presets">
           <button class="preset-btn" onclick="applyPreset('warmcraft')"><span class="preset-dot" style="background:#1A3328"></span>Warm Craft</button>
@@ -346,8 +294,8 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--border);border-r
           <button class="preset-btn" onclick="applyPreset('white')"><span class="preset-dot" style="background:#111;border:1px solid #ccc"></span>Clean White</button>
           <button class="preset-btn" onclick="applyPreset('forest')"><span class="preset-dot" style="background:#1B4332"></span>Forest</button>
           <button class="preset-btn" onclick="applyPreset('midnight')"><span class="preset-dot" style="background:#2D1B69"></span>Midnight Purple</button>
+          <button class="preset-btn" onclick="applyPreset('yours')"><span class="preset-dot" style="background:#5e3303"></span>My Theme</button>
         </div>
-
         <div class="color-settings-grid">
           <div class="color-group">
             <div class="color-group-title">Sidebar</div>
@@ -370,184 +318,122 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--border);border-r
           <div class="color-group">
             <div class="color-group-title">Accent</div>
             <div class="color-row"><label>Buttons &amp; alerts</label><input type="color" id="c-accent" oninput="liveColor('--accent',this.value,'h-accent')"><input type="text" class="color-hex" id="h-accent" maxlength="7" oninput="hexInput('h-accent','c-accent','--accent')"></div>
-            <div class="color-row"><label>Headings &amp; numbers</label><input type="color" id="c-heading" oninput="liveColor('--sidebar',this.value,'h-heading');document.getElementById('color-preview-bar').style.background=this.value"><input type="text" class="color-hex" id="h-heading" maxlength="7" oninput="hexInput('h-heading','c-heading','--sidebar')"></div>
           </div>
         </div>
       </div>
-
-      <!-- BADGE COLORS -->
       <div class="card">
-        <div class="card-header">
-          <span class="card-title">Badge Colors</span>
-          <button class="btn btn-sm btn-danger" onclick="resetBadgeColors()"><i class="ti ti-refresh" aria-hidden="true"></i> Reset Badges</button>
-        </div>
-        <p class="section-intro">Customize the background and text color for each location and category badge. Changes apply instantly everywhere badges appear.</p>
-
+        <div class="card-header"><span class="card-title">Badge Colors</span><button class="btn btn-sm btn-danger" onclick="resetBadgeColors()"><i class="ti ti-refresh" aria-hidden="true"></i> Reset Badges</button></div>
+        <p class="section-intro">Customize background and text color for each location and category badge.</p>
         <div class="color-settings-grid">
-
-          <!-- LOCATION BADGES -->
           <div class="color-group" style="grid-column:span 2">
             <div class="color-group-title">Location Badges</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;">
-              <!-- Warehouse -->
-              <div>
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                  <span class="badge-preview lc-0" id="prev-warehouse">Warehouse</span>
-                </div>
-                <div class="badge-pair-row">
-                  <span class="badge-pair-sub">BG</span>
-                  <div class="badge-pair-controls">
-                    <input type="color" id="c-badge-warehouse-bg" oninput="liveBadge('--badge-warehouse-bg',this.value,'h-badge-warehouse-bg');updateBadgePrev('prev-warehouse')">
-                    <input type="text" class="color-hex" id="h-badge-warehouse-bg" maxlength="7" oninput="hexBadge('h-badge-warehouse-bg','c-badge-warehouse-bg','--badge-warehouse-bg');updateBadgePrev('prev-warehouse')">
-                  </div>
-                </div>
-                <div class="badge-pair-row">
-                  <span class="badge-pair-sub">Text</span>
-                  <div class="badge-pair-controls">
-                    <input type="color" id="c-badge-warehouse-text" oninput="liveBadge('--badge-warehouse-text',this.value,'h-badge-warehouse-text');updateBadgePrev('prev-warehouse')">
-                    <input type="text" class="color-hex" id="h-badge-warehouse-text" maxlength="7" oninput="hexBadge('h-badge-warehouse-text','c-badge-warehouse-text','--badge-warehouse-text');updateBadgePrev('prev-warehouse')">
-                  </div>
-                </div>
-              </div>
-              <!-- Restaurant -->
-              <div>
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                  <span class="badge-preview lc-1" id="prev-restaurant">Restaurant</span>
-                </div>
-                <div class="badge-pair-row">
-                  <span class="badge-pair-sub">BG</span>
-                  <div class="badge-pair-controls">
-                    <input type="color" id="c-badge-restaurant-bg" oninput="liveBadge('--badge-restaurant-bg',this.value,'h-badge-restaurant-bg');updateBadgePrev('prev-restaurant')">
-                    <input type="text" class="color-hex" id="h-badge-restaurant-bg" maxlength="7" oninput="hexBadge('h-badge-restaurant-bg','c-badge-restaurant-bg','--badge-restaurant-bg');updateBadgePrev('prev-restaurant')">
-                  </div>
-                </div>
-                <div class="badge-pair-row">
-                  <span class="badge-pair-sub">Text</span>
-                  <div class="badge-pair-controls">
-                    <input type="color" id="c-badge-restaurant-text" oninput="liveBadge('--badge-restaurant-text',this.value,'h-badge-restaurant-text');updateBadgePrev('prev-restaurant')">
-                    <input type="text" class="color-hex" id="h-badge-restaurant-text" maxlength="7" oninput="hexBadge('h-badge-restaurant-text','c-badge-restaurant-text','--badge-restaurant-text');updateBadgePrev('prev-restaurant')">
-                  </div>
-                </div>
-              </div>
-              <!-- Truck 1 -->
-              <div>
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                  <span class="badge-preview lc-2" id="prev-truck1">Truck 1</span>
-                </div>
-                <div class="badge-pair-row">
-                  <span class="badge-pair-sub">BG</span>
-                  <div class="badge-pair-controls">
-                    <input type="color" id="c-badge-truck1-bg" oninput="liveBadge('--badge-truck1-bg',this.value,'h-badge-truck1-bg');updateBadgePrev('prev-truck1')">
-                    <input type="text" class="color-hex" id="h-badge-truck1-bg" maxlength="7" oninput="hexBadge('h-badge-truck1-bg','c-badge-truck1-bg','--badge-truck1-bg');updateBadgePrev('prev-truck1')">
-                  </div>
-                </div>
-                <div class="badge-pair-row">
-                  <span class="badge-pair-sub">Text</span>
-                  <div class="badge-pair-controls">
-                    <input type="color" id="c-badge-truck1-text" oninput="liveBadge('--badge-truck1-text',this.value,'h-badge-truck1-text');updateBadgePrev('prev-truck1')">
-                    <input type="text" class="color-hex" id="h-badge-truck1-text" maxlength="7" oninput="hexBadge('h-badge-truck1-text','c-badge-truck1-text','--badge-truck1-text');updateBadgePrev('prev-truck1')">
-                  </div>
-                </div>
-              </div>
-              <!-- Truck 2 -->
-              <div>
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                  <span class="badge-preview lc-3" id="prev-truck2">Truck 2</span>
-                </div>
-                <div class="badge-pair-row">
-                  <span class="badge-pair-sub">BG</span>
-                  <div class="badge-pair-controls">
-                    <input type="color" id="c-badge-truck2-bg" oninput="liveBadge('--badge-truck2-bg',this.value,'h-badge-truck2-bg');updateBadgePrev('prev-truck2')">
-                    <input type="text" class="color-hex" id="h-badge-truck2-bg" maxlength="7" oninput="hexBadge('h-badge-truck2-bg','c-badge-truck2-bg','--badge-truck2-bg');updateBadgePrev('prev-truck2')">
-                  </div>
-                </div>
-                <div class="badge-pair-row">
-                  <span class="badge-pair-sub">Text</span>
-                  <div class="badge-pair-controls">
-                    <input type="color" id="c-badge-truck2-text" oninput="liveBadge('--badge-truck2-text',this.value,'h-badge-truck2-text');updateBadgePrev('prev-truck2')">
-                    <input type="text" class="color-hex" id="h-badge-truck2-text" maxlength="7" oninput="hexBadge('h-badge-truck2-text','c-badge-truck2-text','--badge-truck2-text');updateBadgePrev('prev-truck2')">
-                  </div>
-                </div>
-              </div>
-              <!-- Truck 3 -->
-              <div>
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                  <span class="badge-preview lc-4" id="prev-truck3">Truck 3</span>
-                </div>
-                <div class="badge-pair-row">
-                  <span class="badge-pair-sub">BG</span>
-                  <div class="badge-pair-controls">
-                    <input type="color" id="c-badge-truck3-bg" oninput="liveBadge('--badge-truck3-bg',this.value,'h-badge-truck3-bg');updateBadgePrev('prev-truck3')">
-                    <input type="text" class="color-hex" id="h-badge-truck3-bg" maxlength="7" oninput="hexBadge('h-badge-truck3-bg','c-badge-truck3-bg','--badge-truck3-bg');updateBadgePrev('prev-truck3')">
-                  </div>
-                </div>
-                <div class="badge-pair-row">
-                  <span class="badge-pair-sub">Text</span>
-                  <div class="badge-pair-controls">
-                    <input type="color" id="c-badge-truck3-text" oninput="liveBadge('--badge-truck3-text',this.value,'h-badge-truck3-text');updateBadgePrev('prev-truck3')">
-                    <input type="text" class="color-hex" id="h-badge-truck3-text" maxlength="7" oninput="hexBadge('h-badge-truck3-text','c-badge-truck3-text','--badge-truck3-text');updateBadgePrev('prev-truck3')">
-                  </div>
-                </div>
-              </div>
+              
+<div>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+    <span class="badge-preview lc-0" id="prev-warehouse">Warehouse</span>
+  </div>
+  <div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls">
+    <input type="color" id="c-badge-warehouse-bg" oninput="liveBadge('--badge-warehouse-bg',this.value,'h-badge-warehouse-bg')">
+    <input type="text" class="color-hex" id="h-badge-warehouse-bg" maxlength="7" oninput="hexBadge('h-badge-warehouse-bg','c-badge-warehouse-bg','--badge-warehouse-bg')">
+  </div></div>
+  <div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls">
+    <input type="color" id="c-badge-warehouse-text" oninput="liveBadge('--badge-warehouse-text',this.value,'h-badge-warehouse-text')">
+    <input type="text" class="color-hex" id="h-badge-warehouse-text" maxlength="7" oninput="hexBadge('h-badge-warehouse-text','c-badge-warehouse-text','--badge-warehouse-text')">
+  </div></div>
+</div>
+<div>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+    <span class="badge-preview lc-1" id="prev-restaurant">Restaurant</span>
+  </div>
+  <div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls">
+    <input type="color" id="c-badge-restaurant-bg" oninput="liveBadge('--badge-restaurant-bg',this.value,'h-badge-restaurant-bg')">
+    <input type="text" class="color-hex" id="h-badge-restaurant-bg" maxlength="7" oninput="hexBadge('h-badge-restaurant-bg','c-badge-restaurant-bg','--badge-restaurant-bg')">
+  </div></div>
+  <div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls">
+    <input type="color" id="c-badge-restaurant-text" oninput="liveBadge('--badge-restaurant-text',this.value,'h-badge-restaurant-text')">
+    <input type="text" class="color-hex" id="h-badge-restaurant-text" maxlength="7" oninput="hexBadge('h-badge-restaurant-text','c-badge-restaurant-text','--badge-restaurant-text')">
+  </div></div>
+</div>
+<div>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+    <span class="badge-preview lc-2" id="prev-truck1">Truck 1</span>
+  </div>
+  <div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls">
+    <input type="color" id="c-badge-truck1-bg" oninput="liveBadge('--badge-truck1-bg',this.value,'h-badge-truck1-bg')">
+    <input type="text" class="color-hex" id="h-badge-truck1-bg" maxlength="7" oninput="hexBadge('h-badge-truck1-bg','c-badge-truck1-bg','--badge-truck1-bg')">
+  </div></div>
+  <div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls">
+    <input type="color" id="c-badge-truck1-text" oninput="liveBadge('--badge-truck1-text',this.value,'h-badge-truck1-text')">
+    <input type="text" class="color-hex" id="h-badge-truck1-text" maxlength="7" oninput="hexBadge('h-badge-truck1-text','c-badge-truck1-text','--badge-truck1-text')">
+  </div></div>
+</div>
+<div>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+    <span class="badge-preview lc-3" id="prev-truck2">Truck 2</span>
+  </div>
+  <div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls">
+    <input type="color" id="c-badge-truck2-bg" oninput="liveBadge('--badge-truck2-bg',this.value,'h-badge-truck2-bg')">
+    <input type="text" class="color-hex" id="h-badge-truck2-bg" maxlength="7" oninput="hexBadge('h-badge-truck2-bg','c-badge-truck2-bg','--badge-truck2-bg')">
+  </div></div>
+  <div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls">
+    <input type="color" id="c-badge-truck2-text" oninput="liveBadge('--badge-truck2-text',this.value,'h-badge-truck2-text')">
+    <input type="text" class="color-hex" id="h-badge-truck2-text" maxlength="7" oninput="hexBadge('h-badge-truck2-text','c-badge-truck2-text','--badge-truck2-text')">
+  </div></div>
+</div>
+<div>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+    <span class="badge-preview lc-4" id="prev-truck3">Truck 3</span>
+  </div>
+  <div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls">
+    <input type="color" id="c-badge-truck3-bg" oninput="liveBadge('--badge-truck3-bg',this.value,'h-badge-truck3-bg')">
+    <input type="text" class="color-hex" id="h-badge-truck3-bg" maxlength="7" oninput="hexBadge('h-badge-truck3-bg','c-badge-truck3-bg','--badge-truck3-bg')">
+  </div></div>
+  <div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls">
+    <input type="color" id="c-badge-truck3-text" oninput="liveBadge('--badge-truck3-text',this.value,'h-badge-truck3-text')">
+    <input type="text" class="color-hex" id="h-badge-truck3-text" maxlength="7" oninput="hexBadge('h-badge-truck3-text','c-badge-truck3-text','--badge-truck3-text')">
+  </div></div>
+</div>
             </div>
           </div>
-
-          <!-- CATEGORY BADGES -->
           <div class="color-group">
             <div class="color-group-title">Category Badges</div>
-            <!-- Food -->
-            <div style="margin-bottom:16px">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                <span class="badge-preview cc-food" id="prev-food">Food</span>
-              </div>
-              <div class="badge-pair-row">
-                <span class="badge-pair-sub">BG</span>
-                <div class="badge-pair-controls">
-                  <input type="color" id="c-badge-food-bg" oninput="liveBadge('--badge-food-bg',this.value,'h-badge-food-bg');updateBadgePrev('prev-food')">
-                  <input type="text" class="color-hex" id="h-badge-food-bg" maxlength="7" oninput="hexBadge('h-badge-food-bg','c-badge-food-bg','--badge-food-bg');updateBadgePrev('prev-food')">
-                </div>
-              </div>
-              <div class="badge-pair-row">
-                <span class="badge-pair-sub">Text</span>
-                <div class="badge-pair-controls">
-                  <input type="color" id="c-badge-food-text" oninput="liveBadge('--badge-food-text',this.value,'h-badge-food-text');updateBadgePrev('prev-food')">
-                  <input type="text" class="color-hex" id="h-badge-food-text" maxlength="7" oninput="hexBadge('h-badge-food-text','c-badge-food-text','--badge-food-text');updateBadgePrev('prev-food')">
-                </div>
-              </div>
-            </div>
-            <!-- Dessert -->
-            <div>
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                <span class="badge-preview cc-dessert" id="prev-dessert">Dessert</span>
-              </div>
-              <div class="badge-pair-row">
-                <span class="badge-pair-sub">BG</span>
-                <div class="badge-pair-controls">
-                  <input type="color" id="c-badge-dessert-bg" oninput="liveBadge('--badge-dessert-bg',this.value,'h-badge-dessert-bg');updateBadgePrev('prev-dessert')">
-                  <input type="text" class="color-hex" id="h-badge-dessert-bg" maxlength="7" oninput="hexBadge('h-badge-dessert-bg','c-badge-dessert-bg','--badge-dessert-bg');updateBadgePrev('prev-dessert')">
-                </div>
-              </div>
-              <div class="badge-pair-row">
-                <span class="badge-pair-sub">Text</span>
-                <div class="badge-pair-controls">
-                  <input type="color" id="c-badge-dessert-text" oninput="liveBadge('--badge-dessert-text',this.value,'h-badge-dessert-text');updateBadgePrev('prev-dessert')">
-                  <input type="text" class="color-hex" id="h-badge-dessert-text" maxlength="7" oninput="hexBadge('h-badge-dessert-text','c-badge-dessert-text','--badge-dessert-text');updateBadgePrev('prev-dessert')">
-                </div>
-              </div>
-            </div>
+            
+<div style="margin-bottom:16px">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+    <span class="badge-preview cc-food" id="prev-food">Food</span>
+  </div>
+  <div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls">
+    <input type="color" id="c-badge-food-bg" oninput="liveBadge('--badge-food-bg',this.value,'h-badge-food-bg')">
+    <input type="text" class="color-hex" id="h-badge-food-bg" maxlength="7" oninput="hexBadge('h-badge-food-bg','c-badge-food-bg','--badge-food-bg')">
+  </div></div>
+  <div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls">
+    <input type="color" id="c-badge-food-text" oninput="liveBadge('--badge-food-text',this.value,'h-badge-food-text')">
+    <input type="text" class="color-hex" id="h-badge-food-text" maxlength="7" oninput="hexBadge('h-badge-food-text','c-badge-food-text','--badge-food-text')">
+  </div></div>
+</div>
+<div style="margin-bottom:16px">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+    <span class="badge-preview cc-dessert" id="prev-dessert">Dessert</span>
+  </div>
+  <div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls">
+    <input type="color" id="c-badge-dessert-bg" oninput="liveBadge('--badge-dessert-bg',this.value,'h-badge-dessert-bg')">
+    <input type="text" class="color-hex" id="h-badge-dessert-bg" maxlength="7" oninput="hexBadge('h-badge-dessert-bg','c-badge-dessert-bg','--badge-dessert-bg')">
+  </div></div>
+  <div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls">
+    <input type="color" id="c-badge-dessert-text" oninput="liveBadge('--badge-dessert-text',this.value,'h-badge-dessert-text')">
+    <input type="text" class="color-hex" id="h-badge-dessert-text" maxlength="7" oninput="hexBadge('h-badge-dessert-text','c-badge-dessert-text','--badge-dessert-text')">
+  </div></div>
+</div>
           </div>
-
         </div>
       </div>
-
-      <!-- WORKER -->
       <div class="worker-setup">
         <h3>Cloudflare Worker &mdash; Live Sync</h3>
         <p>Your Worker tracks Square sales via webhooks. On each sync the app deducts sold quantities and pulls live prices from Square.</p>
         <div style="display:flex;gap:8px"><input type="url" id="worker-url" placeholder="https://your-worker.workers.dev" style="flex:1;background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff"><button class="btn btn-accent" onclick="saveWorkerUrl()">Save &amp; Test</button></div>
         <div class="worker-status" id="worker-status"></div>
       </div>
-
       <div class="card">
         <div class="card-header"><span class="card-title">Square API</span></div>
         <p class="section-intro">Used only to pull live prices from your Square catalog.</p>
@@ -557,8 +443,7 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--border);border-r
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em">Location IDs</label>
-          <table style="font-size:13px"><thead><tr><th>Location</th><th>Square Location ID</th></tr></thead>
-          <tbody>
+          <table style="font-size:13px"><thead><tr><th>Location</th><th>Square Location ID</th></tr></thead><tbody>
             <tr><td><span class="loc-chip lc-0">Warehouse</span></td><td><input id="loc-wh" placeholder="LXXXXXXXXXXXXX" style="width:220px;margin:3px 0"></td></tr>
             <tr><td><span class="loc-chip lc-1">Restaurant</span></td><td><input id="loc-rs" placeholder="LXXXXXXXXXXXXX" style="width:220px;margin:3px 0"></td></tr>
             <tr><td><span class="loc-chip lc-2">Truck 1</span></td><td><input id="loc-t1" placeholder="LXXXXXXXXXXXXX" style="width:220px;margin:3px 0"></td></tr>
@@ -568,12 +453,10 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--border);border-r
           <button class="btn btn-primary" style="align-self:flex-start;margin-top:4px" onclick="saveLocations()">Save Locations</button>
         </div>
       </div>
-
       <div class="card">
         <div class="card-header"><span class="card-title">Items <span style="font-size:12px;color:var(--text3);font-family:var(--font-body);font-weight:400" id="item-count"></span></span><button class="btn btn-sm btn-primary" onclick="addItem()"><i class="ti ti-plus" aria-hidden="true"></i> Add Item</button></div>
         <div id="items-list"></div>
       </div>
-
       <div class="card">
         <div class="card-header"><span class="card-title">Export Data</span></div>
         <div class="export-strip">
@@ -589,7 +472,6 @@ input[type=color]{width:36px;height:30px;border:1px solid var(--border);border-r
   </div>
 </main>
 </div>
-
 <script>
 const WORKER_URL="https://dawn-union-f0b2.asa-allen.workers.dev";
 const LOCS=["Warehouse","Restaurant","Truck 1","Truck 2","Truck 3"];
@@ -599,117 +481,35 @@ const REMOVED=["Delivery","Frozen Whole Pie"];
 const DEFAULT_PRICES={"Apple Pie":30,"BBQ Meatballs":22,"Beef Enchiladas":20,"Beef Lasagna":20,"Blackberry Pie":30,"Bread Pudding":18,"Bread Pudding Sauce":7,"Breakfast Burritos":20,"Bumblebee Pie":30,"Cheesy Beef and Potatoes":20,"Cherry Pie":30,"Chicken Alfredo":20,"Chicken Enchiladas":20,"Chicken Pot Pie":20,"Chicken Spaghetti":20,"Chocolate Chip Cookie Dough":9,"Gourmet Potatoes":14,"Macaroni & Cheese":14,"Meatloaf":22,"Monster Cookie Dough":9,"Peach Pie":30,"Pint of Soup":7.5,"Poppy Seed Chicken":20,"Quart of Soup":12.5,"Strawberry Rhubarb Pie":30,"Sugar Free Bumblebee":30,"Sugar Free Cherry Pie":30,"Sugar Free Peach Pie":30};
 const DEFAULT_CATS={"Apple Pie":"Frozen Desserts","BBQ Meatballs":"Frozen Foods","Beef Enchiladas":"Frozen Foods","Beef Lasagna":"Frozen Foods","Blackberry Pie":"Frozen Desserts","Bread Pudding":"Frozen Desserts","Bread Pudding Sauce":"Frozen Desserts","Breakfast Burritos":"Frozen Foods","Bumblebee Pie":"Frozen Desserts","Cheesy Beef and Potatoes":"Frozen Foods","Cherry Pie":"Frozen Desserts","Chicken Alfredo":"Frozen Foods","Chicken Enchiladas":"Frozen Foods","Chicken Pot Pie":"Frozen Foods","Chicken Spaghetti":"Frozen Foods","Chocolate Chip Cookie Dough":"Frozen Desserts","Gourmet Potatoes":"Frozen Foods","Macaroni & Cheese":"Frozen Foods","Meatloaf":"Frozen Foods","Monster Cookie Dough":"Frozen Desserts","Peach Pie":"Frozen Desserts","Pint of Soup":"Frozen Foods","Poppy Seed Chicken":"Frozen Foods","Quart of Soup":"Frozen Foods","Strawberry Rhubarb Pie":"Frozen Desserts","Sugar Free Bumblebee":"Frozen Desserts","Sugar Free Cherry Pie":"Frozen Desserts","Sugar Free Peach Pie":"Frozen Desserts"};
 const CATALOG_NAMES=Object.keys(DEFAULT_PRICES);
-
-const DEFAULT_COLORS={sidebar:"#1A3328","sidebar-text":"#D8EBD8","sidebar-text2":"#8AB898",bg:"#FDF6EE",surface:"#FFFCF8",border:"#E2CDB0",text:"#1C0F06",text2:"#5C3D22",text3:"#9C7A58",accent:"#C42B2B"};
-const DEFAULT_BADGES={"warehouse-bg":"#E0EEF8","warehouse-text":"#1A3A6B","restaurant-bg":"#EBE8FB","restaurant-text":"#3B2E8C","truck1-bg":"#E8F4EB","truck1-text":"#2A6B3A","truck2-bg":"#FFF0DC","truck2-text":"#B05A00","truck3-bg":"#FCEEE8","truck3-text":"#7C3010","food-bg":"#EBE8FB","food-text":"#3B2E8C","dessert-bg":"#FFF0DC","dessert-text":"#B05A00"};
-
+const DEFAULT_COLORS={"sidebar":"#5e3303","sidebar-text":"#ffffff","sidebar-text2":"#ffffff","bg":"#fbe5cb","surface":"#ffffff","border":"#844f06","text":"#1C0F06","text2":"#5C3D22","text3":"#9C7A58","accent":"#9f7014"};
+const DEFAULT_BADGES={"warehouse-bg":"#ffffff","warehouse-text":"#000000","restaurant-bg":"#ffffff","restaurant-text":"#000000","truck1-bg":"#ffffff","truck1-text":"#000000","truck2-bg":"#ffffff","truck2-text":"#000000","truck3-bg":"#ffffff","truck3-text":"#000000","food-bg":"#ffffff","food-text":"#000000","dessert-bg":"#ffffff","dessert-text":"#000000"};
 const PRESETS={
   warmcraft:{sidebar:"#1A3328","sidebar-text":"#D8EBD8","sidebar-text2":"#8AB898",bg:"#FDF6EE",surface:"#FFFCF8",border:"#E2CDB0",text:"#1C0F06",text2:"#5C3D22",text3:"#9C7A58",accent:"#C42B2B"},
   dark:{sidebar:"#16181F","sidebar-text":"#E2E4EC","sidebar-text2":"#9099B0",bg:"#0F1117",surface:"#1E2030",border:"#2A2D38",text:"#E2E4EC",text2:"#B0B8CC",text3:"#707888",accent:"#7C6FFF"},
   slate:{sidebar:"#1B2B4B","sidebar-text":"#C8D6EE","sidebar-text2":"#8AA5C8",bg:"#F4F6F9",surface:"#FFFFFF",border:"#DDE3EE",text:"#1B2B4B",text2:"#3A5278",text3:"#7A8AAA",accent:"#4EA8F8"},
   white:{sidebar:"#111111","sidebar-text":"#FFFFFF","sidebar-text2":"#AAAAAA",bg:"#F8F8F8",surface:"#FFFFFF",border:"#E4E4E4",text:"#111111",text2:"#444444",text3:"#999999",accent:"#111111"},
   forest:{sidebar:"#1B4332","sidebar-text":"#D8F3DC","sidebar-text2":"#74C69D",bg:"#F0FFF4",surface:"#FFFFFF",border:"#C8E6D0",text:"#1B4332",text2:"#2D6A4F",text3:"#74C69D",accent:"#2D6A4F"},
-  midnight:{sidebar:"#2D1B69","sidebar-text":"#E9D5FF","sidebar-text2":"#A78BFA",bg:"#F5F3FF",surface:"#FFFFFF",border:"#DDD6FE",text:"#1E1B4B",text2:"#4338CA",text3:"#7C3AED",accent:"#7C3AED"}
+  midnight:{sidebar:"#2D1B69","sidebar-text":"#E9D5FF","sidebar-text2":"#A78BFA",bg:"#F5F3FF",surface:"#FFFFFF",border:"#DDD6FE",text:"#1E1B4B",text2:"#4338CA",text3:"#7C3AED",accent:"#7C3AED"},
+  yours:DEFAULT_COLORS
 };
-
 let S={token:"",workerUrl:WORKER_URL,locationIds:{Warehouse:"",Restaurant:"","Truck 1":"","Truck 2":"","Truck 3":""},items:[...CATALOG_NAMES],categories:{...DEFAULT_CATS},prices:{...DEFAULT_PRICES},inventory:{},sales:{},salesBaseline:{},par:{},prodTargets:{},transfers:[],alerts:[],lastSync:"",colors:{...DEFAULT_COLORS},badges:{...DEFAULT_BADGES}};
 CATALOG_NAMES.forEach(n=>{S.inventory[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.salesBaseline[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};});
 let currentLoc=null;
-
-// ── COLOR HELPERS ─────────────────────────────────────────────────
-function setVar(name,val){document.documentElement.style.setProperty(name,val);}
-function isValidHex(v){return /^#[0-9A-Fa-f]{6}$/.test(v);}
-
-function liveColor(varName,val,hexId){
-  setVar(varName,val);
-  const h=document.getElementById(hexId);if(h)h.value=val.toUpperCase();
-  saveColors();
-}
-
-function hexInput(hexId,pickerId,varName){
-  const v=document.getElementById(hexId).value.trim();
-  if(!isValidHex(v))return;
-  const p=document.getElementById(pickerId);if(p)p.value=v;
-  setVar(varName,v);saveColors();
-}
-
-function liveBadge(varName,val,hexId){
-  setVar(varName,val);
-  const h=document.getElementById(hexId);if(h)h.value=val.toUpperCase();
-  saveBadges();
-}
-
-function hexBadge(hexId,pickerId,varName){
-  const v=document.getElementById(hexId).value.trim();
-  if(!isValidHex(v))return;
-  const p=document.getElementById(pickerId);if(p)p.value=v;
-  setVar(varName,v);saveBadges();
-}
-
-function updateBadgePrev(id){
-  // Badge preview re-renders automatically via CSS vars — just a no-op hook
-}
-
-function applyPreset(name){
-  const p=PRESETS[name];if(!p)return;
-  Object.assign(S.colors,p);
-  applyAllColors(S.colors);
-  syncColorInputs(S.colors);
-  saveColors();
-}
-
-function applyAllColors(c){
-  Object.entries(c).forEach(([k,v])=>setVar("--"+k,v));
-  const bar=document.getElementById("color-preview-bar");
-  if(bar)bar.style.background=c.sidebar||DEFAULT_COLORS.sidebar;
-}
-
-function applyAllBadges(b){
-  Object.entries(b).forEach(([k,v])=>setVar("--badge-"+k,v));
-}
-
-function syncColorInputs(c){
-  const map={sidebar:"#1A3328","sidebar-text":"#D8EBD8","sidebar-text2":"#8AB898",bg:"#FDF6EE",surface:"#FFFCF8",border:"#E2CDB0",text:"#1C0F06",text2:"#5C3D22",text3:"#9C7A58",accent:"#C42B2B"};
-  Object.keys(map).forEach(k=>{
-    const val=c[k]||DEFAULT_COLORS[k]||"#000000";
-    const pk=document.getElementById("c-"+k);
-    const hk=document.getElementById("h-"+k);
-    if(pk&&isValidHex(val))pk.value=val;
-    if(hk)hk.value=val.toUpperCase();
-  });
-  // heading mirrors sidebar
-  const hs=c.sidebar||DEFAULT_COLORS.sidebar;
-  const ch=document.getElementById("c-heading"),hh=document.getElementById("h-heading");
-  if(ch&&isValidHex(hs))ch.value=hs;if(hh)hh.value=hs.toUpperCase();
-  const bar=document.getElementById("color-preview-bar");if(bar)bar.style.background=hs;
-}
-
-function syncBadgeInputs(b){
-  Object.keys(DEFAULT_BADGES).forEach(k=>{
-    const val=b[k]||DEFAULT_BADGES[k]||"#000000";
-    const pk=document.getElementById("c-badge-"+k);
-    const hk=document.getElementById("h-badge-"+k);
-    if(pk&&isValidHex(val))pk.value=val;
-    if(hk)hk.value=val.toUpperCase();
-  });
-}
-
-function saveColors(){
-  const root=document.documentElement;
-  Object.keys(DEFAULT_COLORS).forEach(k=>{S.colors[k]=root.style.getPropertyValue("--"+k)||DEFAULT_COLORS[k];});
-  saveState();
-}
-
-function saveBadges(){
-  const root=document.documentElement;
-  Object.keys(DEFAULT_BADGES).forEach(k=>{S.badges[k]=root.style.getPropertyValue("--badge-"+k)||DEFAULT_BADGES[k];});
-  saveState();
-}
-
+function sv(n,v){document.documentElement.style.setProperty(n,v);}
+function isHex(v){return /^#[0-9A-Fa-f]{6}$/.test(v);}
+function liveColor(vn,val,hId){sv(vn,val);const h=document.getElementById(hId);if(h)h.value=val.toUpperCase();saveColors();}
+function hexInput(hId,pId,vn){const v=document.getElementById(hId).value.trim();if(!isHex(v))return;const p=document.getElementById(pId);if(p)p.value=v;sv(vn,v);saveColors();}
+function liveBadge(vn,val,hId){sv(vn,val);const h=document.getElementById(hId);if(h)h.value=val.toUpperCase();saveBadges();}
+function hexBadge(hId,pId,vn){const v=document.getElementById(hId).value.trim();if(!isHex(v))return;const p=document.getElementById(pId);if(p)p.value=v;sv(vn,v);saveBadges();}
+function applyPreset(name){const p=PRESETS[name];if(!p)return;Object.assign(S.colors,p);applyAllColors(S.colors);syncColorInputs(S.colors);saveColors();}
+function applyAllColors(c){Object.entries(c).forEach(([k,v])=>sv("--"+k,v));const bar=document.getElementById("color-preview-bar");if(bar)bar.style.background=c.sidebar||DEFAULT_COLORS.sidebar;}
+function applyAllBadges(b){Object.entries(b).forEach(([k,v])=>sv("--badge-"+k,v));}
+function syncColorInputs(c){Object.keys(DEFAULT_COLORS).forEach(k=>{const v=c[k]||DEFAULT_COLORS[k]||"#000000";const p=document.getElementById("c-"+k);const h=document.getElementById("h-"+k);if(p&&isHex(v))p.value=v;if(h)h.value=v.toUpperCase();});const bar=document.getElementById("color-preview-bar");if(bar)bar.style.background=c.sidebar||DEFAULT_COLORS.sidebar;}
+function syncBadgeInputs(b){Object.keys(DEFAULT_BADGES).forEach(k=>{const v=b[k]||DEFAULT_BADGES[k]||"#000000";const p=document.getElementById("c-badge-"+k);const h=document.getElementById("h-badge-"+k);if(p&&isHex(v))p.value=v;if(h)h.value=v.toUpperCase();});}
+function saveColors(){const root=document.documentElement;Object.keys(DEFAULT_COLORS).forEach(k=>{S.colors[k]=root.style.getPropertyValue("--"+k)||DEFAULT_COLORS[k];});saveState();}
+function saveBadges(){const root=document.documentElement;Object.keys(DEFAULT_BADGES).forEach(k=>{S.badges[k]=root.style.getPropertyValue("--badge-"+k)||DEFAULT_BADGES[k];});saveState();}
 function resetColors(){S.colors={...DEFAULT_COLORS};applyAllColors(S.colors);syncColorInputs(S.colors);saveState();}
 function resetBadgeColors(){S.badges={...DEFAULT_BADGES};applyAllBadges(S.badges);syncBadgeInputs(S.badges);saveState();}
-
-// ── STORAGE ───────────────────────────────────────────────────────
 function saveState(){try{localStorage.setItem("ws_inv_v2",JSON.stringify(S));}catch(e){}}
 function loadState(){
   try{
@@ -728,56 +528,25 @@ function loadState(){
       if(saved.salesBaseline?.[n])S.salesBaseline[n]={...S.salesBaseline[n],...saved.salesBaseline[n]};
       if(saved.par?.[n])S.par[n]={...S.par[n],...saved.par[n]};
     });
-    if(saved.items)saved.items.forEach(name=>{
-      if(!S.items.includes(name)&&!REMOVED.includes(name)){S.items.push(name);S.inventory[name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.salesBaseline[name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};}
-    });
+    if(saved.items)saved.items.forEach(name=>{if(!S.items.includes(name)&&!REMOVED.includes(name)){S.items.push(name);S.inventory[name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.salesBaseline[name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};}});
   }catch(e){console.error(e);}
   S.alerts=S.alerts.filter(a=>S.items.includes(a.item));
 }
-
-// ── NAV ───────────────────────────────────────────────────────────
 const TITLES={overview:"Overview",inventory:"Inventory",locations:"Locations",par:"Par Levels",alerts:"Alerts",transfers:"Transfers",production:"Production Planning",sales:"Sales",settings:"Settings"};
-function showSection(name,btn){
-  document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
-  document.querySelectorAll(".nav-item").forEach(b=>b.classList.remove("active"));
-  document.getElementById("sec-"+name).classList.add("active");
-  if(btn&&btn.classList.contains("nav-item"))btn.classList.add("active");
-  document.getElementById("page-title").textContent=TITLES[name]||name;
-  document.getElementById("back-btn").style.display="none";
-  if(name==="inventory")renderInventory();
-  if(name==="locations")renderLocations();
-  if(name==="par")renderPar();
-  if(name==="production")renderProduction();
-  if(name==="sales")renderSales();
-  if(name==="transfers")renderTransfers();
-  if(name==="settings"){renderSettings();syncColorInputs(S.colors);syncBadgeInputs(S.badges);}
-}
+function showSection(name,btn){document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));document.querySelectorAll(".nav-item").forEach(b=>b.classList.remove("active"));document.getElementById("sec-"+name).classList.add("active");if(btn&&btn.classList.contains("nav-item"))btn.classList.add("active");document.getElementById("page-title").textContent=TITLES[name]||name;document.getElementById("back-btn").style.display="none";if(name==="inventory")renderInventory();if(name==="locations")renderLocations();if(name==="par")renderPar();if(name==="production")renderProduction();if(name==="sales")renderSales();if(name==="transfers")renderTransfers();if(name==="settings"){renderSettings();syncColorInputs(S.colors);syncBadgeInputs(S.badges);}}
 function openLocDetail(locName){currentLoc=locName;document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));document.getElementById("sec-loc-detail").classList.add("active");document.getElementById("page-title").textContent=locName;document.getElementById("back-btn").style.display="inline-flex";document.getElementById("loc-detail-cat-filter").value="";renderLocDetail();}
 function goBack(){showSection("locations",null);document.querySelectorAll(".nav-item").forEach(b=>{if(b.textContent.includes("Locations"))b.classList.add("active");});}
 function setStatus(t,ok){const el=document.getElementById("conn-status");el.textContent=t;el.className="conn-status"+(ok?" live":"");}
-
-// ── SYNC ──────────────────────────────────────────────────────────
 async function syncNow(){
   const sp=document.getElementById("sync-spinner"),sm=document.getElementById("inv-sync-msg");
   sp.style.display="block";
   if(!S.workerUrl){sp.style.display="none";if(sm)sm.textContent="No Worker URL configured.";return;}
   if(sm)sm.textContent="Fetching sales from Square...";
   let totalDeducted=0;
-  try{
-    const res=await fetch(S.workerUrl+"/sales",{method:"GET",mode:"cors"});
-    if(!res.ok)throw new Error("Worker returned "+res.status);
-    const data=await res.json();
-    const cs=data.sales||{};
-    S.items.forEach(item=>{LOCS.forEach(loc=>{const cur=(cs[item]||{})[loc]||0,base=(S.salesBaseline[item]||{})[loc]||0,delta=Math.max(0,cur-base);if(delta>0){if(!S.inventory[item])S.inventory[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.inventory[item][loc]=Math.max(0,(S.inventory[item][loc]||0)-delta);totalDeducted+=delta;}if(!S.sales[item])S.sales[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[item][loc]=cur;});});
-    S.items.forEach(item=>{if(!S.salesBaseline[item])S.salesBaseline[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};LOCS.forEach(loc=>{S.salesBaseline[item][loc]=(cs[item]||{})[loc]||0;});});
-    S.lastSync=new Date().toLocaleString();
-    if(sm)sm.textContent=totalDeducted>0?`Synced \u2014 ${totalDeducted} units deducted`:`Synced \u2014 No new sales since last sync`;
-    setStatus("Live",true);
-  }catch(e){if(sm)sm.textContent="Sales sync failed: "+e.message;setStatus("Sync error",false);sp.style.display="none";checkAlerts();saveState();renderAll();return;}
+  try{const res=await fetch(S.workerUrl+"/sales",{method:"GET",mode:"cors"});if(!res.ok)throw new Error("Worker returned "+res.status);const data=await res.json();const cs=data.sales||{};S.items.forEach(item=>{LOCS.forEach(loc=>{const cur=(cs[item]||{})[loc]||0,base=(S.salesBaseline[item]||{})[loc]||0,delta=Math.max(0,cur-base);if(delta>0){if(!S.inventory[item])S.inventory[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.inventory[item][loc]=Math.max(0,(S.inventory[item][loc]||0)-delta);totalDeducted+=delta;}if(!S.sales[item])S.sales[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[item][loc]=cur;});});S.items.forEach(item=>{if(!S.salesBaseline[item])S.salesBaseline[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};LOCS.forEach(loc=>{S.salesBaseline[item][loc]=(cs[item]||{})[loc]||0;});});S.lastSync=new Date().toLocaleString();if(sm)sm.textContent=totalDeducted>0?`Synced \u2014 ${totalDeducted} units deducted`:`Synced \u2014 No new sales since last sync`;setStatus("Live",true);}catch(e){if(sm)sm.textContent="Sales sync failed: "+e.message;setStatus("Sync error",false);sp.style.display="none";checkAlerts();saveState();renderAll();return;}
   try{const pr=await fetch(S.workerUrl+"/prices",{method:"GET",mode:"cors"});if(pr.ok){const pd=await pr.json();if(pd.prices&&Object.keys(pd.prices).length>0){Object.entries(pd.prices).forEach(([item,price])=>{if(!REMOVED.includes(item))S.prices[item]=price;});const ind=document.getElementById("sync-ind");if(ind){ind.style.display="block";setTimeout(()=>ind.style.display="none",4000);}}}}catch(e){}
   checkAlerts();saveState();renderAll();sp.style.display="none";
 }
-
 async function saveWorkerUrl(){const url=document.getElementById("worker-url").value.trim().replace(/\/+$/,"");if(!url){alert("Please enter your Worker URL.");return;}const st=document.getElementById("worker-status");st.style.display="block";st.className="worker-status";st.textContent="Testing...";try{const res=await fetch(url+"/health",{method:"GET",mode:"cors"});if(res.ok){S.workerUrl=url;saveState();st.className="worker-status ok";st.textContent="\u2713 Connected!";setStatus("Worker connected",true);}else{st.className="worker-status err";st.textContent="\u2717 Worker error "+res.status;}}catch(e){st.className="worker-status err";st.textContent="\u2717 Cannot reach Worker: "+e.message;}}
 function saveToken(){const t=document.getElementById("sq-token").value.trim();if(!t)return;S.token=t;saveState();setStatus("Token saved",true);alert("Token saved!");}
 function saveLocations(){S.locationIds.Warehouse=document.getElementById("loc-wh").value.trim();S.locationIds.Restaurant=document.getElementById("loc-rs").value.trim();S.locationIds["Truck 1"]=document.getElementById("loc-t1").value.trim();S.locationIds["Truck 2"]=document.getElementById("loc-t2").value.trim();S.locationIds["Truck 3"]=document.getElementById("loc-t3").value.trim();saveState();alert("Location IDs saved!");}
@@ -793,20 +562,8 @@ function doTransfer(){const item=document.getElementById("xfr-item").value,from=
 function updateProdTarget(item,val){if(!S.prodTargets)S.prodTargets={};S.prodTargets[item]=parseInt(val)||0;saveState();}
 function esc(s){return String(s).replace(/'/g,"\\'");}
 function fmt(p){return p!=null?"$"+Number(p).toFixed(2):"--";}
-
-// ── RENDER ────────────────────────────────────────────────────────
 function renderAll(){renderOverview();renderLocations();if(currentLoc)renderLocDetail();renderInventory();renderPar();renderAlerts();renderTransfers();renderProduction();renderSales();renderSettings();}
-
-function renderOverview(){
-  let low=0,out=0;S.items.forEach(item=>{LOCS.forEach(loc=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});});
-  const aa=S.alerts.length;
-  document.getElementById("m-skus").textContent=S.items.length;document.getElementById("m-low").textContent=low;document.getElementById("m-out").textContent=out;document.getElementById("m-alerts").textContent=aa;document.getElementById("m-sync").textContent=S.lastSync||"Never";
-  const badge=document.getElementById("nav-alert-badge");badge.style.display=aa>0?"inline":"none";badge.textContent=aa;
-  const oa=document.getElementById("overview-alerts");
-  if(S.alerts.length>0){oa.innerHTML=S.alerts.slice(0,4).map(a=>{const li=LOCS.indexOf(a.loc),cls=a.type==="out"?"danger":"warn";return`<div class="alert-bar ${cls}"><div class="alert-body"><div class="alert-title">${a.type==="out"?"Out of stock":"Below par"}: ${a.item} @ <span class="loc-chip ${LC[li]}">${a.loc}</span></div><div class="alert-sub">Stock: ${a.qty} &middot; Par: ${a.par} &middot; ${a.time}</div></div><button class="alert-dismiss" onclick="dismissAlert('${esc(a.key)}')">&#x00D7;</button></div>`;}).join("");if(S.alerts.length>4)oa.innerHTML+=`<p style="font-size:12px;color:var(--text3);margin-bottom:12px;font-style:italic">+${S.alerts.length-4} more &mdash; see Alerts tab</p>`;}
-  else{oa.innerHTML=S.items.length?'<div class="alert-bar success" style="margin-bottom:12px"><i class="ti ti-circle-check" aria-hidden="true" style="font-size:16px"></i><div class="alert-body">All locations are at or above par.</div></div>':"";}
-  document.getElementById("loc-summary").innerHTML=LOCS.map((loc,i)=>{let lLow=0,lOut=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)lOut++;else if(p>0&&q<=p)lLow++;});const status=lOut>0?'<span class="stock-out">Action needed</span>':lLow>0?'<span class="stock-low">Low stock</span>':'<span class="stock-ok">All good</span>';return`<tr style="cursor:pointer" onclick="openLocDetail('${loc}')"><td><span class="loc-chip ${LC[i]}">${loc}</span></td><td>${S.items.length}</td><td>${lLow||"\u2014"}</td><td>${lOut||"\u2014"}</td><td>${status}</td><td style="color:var(--text3);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">View &rarr;</td></tr>`;}).join("");
-}
+function renderOverview(){let low=0,out=0;S.items.forEach(item=>{LOCS.forEach(loc=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});});const aa=S.alerts.length;document.getElementById("m-skus").textContent=S.items.length;document.getElementById("m-low").textContent=low;document.getElementById("m-out").textContent=out;document.getElementById("m-alerts").textContent=aa;document.getElementById("m-sync").textContent=S.lastSync||"Never";const badge=document.getElementById("nav-alert-badge");badge.style.display=aa>0?"inline":"none";badge.textContent=aa;const oa=document.getElementById("overview-alerts");if(S.alerts.length>0){oa.innerHTML=S.alerts.slice(0,4).map(a=>{const li=LOCS.indexOf(a.loc),cls=a.type==="out"?"danger":"warn";return`<div class="alert-bar ${cls}"><div class="alert-body"><div class="alert-title">${a.type==="out"?"Out of stock":"Below par"}: ${a.item} @ <span class="loc-chip ${LC[li]}">${a.loc}</span></div><div class="alert-sub">Stock: ${a.qty} &middot; Par: ${a.par} &middot; ${a.time}</div></div><button class="alert-dismiss" onclick="dismissAlert('${esc(a.key)}')">&#x00D7;</button></div>`;}).join("");if(S.alerts.length>4)oa.innerHTML+=`<p style="font-size:12px;color:var(--text3);margin-bottom:12px;font-style:italic">+${S.alerts.length-4} more &mdash; see Alerts tab</p>`;}else{oa.innerHTML=S.items.length?'<div class="alert-bar success" style="margin-bottom:12px"><i class="ti ti-circle-check" aria-hidden="true" style="font-size:16px"></i><div class="alert-body">All locations are at or above par.</div></div>':"";}document.getElementById("loc-summary").innerHTML=LOCS.map((loc,i)=>{let lLow=0,lOut=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)lOut++;else if(p>0&&q<=p)lLow++;});const status=lOut>0?'<span class="stock-out">Action needed</span>':lLow>0?'<span class="stock-low">Low stock</span>':'<span class="stock-ok">All good</span>';return`<tr style="cursor:pointer" onclick="openLocDetail('${loc}')"><td><span class="loc-chip ${LC[i]}">${loc}</span></td><td>${S.items.length}</td><td>${lLow||"\u2014"}</td><td>${lOut||"\u2014"}</td><td>${status}</td><td style="color:var(--text3);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">View &rarr;</td></tr>`;}).join("");}
 function renderLocations(){const grid=document.getElementById("loc-grid");if(!grid)return;grid.innerHTML=LOCS.map((loc,i)=>{let total=0,low=0,out=0,value=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});const statusColor=out>0?"var(--red)":low>0?"var(--amber)":"var(--green)";const statusText=out>0?out+" out of stock":low>0?low+" below par":"All good";return`<div class="loc-card" onclick="openLocDetail('${loc}')"><div class="loc-card-top"></div><div class="loc-card-name">${loc}</div><div class="loc-card-sub" style="color:${statusColor}">${statusText}</div><div class="loc-card-stats"><div><div class="loc-stat-val">${total}</div><div class="loc-stat-label">Units</div></div><div><div class="loc-stat-val">$${value.toFixed(0)}</div><div class="loc-stat-label">Value</div></div><div><div class="loc-stat-val">${S.items.length}</div><div class="loc-stat-label">SKUs</div></div></div><div class="loc-card-arrow"><i class="ti ti-arrow-right" aria-hidden="true"></i></div></div>`;}).join("");}
 function renderLocDetail(){if(!currentLoc)return;const li=LOCS.indexOf(currentLoc);const filter=document.getElementById("loc-detail-cat-filter")?.value||"";const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;let total=0,low=0,out=0,value=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[currentLoc]||0,p=(S.par[item]||{})[currentLoc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});document.getElementById("loc-detail-header").innerHTML=`<div class="loc-detail-icon">${LOC_ICONS[li]}</div><div style="flex:1"><div class="loc-detail-name">${currentLoc}</div><div class="loc-detail-stats"><div class="loc-detail-stat"><strong>${total}</strong> units on hand</div><div class="loc-detail-stat"><strong>$${value.toFixed(2)}</strong> value</div><div class="loc-detail-stat"><strong>${out}</strong> out of stock</div><div class="loc-detail-stat"><strong>${low}</strong> below par</div></div></div><button class="btn btn-sm" style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.2);color:#fff" onclick="exportLocCSV()"><i class="ti ti-download" aria-hidden="true"></i> Export</button>`;document.getElementById("loc-detail-title").textContent=currentLoc+" Inventory";document.getElementById("loc-detail-table").innerHTML=items.map(item=>{const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0,cat=S.categories[item]||"",price=S.prices[item]||0;const cls=qty===0?"stock-out":par>0&&qty<=par?"stock-low":"stock-ok";const statusText=qty===0?"Out of stock":par>0&&qty<=par?"Below par ("+qty+"/"+par+")":"In stock";const pct=par>0?Math.min(100,Math.round((qty/par)*100)):100;const barColor=qty===0?"var(--red)":par>0&&qty<=par?"var(--amber)":"var(--green)";return`<tr><td style="font-weight:700">${item}</td><td><span class="cat-chip ${cat==="Frozen Foods"?"cc-food":"cc-dessert"}">${cat==="Frozen Foods"?"Food":"Dessert"}</span></td><td style="font-weight:700;color:var(--green)">${fmt(price)}</td><td style="text-align:center"><input type="number" class="inv-input" value="${qty}" min="0" onchange="updateInventory('${esc(item)}','${currentLoc}',this.value)"></td><td style="text-align:center;color:var(--text3);font-weight:700">${par||"\u2014"}</td><td><span class="${cls}">${statusText}</span>${par>0?`<div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${barColor}"></div></div>`:""}</td></tr>`;}).join("");}
 function exportLocCSV(){if(!currentLoc)return;const rows=[["Item","Category","Price","On Hand","Par Level","Status","Inventory Value"]];S.items.forEach(item=>{const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0,price=S.prices[item]||0;const status=qty===0?"Out of stock":par>0&&qty<=par?"Below par":"In stock";rows.push([item,S.categories[item]||"",price.toFixed(2),qty,par||"",status,(qty*price).toFixed(2)]);});dl(currentLoc.replace(/\s+/g,"_")+"_inventory_"+new Date().toISOString().slice(0,10)+".csv",rows);}
@@ -817,11 +574,8 @@ function renderTransfers(){document.getElementById("xfr-item").innerHTML=S.items
 function renderProduction(){document.getElementById("prod-table").innerHTML=S.items.map(item=>{const total=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0),totalPar=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0),target=S.prodTargets?.[item]||0,need=Math.max(0,target-total),parGap=Math.max(0,totalPar-total),sc=total===0?"stock-out":totalPar>0&&total<=totalPar?"stock-low":"stock-ok",action=need>0?`<span class="stock-low">Make ${need}</span>`:parGap>0?`<span class="stock-low">Need ${parGap} for par</span>`:`<span class="stock-ok">&#x2713; On target</span>`;return`<tr><td style="font-weight:700">${item}</td><td style="text-align:center" class="${sc}">${total}</td><td style="text-align:center;color:var(--text3);font-weight:700">${totalPar||"\u2014"}</td><td style="text-align:center"><input type="number" min="0" value="${target}" style="width:75px;text-align:center" onchange="updateProdTarget('${esc(item)}',this.value)"></td><td>${action}</td></tr>`;}).join("");}
 function renderSales(){document.getElementById("sales-table").innerHTML=S.items.map(item=>{const cols=LOCS.map(loc=>`<td class="qty-cell">${(S.sales[item]||{})[loc]||0}</td>`).join("");const total=LOCS.reduce((s,l)=>s+(S.sales[item]?.[l]||0),0),rev=total*(S.prices[item]||0);return`<tr><td style="font-weight:700">${item}</td><td style="font-weight:700;color:var(--green)">${fmt(S.prices[item])}</td>${cols}<td class="qty-cell" style="font-weight:700">${total}</td><td class="qty-cell stock-ok" style="font-weight:700">$${rev.toFixed(2)}</td></tr>`;}).join("");}
 function renderSettings(){const wu=document.getElementById("worker-url");if(wu&&S.workerUrl)wu.value=S.workerUrl;["loc-wh","loc-rs","loc-t1","loc-t2","loc-t3"].forEach((id,i)=>{const el=document.getElementById(id);if(el)el.value=Object.values(S.locationIds)[i]||"";});if(S.workerUrl)setStatus("Worker configured",true);else if(S.token)setStatus("Token saved",true);document.getElementById("item-count").textContent="("+S.items.length+" items)";document.getElementById("items-list").innerHTML=S.items.map(item=>`<div class="item-row"><span style="flex:1;font-weight:700">${item}</span><span style="font-size:12px;font-weight:700;color:var(--green)">${fmt(S.prices[item])}</span><span class="cat-chip ${(S.categories[item]||"")==="Frozen Foods"?"cc-food":"cc-dessert"}">${(S.categories[item]||"")==="Frozen Foods"?"Food":"Dessert"}</span><button class="btn btn-xs btn-danger" onclick="removeItem('${esc(item)}')">Remove</button></div>`).join("");}
-
 function dl(filename,rows){const csv=rows.map(r=>r.map(v=>{const s=String(v==null?"":v);return s.includes(",")||s.includes('"')||s.includes("\n")?'"'+s.replace(/"/g,'""')+'"':s;}).join(",")).join("\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download=filename;a.click();}
 function exportCSV(type){const d=new Date().toISOString().slice(0,10);if(type==="inventory"){const rows=[["Item","Category","Price","Warehouse","Restaurant","Truck 1","Truck 2","Truck 3","Total"]];S.items.forEach(item=>{const t=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0);rows.push([item,S.categories[item]||"",fmt(S.prices[item]),...LOCS.map(l=>S.inventory[item]?.[l]||0),t]);});dl(`inventory_${d}.csv`,rows);}else if(type==="par"){const rows=[["Item","Category","Price","Warehouse","Restaurant","Truck 1","Truck 2","Truck 3","Total Par","Par Value ($)"]];S.items.forEach(item=>{const tp=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0);rows.push([item,S.categories[item]||"",fmt(S.prices[item]),...LOCS.map(l=>S.par[item]?.[l]||0),tp,(tp*(S.prices[item]||0)).toFixed(2)]);});const grand=S.items.reduce((s,item)=>s+LOCS.reduce((ss,l)=>ss+(S.par[item]?.[l]||0),0)*(S.prices[item]||0),0);rows.push([]);rows.push(["TOTAL PAR INVENTORY VALUE","","","","","","","","","$"+grand.toFixed(2)]);dl(`par_levels_${d}.csv`,rows);}else if(type==="sales"){const rows=[["Item","Category","Price","Warehouse","Restaurant","Truck 1","Truck 2","Truck 3","Total Sold","Revenue ($)"]];S.items.forEach(item=>{const t=LOCS.reduce((s,l)=>s+(S.sales[item]?.[l]||0),0);rows.push([item,S.categories[item]||"",fmt(S.prices[item]),...LOCS.map(l=>S.sales[item]?.[l]||0),t,(t*(S.prices[item]||0)).toFixed(2)]);});dl(`sales_${d}.csv`,rows);}else if(type==="production"){const rows=[["Item","Category","Price","On Hand","Total Par","Par Gap","Production Target","Need to Make"]];S.items.forEach(item=>{const oh=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0),tp=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0),tgt=S.prodTargets?.[item]||0;rows.push([item,S.categories[item]||"",fmt(S.prices[item]),oh,tp,Math.max(0,tp-oh),tgt,Math.max(0,tgt-oh)]);});dl(`production_${d}.csv`,rows);}else if(type==="transfers"){const rows=[["Time","Item","From","To","Quantity"]];S.transfers.forEach(t=>rows.push([t.time,t.item,t.from,t.to,t.qty]));dl(`transfers_${d}.csv`,rows);}}
-
-// ── INIT ──────────────────────────────────────────────────────────
 loadState();
 applyAllColors(S.colors);
 applyAllBadges(S.badges);
