@@ -137,8 +137,14 @@ input:focus,select:focus{outline:none;border-color:var(--accent);}
 .empty-state{text-align:center;padding:48px;color:var(--text3);font-size:13px;}
 .item-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;margin-bottom:6px;background:var(--surface);}
 .tbl-wrap{overflow-x:auto;}
-
-/* ── ACCORDION SETTINGS ── */
+/* Production */
+.prod-status-ok{background:var(--green-bg);color:var(--green);padding:4px 10px;border-radius:4px;font-size:11px;font-weight:700;white-space:nowrap;display:inline-block;}
+.prod-status-make{background:var(--amber-bg);color:var(--amber);padding:4px 10px;border-radius:4px;font-size:11px;font-weight:700;white-space:nowrap;display:inline-block;}
+.prod-status-out{background:var(--red-bg);color:var(--red);padding:4px 10px;border-radius:4px;font-size:11px;font-weight:700;white-space:nowrap;display:inline-block;}
+.batch-pill{display:inline-flex;align-items:center;gap:5px;background:var(--sidebar);color:#fff;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:700;}
+.batch-pill.none{background:var(--bg2);color:var(--text3);}
+.surplus-note{font-size:11px;color:var(--text3);margin-top:3px;}
+/* Accordion settings */
 .acc-section{border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:10px;background:var(--surface);box-shadow:var(--shadow);overflow:hidden;}
 .acc-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;cursor:pointer;user-select:none;transition:background .12s;}
 .acc-header:hover{background:var(--bg2);}
@@ -150,8 +156,6 @@ input:focus,select:focus{outline:none;border-color:var(--accent);}
 .acc-chevron.open{transform:rotate(180deg);}
 .acc-body{display:none;padding:0 18px 18px;border-top:1px solid var(--border);}
 .acc-body.open{display:block;}
-
-/* Color settings inside accordion */
 .color-settings-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:14px;}
 .color-group{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;}
 .color-group-title{font-family:var(--font-display);font-size:13px;color:var(--sidebar);margin-bottom:12px;}
@@ -170,13 +174,8 @@ input[type=color]{width:34px;height:28px;border:1px solid var(--border);border-r
 .badge-pair-row:last-child{margin-bottom:0;}
 .badge-pair-sub{font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.06em;width:22px;flex-shrink:0;}
 .badge-pair-controls{display:flex;align-items:center;gap:6px;flex:1;}
-.worker-inner{padding-top:14px;}
-.worker-inner p{font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.6;font-style:italic;}
 .worker-status{font-size:12px;margin-top:8px;padding:7px 10px;border-radius:var(--radius);display:none;font-weight:700;}
 .worker-status.ok{background:var(--green-bg);color:var(--green);}.worker-status.err{background:var(--red-bg);color:var(--red);}
-.sq-inner{padding-top:14px;}
-.items-inner{padding-top:14px;}
-.export-inner{padding-top:14px;}
 </style>
 </head>
 <body>
@@ -311,10 +310,45 @@ input[type=color]{width:34px;height:28px;border:1px solid var(--border);border-r
 
     <!-- PRODUCTION -->
     <div class="section" id="sec-production">
+      <div class="card" style="background:var(--sidebar);border-color:var(--sidebar);margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="font-family:var(--font-display);font-size:18px;color:#fff;margin-bottom:4px">Production Plan</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.65);line-height:1.5">Based on current aggregate inventory vs. total par levels across all locations.<br>Batch yields are set per item — the app calculates exact batches needed, rounded up.</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-sm" style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.2);color:#fff" onclick="saveBatchYields()"><i class="ti ti-device-floppy"></i> Save Yields</button>
+            <button class="btn btn-sm" style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.2);color:#fff" onclick="exportCSV('production')"><i class="ti ti-download"></i> Export</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Summary metrics -->
+      <div class="metrics-grid" style="margin-bottom:20px" id="prod-metrics"></div>
+
       <div class="card">
-        <div class="card-header"><span class="card-title">Production Planning</span><button class="btn btn-sm" onclick="exportCSV('production')"><i class="ti ti-download"></i> Export</button></div>
-        <p class="section-intro">Set production targets per item. The app shows what needs to be made to meet targets and keep all locations above par.</p>
-        <div class="tbl-wrap"><table><thead><tr><th>Item</th><th style="text-align:center">On Hand</th><th style="text-align:center">Total Par</th><th style="text-align:center">Target</th><th>Action Needed</th></tr></thead><tbody id="prod-table"></tbody></table></div>
+        <div class="card-header">
+          <span class="card-title">Batch Yields &amp; Production Needs</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="prod-cat-filter" onchange="renderProduction()"><option value="">All categories</option><option>Frozen Foods</option><option>Frozen Desserts</option></select>
+            <select id="prod-status-filter" onchange="renderProduction()"><option value="">All items</option><option value="make">Needs production</option><option value="ok">At or above par</option></select>
+          </div>
+        </div>
+        <p class="section-intro">Enter each item's batch yield (units produced per 1 batch). The app calculates how many batches to make and what quantity that produces.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Item</th>
+              <th style="text-align:center">On Hand</th>
+              <th style="text-align:center">Total Par</th>
+              <th style="text-align:center">Units Needed</th>
+              <th style="text-align:center">Batch Yield</th>
+              <th style="text-align:center">Batches to Make</th>
+              <th>Result</th>
+            </tr></thead>
+            <tbody id="prod-table"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -346,16 +380,11 @@ input[type=color]{width:34px;height:28px;border:1px solid var(--border);border-r
       </div>
     </div>
 
-    <!-- SETTINGS — accordion layout -->
+    <!-- SETTINGS -->
     <div class="section" id="sec-settings">
-
-      <!-- 1. App Colors -->
       <div class="acc-section">
         <div class="acc-header" onclick="toggleAcc('acc-colors')">
-          <div class="acc-header-left">
-            <span class="acc-icon">&#x1F3A8;</span>
-            <div><div class="acc-title">App Colors</div><div class="acc-subtitle">Sidebar, content area, text &amp; accent</div></div>
-          </div>
+          <div class="acc-header-left"><span class="acc-icon">&#x1F3A8;</span><div><div class="acc-title">App Colors</div><div class="acc-subtitle">Sidebar, content, text &amp; accent</div></div></div>
           <span class="acc-chevron" id="chv-acc-colors">&#x25BC;</span>
         </div>
         <div class="acc-body" id="acc-colors">
@@ -371,71 +400,49 @@ input[type=color]{width:34px;height:28px;border:1px solid var(--border);border-r
             <button class="preset-btn" onclick="applyPreset('yours')"><span class="preset-dot" style="background:#5e3303"></span>My Theme</button>
           </div>
           <div class="color-settings-grid">
-            <div class="color-group">
-              <div class="color-group-title">Sidebar</div>
+            <div class="color-group"><div class="color-group-title">Sidebar</div>
               <div class="color-row"><label>Background</label><input type="color" id="c-sidebar" oninput="liveColor('--sidebar',this.value,'h-sidebar');document.getElementById('color-preview-bar').style.background=this.value"><input type="text" class="color-hex" id="h-sidebar" maxlength="7" oninput="hexInput('h-sidebar','c-sidebar','--sidebar')"></div>
               <div class="color-row"><label>Nav text</label><input type="color" id="c-sidebar-text" oninput="liveColor('--sidebar-text',this.value,'h-sidebar-text')"><input type="text" class="color-hex" id="h-sidebar-text" maxlength="7" oninput="hexInput('h-sidebar-text','c-sidebar-text','--sidebar-text')"></div>
               <div class="color-row"><label>Nav muted</label><input type="color" id="c-sidebar-text2" oninput="liveColor('--sidebar-text2',this.value,'h-sidebar-text2')"><input type="text" class="color-hex" id="h-sidebar-text2" maxlength="7" oninput="hexInput('h-sidebar-text2','c-sidebar-text2','--sidebar-text2')"></div>
             </div>
-            <div class="color-group">
-              <div class="color-group-title">Content Area</div>
+            <div class="color-group"><div class="color-group-title">Content Area</div>
               <div class="color-row"><label>Page background</label><input type="color" id="c-bg" oninput="liveColor('--bg',this.value,'h-bg')"><input type="text" class="color-hex" id="h-bg" maxlength="7" oninput="hexInput('h-bg','c-bg','--bg')"></div>
               <div class="color-row"><label>Card surface</label><input type="color" id="c-surface" oninput="liveColor('--surface',this.value,'h-surface')"><input type="text" class="color-hex" id="h-surface" maxlength="7" oninput="hexInput('h-surface','c-surface','--surface')"></div>
               <div class="color-row"><label>Borders</label><input type="color" id="c-border" oninput="liveColor('--border',this.value,'h-border')"><input type="text" class="color-hex" id="h-border" maxlength="7" oninput="hexInput('h-border','c-border','--border')"></div>
             </div>
-            <div class="color-group">
-              <div class="color-group-title">Text</div>
+            <div class="color-group"><div class="color-group-title">Text</div>
               <div class="color-row"><label>Primary</label><input type="color" id="c-text" oninput="liveColor('--text',this.value,'h-text')"><input type="text" class="color-hex" id="h-text" maxlength="7" oninput="hexInput('h-text','c-text','--text')"></div>
               <div class="color-row"><label>Secondary</label><input type="color" id="c-text2" oninput="liveColor('--text2',this.value,'h-text2')"><input type="text" class="color-hex" id="h-text2" maxlength="7" oninput="hexInput('h-text2','c-text2','--text2')"></div>
               <div class="color-row"><label>Muted</label><input type="color" id="c-text3" oninput="liveColor('--text3',this.value,'h-text3')"><input type="text" class="color-hex" id="h-text3" maxlength="7" oninput="hexInput('h-text3','c-text3','--text3')"></div>
             </div>
-            <div class="color-group">
-              <div class="color-group-title">Accent</div>
+            <div class="color-group"><div class="color-group-title">Accent</div>
               <div class="color-row"><label>Buttons &amp; alerts</label><input type="color" id="c-accent" oninput="liveColor('--accent',this.value,'h-accent')"><input type="text" class="color-hex" id="h-accent" maxlength="7" oninput="hexInput('h-accent','c-accent','--accent')"></div>
             </div>
           </div>
           <div style="margin-top:12px;text-align:right"><button class="btn btn-sm btn-danger" onclick="resetColors()"><i class="ti ti-refresh"></i> Reset to Default</button></div>
         </div>
       </div>
-
-      <!-- 2. Badge Colors -->
       <div class="acc-section">
         <div class="acc-header" onclick="toggleAcc('acc-badges')">
-          <div class="acc-header-left">
-            <span class="acc-icon">&#x1F3F7;</span>
-            <div><div class="acc-title">Badge Colors</div><div class="acc-subtitle">Location &amp; category badge colors</div></div>
-          </div>
+          <div class="acc-header-left"><span class="acc-icon">&#x1F3F7;</span><div><div class="acc-title">Badge Colors</div><div class="acc-subtitle">Location &amp; category badge colors</div></div></div>
           <span class="acc-chevron" id="chv-acc-badges">&#x25BC;</span>
         </div>
         <div class="acc-body" id="acc-badges">
           <div class="color-settings-grid" style="margin-top:14px">
-            <div class="color-group" style="grid-column:span 2">
-              <div class="color-group-title">Location Badges</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;">
-                <div><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview lc-0" id="prev-warehouse">Warehouse</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-warehouse-bg" oninput="liveBadge('--badge-warehouse-bg',this.value,'h-badge-warehouse-bg')"><input type="text" class="color-hex" id="h-badge-warehouse-bg" maxlength="7" oninput="hexBadge('h-badge-warehouse-bg','c-badge-warehouse-bg','--badge-warehouse-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls"><input type="color" id="c-badge-warehouse-text" oninput="liveBadge('--badge-warehouse-text',this.value,'h-badge-warehouse-text')"><input type="text" class="color-hex" id="h-badge-warehouse-text" maxlength="7" oninput="hexBadge('h-badge-warehouse-text','c-badge-warehouse-text','--badge-warehouse-text')"></div></div></div><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview lc-1" id="prev-restaurant">Restaurant</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-restaurant-bg" oninput="liveBadge('--badge-restaurant-bg',this.value,'h-badge-restaurant-bg')"><input type="text" class="color-hex" id="h-badge-restaurant-bg" maxlength="7" oninput="hexBadge('h-badge-restaurant-bg','c-badge-restaurant-bg','--badge-restaurant-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls"><input type="color" id="c-badge-restaurant-text" oninput="liveBadge('--badge-restaurant-text',this.value,'h-badge-restaurant-text')"><input type="text" class="color-hex" id="h-badge-restaurant-text" maxlength="7" oninput="hexBadge('h-badge-restaurant-text','c-badge-restaurant-text','--badge-restaurant-text')"></div></div></div><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview lc-2" id="prev-truck1">Truck 1</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck1-bg" oninput="liveBadge('--badge-truck1-bg',this.value,'h-badge-truck1-bg')"><input type="text" class="color-hex" id="h-badge-truck1-bg" maxlength="7" oninput="hexBadge('h-badge-truck1-bg','c-badge-truck1-bg','--badge-truck1-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck1-text" oninput="liveBadge('--badge-truck1-text',this.value,'h-badge-truck1-text')"><input type="text" class="color-hex" id="h-badge-truck1-text" maxlength="7" oninput="hexBadge('h-badge-truck1-text','c-badge-truck1-text','--badge-truck1-text')"></div></div></div><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview lc-3" id="prev-truck2">Truck 2</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck2-bg" oninput="liveBadge('--badge-truck2-bg',this.value,'h-badge-truck2-bg')"><input type="text" class="color-hex" id="h-badge-truck2-bg" maxlength="7" oninput="hexBadge('h-badge-truck2-bg','c-badge-truck2-bg','--badge-truck2-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck2-text" oninput="liveBadge('--badge-truck2-text',this.value,'h-badge-truck2-text')"><input type="text" class="color-hex" id="h-badge-truck2-text" maxlength="7" oninput="hexBadge('h-badge-truck2-text','c-badge-truck2-text','--badge-truck2-text')"></div></div></div><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview lc-4" id="prev-truck3">Truck 3</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck3-bg" oninput="liveBadge('--badge-truck3-bg',this.value,'h-badge-truck3-bg')"><input type="text" class="color-hex" id="h-badge-truck3-bg" maxlength="7" oninput="hexBadge('h-badge-truck3-bg','c-badge-truck3-bg','--badge-truck3-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck3-text" oninput="liveBadge('--badge-truck3-text',this.value,'h-badge-truck3-text')"><input type="text" class="color-hex" id="h-badge-truck3-text" maxlength="7" oninput="hexBadge('h-badge-truck3-text','c-badge-truck3-text','--badge-truck3-text')"></div></div></div>
-              </div>
-            </div>
-            <div class="color-group">
-              <div class="color-group-title">Category Badges</div>
-              <div style="margin-bottom:16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview cc-food" id="prev-food">Food</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-food-bg" oninput="liveBadge('--badge-food-bg',this.value,'h-badge-food-bg')"><input type="text" class="color-hex" id="h-badge-food-bg" maxlength="7" oninput="hexBadge('h-badge-food-bg','c-badge-food-bg','--badge-food-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls"><input type="color" id="c-badge-food-text" oninput="liveBadge('--badge-food-text',this.value,'h-badge-food-text')"><input type="text" class="color-hex" id="h-badge-food-text" maxlength="7" oninput="hexBadge('h-badge-food-text','c-badge-food-text','--badge-food-text')"></div></div></div><div style="margin-bottom:16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview cc-dessert" id="prev-dessert">Dessert</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-dessert-bg" oninput="liveBadge('--badge-dessert-bg',this.value,'h-badge-dessert-bg')"><input type="text" class="color-hex" id="h-badge-dessert-bg" maxlength="7" oninput="hexBadge('h-badge-dessert-bg','c-badge-dessert-bg','--badge-dessert-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls"><input type="color" id="c-badge-dessert-text" oninput="liveBadge('--badge-dessert-text',this.value,'h-badge-dessert-text')"><input type="text" class="color-hex" id="h-badge-dessert-text" maxlength="7" oninput="hexBadge('h-badge-dessert-text','c-badge-dessert-text','--badge-dessert-text')"></div></div></div>
-            </div>
+            <div class="color-group" style="grid-column:span 2"><div class="color-group-title">Location Badges</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview lc-0" id="prev-warehouse">Warehouse</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-warehouse-bg" oninput="liveBadge('--badge-warehouse-bg',this.value,'h-badge-warehouse-bg')"><input type="text" class="color-hex" id="h-badge-warehouse-bg" maxlength="7" oninput="hexBadge('h-badge-warehouse-bg','c-badge-warehouse-bg','--badge-warehouse-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls"><input type="color" id="c-badge-warehouse-text" oninput="liveBadge('--badge-warehouse-text',this.value,'h-badge-warehouse-text')"><input type="text" class="color-hex" id="h-badge-warehouse-text" maxlength="7" oninput="hexBadge('h-badge-warehouse-text','c-badge-warehouse-text','--badge-warehouse-text')"></div></div></div><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview lc-1" id="prev-restaurant">Restaurant</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-restaurant-bg" oninput="liveBadge('--badge-restaurant-bg',this.value,'h-badge-restaurant-bg')"><input type="text" class="color-hex" id="h-badge-restaurant-bg" maxlength="7" oninput="hexBadge('h-badge-restaurant-bg','c-badge-restaurant-bg','--badge-restaurant-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls"><input type="color" id="c-badge-restaurant-text" oninput="liveBadge('--badge-restaurant-text',this.value,'h-badge-restaurant-text')"><input type="text" class="color-hex" id="h-badge-restaurant-text" maxlength="7" oninput="hexBadge('h-badge-restaurant-text','c-badge-restaurant-text','--badge-restaurant-text')"></div></div></div><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview lc-2" id="prev-truck1">Truck 1</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck1-bg" oninput="liveBadge('--badge-truck1-bg',this.value,'h-badge-truck1-bg')"><input type="text" class="color-hex" id="h-badge-truck1-bg" maxlength="7" oninput="hexBadge('h-badge-truck1-bg','c-badge-truck1-bg','--badge-truck1-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck1-text" oninput="liveBadge('--badge-truck1-text',this.value,'h-badge-truck1-text')"><input type="text" class="color-hex" id="h-badge-truck1-text" maxlength="7" oninput="hexBadge('h-badge-truck1-text','c-badge-truck1-text','--badge-truck1-text')"></div></div></div><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview lc-3" id="prev-truck2">Truck 2</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck2-bg" oninput="liveBadge('--badge-truck2-bg',this.value,'h-badge-truck2-bg')"><input type="text" class="color-hex" id="h-badge-truck2-bg" maxlength="7" oninput="hexBadge('h-badge-truck2-bg','c-badge-truck2-bg','--badge-truck2-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck2-text" oninput="liveBadge('--badge-truck2-text',this.value,'h-badge-truck2-text')"><input type="text" class="color-hex" id="h-badge-truck2-text" maxlength="7" oninput="hexBadge('h-badge-truck2-text','c-badge-truck2-text','--badge-truck2-text')"></div></div></div><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview lc-4" id="prev-truck3">Truck 3</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck3-bg" oninput="liveBadge('--badge-truck3-bg',this.value,'h-badge-truck3-bg')"><input type="text" class="color-hex" id="h-badge-truck3-bg" maxlength="7" oninput="hexBadge('h-badge-truck3-bg','c-badge-truck3-bg','--badge-truck3-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck3-text" oninput="liveBadge('--badge-truck3-text',this.value,'h-badge-truck3-text')"><input type="text" class="color-hex" id="h-badge-truck3-text" maxlength="7" oninput="hexBadge('h-badge-truck3-text','c-badge-truck3-text','--badge-truck3-text')"></div></div></div></div></div>
+            <div class="color-group"><div class="color-group-title">Category Badges</div><div style="margin-bottom:16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview cc-food" id="prev-food">Food</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-food-bg" oninput="liveBadge('--badge-food-bg',this.value,'h-badge-food-bg')"><input type="text" class="color-hex" id="h-badge-food-bg" maxlength="7" oninput="hexBadge('h-badge-food-bg','c-badge-food-bg','--badge-food-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls"><input type="color" id="c-badge-food-text" oninput="liveBadge('--badge-food-text',this.value,'h-badge-food-text')"><input type="text" class="color-hex" id="h-badge-food-text" maxlength="7" oninput="hexBadge('h-badge-food-text','c-badge-food-text','--badge-food-text')"></div></div></div><div style="margin-bottom:16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview cc-dessert" id="prev-dessert">Dessert</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-dessert-bg" oninput="liveBadge('--badge-dessert-bg',this.value,'h-badge-dessert-bg')"><input type="text" class="color-hex" id="h-badge-dessert-bg" maxlength="7" oninput="hexBadge('h-badge-dessert-bg','c-badge-dessert-bg','--badge-dessert-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Text</span><div class="badge-pair-controls"><input type="color" id="c-badge-dessert-text" oninput="liveBadge('--badge-dessert-text',this.value,'h-badge-dessert-text')"><input type="text" class="color-hex" id="h-badge-dessert-text" maxlength="7" oninput="hexBadge('h-badge-dessert-text','c-badge-dessert-text','--badge-dessert-text')"></div></div></div></div>
           </div>
           <div style="margin-top:12px;text-align:right"><button class="btn btn-sm btn-danger" onclick="resetBadgeColors()"><i class="ti ti-refresh"></i> Reset Badges</button></div>
         </div>
       </div>
-
-      <!-- 3. Worker / Square Sync -->
       <div class="acc-section">
         <div class="acc-header" onclick="toggleAcc('acc-worker')">
-          <div class="acc-header-left">
-            <span class="acc-icon">&#x26A1;</span>
-            <div><div class="acc-title">Square Sync</div><div class="acc-subtitle">Worker URL &amp; access token</div></div>
-          </div>
+          <div class="acc-header-left"><span class="acc-icon">&#x26A1;</span><div><div class="acc-title">Square Sync</div><div class="acc-subtitle">Worker URL &amp; access token</div></div></div>
           <span class="acc-chevron" id="chv-acc-worker">&#x25BC;</span>
         </div>
         <div class="acc-body" id="acc-worker">
-          <div class="worker-inner">
-            <p>Your Worker tracks Square sales via webhooks. On each sync the app deducts sold quantities and pulls live prices from Square.</p>
+          <div style="padding-top:14px">
+            <p style="font-size:12px;color:var(--text3);margin-bottom:12px;font-style:italic">Your Worker tracks Square sales, archives them at midnight, and pulls live prices.</p>
             <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px">Worker URL</label>
             <div style="display:flex;gap:8px;margin-bottom:10px"><input type="url" id="worker-url" placeholder="https://your-worker.workers.dev" style="flex:1"><button class="btn btn-accent" onclick="saveWorkerUrl()">Save &amp; Test</button></div>
             <div class="worker-status" id="worker-status"></div>
@@ -444,20 +451,14 @@ input[type=color]{width:34px;height:28px;border:1px solid var(--border);border-r
           </div>
         </div>
       </div>
-
-      <!-- 4. Location IDs -->
       <div class="acc-section">
         <div class="acc-header" onclick="toggleAcc('acc-locations')">
-          <div class="acc-header-left">
-            <span class="acc-icon">&#x1F4CD;</span>
-            <div><div class="acc-title">Square Location IDs</div><div class="acc-subtitle">Map your Square locations</div></div>
-          </div>
+          <div class="acc-header-left"><span class="acc-icon">&#x1F4CD;</span><div><div class="acc-title">Square Location IDs</div><div class="acc-subtitle">Map your Square locations</div></div></div>
           <span class="acc-chevron" id="chv-acc-locations">&#x25BC;</span>
         </div>
         <div class="acc-body" id="acc-locations">
           <div style="padding-top:14px">
-            <table style="font-size:13px"><thead><tr><th>Location</th><th>Square Location ID</th></tr></thead>
-            <tbody>
+            <table style="font-size:13px"><thead><tr><th>Location</th><th>Square Location ID</th></tr></thead><tbody>
               <tr><td><span class="loc-chip lc-0">Warehouse</span></td><td><input id="loc-wh" placeholder="LXXXXXXXXXXXXX" style="width:200px;margin:3px 0"></td></tr>
               <tr><td><span class="loc-chip lc-1">Restaurant</span></td><td><input id="loc-rs" placeholder="LXXXXXXXXXXXXX" style="width:200px;margin:3px 0"></td></tr>
               <tr><td><span class="loc-chip lc-2">Truck 1</span></td><td><input id="loc-t1" placeholder="LXXXXXXXXXXXXX" style="width:200px;margin:3px 0"></td></tr>
@@ -468,35 +469,25 @@ input[type=color]{width:34px;height:28px;border:1px solid var(--border);border-r
           </div>
         </div>
       </div>
-
-      <!-- 5. Items -->
       <div class="acc-section">
         <div class="acc-header" onclick="toggleAcc('acc-items')">
-          <div class="acc-header-left">
-            <span class="acc-icon">&#x1F4E6;</span>
-            <div><div class="acc-title">Items</div><div class="acc-subtitle" id="items-subtitle">28 items</div></div>
-          </div>
+          <div class="acc-header-left"><span class="acc-icon">&#x1F4E6;</span><div><div class="acc-title">Items</div><div class="acc-subtitle" id="items-subtitle">28 items</div></div></div>
           <span class="acc-chevron" id="chv-acc-items">&#x25BC;</span>
         </div>
         <div class="acc-body" id="acc-items">
-          <div class="items-inner">
+          <div style="padding-top:14px">
             <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn btn-sm btn-primary" onclick="addItem()"><i class="ti ti-plus"></i> Add Item</button></div>
             <div id="items-list"></div>
           </div>
         </div>
       </div>
-
-      <!-- 6. Export Data -->
       <div class="acc-section">
         <div class="acc-header" onclick="toggleAcc('acc-export')">
-          <div class="acc-header-left">
-            <span class="acc-icon">&#x2193;</span>
-            <div><div class="acc-title">Export Data</div><div class="acc-subtitle">Download any dataset as CSV</div></div>
-          </div>
+          <div class="acc-header-left"><span class="acc-icon">&#x2193;</span><div><div class="acc-title">Export Data</div><div class="acc-subtitle">Download any dataset as CSV</div></div></div>
           <span class="acc-chevron" id="chv-acc-export">&#x25BC;</span>
         </div>
         <div class="acc-body" id="acc-export">
-          <div class="export-inner">
+          <div style="padding-top:14px">
             <div class="export-strip">
               <span>Download any dataset</span>
               <button class="btn btn-sm" onclick="exportCSV('inventory')"><i class="ti ti-download"></i> Inventory</button>
@@ -508,8 +499,8 @@ input[type=color]{width:34px;height:28px;border:1px solid var(--border);border-r
           </div>
         </div>
       </div>
+    </div>
 
-    </div><!-- end settings -->
   </div>
 </main>
 </div>
@@ -535,19 +526,27 @@ const PRESETS={
   yours:DEFAULT_COLORS
 };
 
-let S={token:"",workerUrl:WORKER_URL,locationIds:{Warehouse:"",Restaurant:"","Truck 1":"","Truck 2":"","Truck 3":""},items:[...CATALOG_NAMES],categories:{...DEFAULT_CATS},prices:{...DEFAULT_PRICES},inventory:{},sales:{},salesBaseline:{},par:{},prodTargets:{},transfers:[],alerts:[],lastSync:"",colors:{...DEFAULT_COLORS},badges:{...DEFAULT_BADGES}};
-CATALOG_NAMES.forEach(n=>{S.inventory[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.salesBaseline[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};});
+let S={
+  token:"",workerUrl:WORKER_URL,
+  locationIds:{Warehouse:"",Restaurant:"","Truck 1":"","Truck 2":"","Truck 3":""},
+  items:[...CATALOG_NAMES],categories:{...DEFAULT_CATS},prices:{...DEFAULT_PRICES},
+  inventory:{},sales:{},salesBaseline:{},par:{},
+  batchYields:{},   // NEW: units produced per 1 batch, keyed by item name
+  transfers:[],alerts:[],lastSync:"",
+  colors:{...DEFAULT_COLORS},badges:{...DEFAULT_BADGES}
+};
+CATALOG_NAMES.forEach(n=>{
+  S.inventory[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+  S.sales[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+  S.salesBaseline[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+  S.par[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};
+  S.batchYields[n]=0;
+});
 
 let salesViewData=null,salesViewDate=null,availableDates=[],currentLoc=null;
 
 // ── ACCORDION ─────────────────────────────────────────────────────
-function toggleAcc(id){
-  const body=document.getElementById(id);
-  const chv=document.getElementById('chv-'+id);
-  const open=body.classList.contains('open');
-  body.classList.toggle('open',!open);
-  if(chv)chv.classList.toggle('open',!open);
-}
+function toggleAcc(id){const b=document.getElementById(id),c=document.getElementById('chv-'+id);const o=b.classList.contains('open');b.classList.toggle('open',!o);if(c)c.classList.toggle('open',!o);}
 
 // ── COLOR SYSTEM ──────────────────────────────────────────────────
 function sv(n,v){document.documentElement.style.setProperty(n,v);}
@@ -574,20 +573,44 @@ function loadState(){
     if(!raw)return;
     const saved=JSON.parse(raw);
     S.token=saved.token||"";S.workerUrl=saved.workerUrl||WORKER_URL;
-    S.locationIds=saved.locationIds||S.locationIds;S.transfers=saved.transfers||[];S.alerts=saved.alerts||[];S.lastSync=saved.lastSync||"";S.prodTargets=saved.prodTargets||{};
+    S.locationIds=saved.locationIds||S.locationIds;S.transfers=saved.transfers||[];S.alerts=saved.alerts||[];S.lastSync=saved.lastSync||"";
     if(saved.colors)S.colors={...DEFAULT_COLORS,...saved.colors};
     if(saved.badges)S.badges={...DEFAULT_BADGES,...saved.badges};
     if(saved.prices)S.prices={...DEFAULT_PRICES,...saved.prices};
     if(saved.categories)S.categories={...DEFAULT_CATS,...saved.categories};
+    if(saved.batchYields)S.batchYields={...S.batchYields,...saved.batchYields};
     CATALOG_NAMES.forEach(n=>{
       if(saved.inventory?.[n])S.inventory[n]={...S.inventory[n],...saved.inventory[n]};
       if(saved.sales?.[n])S.sales[n]={...S.sales[n],...saved.sales[n]};
       if(saved.salesBaseline?.[n])S.salesBaseline[n]={...S.salesBaseline[n],...saved.salesBaseline[n]};
       if(saved.par?.[n])S.par[n]={...S.par[n],...saved.par[n]};
     });
-    if(saved.items)saved.items.forEach(name=>{if(!S.items.includes(name)&&!REMOVED.includes(name)){S.items.push(name);S.inventory[name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.salesBaseline[name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};}});
+    if(saved.items)saved.items.forEach(name=>{if(!S.items.includes(name)&&!REMOVED.includes(name)){S.items.push(name);S.inventory[name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.salesBaseline[name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[name]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.batchYields[name]=saved.batchYields?.[name]||0;}});
   }catch(e){console.error(e);}
   S.alerts=S.alerts.filter(a=>S.items.includes(a.item));
+}
+
+// ── BATCH YIELDS ──────────────────────────────────────────────────
+function saveBatchYields(){
+  S.items.forEach(item=>{
+    const el=document.getElementById("yield-"+sl(item));
+    if(el) S.batchYields[item]=Math.max(0,parseInt(el.value)||0);
+  });
+  saveState();renderProduction();
+  const btn=document.querySelector('button[onclick="saveBatchYields()"]');
+  if(btn){btn.innerHTML='<i class="ti ti-circle-check"></i> Saved!';setTimeout(()=>btn.innerHTML='<i class="ti ti-device-floppy"></i> Save Yields',1500);}
+}
+
+// ── PRODUCTION CALC ───────────────────────────────────────────────
+function calcProduction(item){
+  const onHand   = LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0);
+  const totalPar = LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0);
+  const yield_   = S.batchYields[item]||0;
+  const needed   = Math.max(0, totalPar - onHand);
+  const batches  = (yield_>0 && needed>0) ? Math.ceil(needed/yield_) : 0;
+  const produces = batches * yield_;
+  const surplus  = produces - needed;
+  return {onHand, totalPar, needed, yield_, batches, produces, surplus};
 }
 
 // ── NAV ───────────────────────────────────────────────────────────
@@ -619,7 +642,7 @@ async function syncNow(){
   if(sm)sm.textContent="Fetching sales from Square...";
   let totalDeducted=0;
   try{
-    const res=await fetch(S.workerUrl+"/sales",{method:"GET",mode:"cors"});
+    const res=await fetch(S.workerUrl+"/sales",{mode:"cors"});
     if(!res.ok)throw new Error("Worker returned "+res.status);
     const data=await res.json();
     const cs=data.sales||{};
@@ -634,63 +657,102 @@ async function syncNow(){
 }
 
 // ── SALES HISTORY ─────────────────────────────────────────────────
-async function loadAvailableDates(){
-  if(!S.workerUrl)return;
-  try{const res=await fetch(S.workerUrl+"/sales/dates",{mode:"cors"});if(!res.ok)return;const data=await res.json();availableDates=data.dates||[];renderHistoryBar();}catch(e){}
-}
-function renderHistoryBar(){
-  const bar=document.getElementById("sales-history-bar"),list=document.getElementById("history-list");
-  if(!list)return;
-  if(availableDates.length===0){if(bar)bar.style.display="none";return;}
-  if(bar)bar.style.display="block";
-  list.innerHTML=availableDates.slice(0,14).map(d=>`<button class="history-date-btn ${d===salesViewDate?'selected':''}" onclick="loadArchiveDate('${d}')">${formatDateLabel(d)}</button>`).join("");
-}
+async function loadAvailableDates(){if(!S.workerUrl)return;try{const res=await fetch(S.workerUrl+"/sales/dates",{mode:"cors"});if(!res.ok)return;const data=await res.json();availableDates=data.dates||[];renderHistoryBar();}catch(e){}}
+function renderHistoryBar(){const bar=document.getElementById("sales-history-bar"),list=document.getElementById("history-list");if(!list)return;if(availableDates.length===0){if(bar)bar.style.display="none";return;}if(bar)bar.style.display="block";list.innerHTML=availableDates.slice(0,14).map(d=>`<button class="history-date-btn ${d===salesViewDate?'selected':''}" onclick="loadArchiveDate('${d}')">${formatDateLabel(d)}</button>`).join("");}
 function formatDateLabel(d){try{return new Date(d+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"});}catch(e){return d;}}
-async function loadArchiveDate(dateStr){
-  if(!dateStr||!S.workerUrl)return;
-  const sp=document.getElementById("sales-spinner"),sm=document.getElementById("sales-msg");
-  sp.style.display="block";if(sm)sm.textContent="Loading "+dateStr+"...";
-  try{
-    const res=await fetch(S.workerUrl+"/sales/archive?date="+dateStr,{mode:"cors"});
-    if(!res.ok)throw new Error("No data for "+dateStr);
-    const data=await res.json();
-    salesViewData=data.sales||{};salesViewDate=dateStr;
-    const picker=document.getElementById("sales-date-picker");if(picker)picker.value=dateStr;
-    renderSales();if(sm)sm.textContent="Showing archived data for "+dateStr;
-  }catch(e){if(sm)sm.textContent="No data available for "+dateStr;}
-  sp.style.display="none";
-}
+async function loadArchiveDate(dateStr){if(!dateStr||!S.workerUrl)return;const sp=document.getElementById("sales-spinner"),sm=document.getElementById("sales-msg");sp.style.display="block";if(sm)sm.textContent="Loading "+dateStr+"...";try{const res=await fetch(S.workerUrl+"/sales/archive?date="+dateStr,{mode:"cors"});if(!res.ok)throw new Error("No data for "+dateStr);const data=await res.json();salesViewData=data.sales||{};salesViewDate=dateStr;const picker=document.getElementById("sales-date-picker");if(picker)picker.value=dateStr;renderSales();if(sm)sm.textContent="Showing archived data for "+dateStr;}catch(e){if(sm)sm.textContent="No data available for "+dateStr;}sp.style.display="none";}
 function loadTodaySales(){salesViewData=null;salesViewDate=null;const picker=document.getElementById("sales-date-picker");if(picker)picker.value="";renderSales();}
 
-// ── ACTIONS ───────────────────────────────────────────────────────
-async function saveWorkerUrl(){const url=document.getElementById("worker-url").value.trim().replace(/\/+$/,"");if(!url){alert("Please enter your Worker URL.");return;}const st=document.getElementById("worker-status");st.style.display="block";st.className="worker-status";st.textContent="Testing...";try{const res=await fetch(url+"/health",{mode:"cors"});if(res.ok){S.workerUrl=url;saveState();st.className="worker-status ok";st.textContent="✓ Connected!";setStatus("Worker connected",true);}else{st.className="worker-status err";st.textContent="✗ Worker error "+res.status;}}catch(e){st.className="worker-status err";st.textContent="✗ Cannot reach Worker: "+e.message;}}
+// ── OTHER ACTIONS ─────────────────────────────────────────────────
+async function saveWorkerUrl(){const url=document.getElementById("worker-url").value.trim().replace(/\/+$/,"");if(!url){alert("Please enter your Worker URL.");return;}const st=document.getElementById("worker-status");st.style.display="block";st.className="worker-status";st.textContent="Testing...";try{const res=await fetch(url+"/health",{mode:"cors"});if(res.ok){S.workerUrl=url;saveState();st.className="worker-status ok";st.textContent="\u2713 Connected!";setStatus("Worker connected",true);}else{st.className="worker-status err";st.textContent="\u2717 Worker error "+res.status;}}catch(e){st.className="worker-status err";st.textContent="\u2717 Cannot reach Worker: "+e.message;}}
 function saveToken(){const t=document.getElementById("sq-token").value.trim();if(!t)return;S.token=t;saveState();setStatus("Token saved",true);alert("Token saved!");}
 function saveLocations(){S.locationIds.Warehouse=document.getElementById("loc-wh").value.trim();S.locationIds.Restaurant=document.getElementById("loc-rs").value.trim();S.locationIds["Truck 1"]=document.getElementById("loc-t1").value.trim();S.locationIds["Truck 2"]=document.getElementById("loc-t2").value.trim();S.locationIds["Truck 3"]=document.getElementById("loc-t3").value.trim();saveState();alert("Location IDs saved!");}
-function addItem(){const name=prompt("Item name:");if(!name||!name.trim())return;const n=name.trim();if(S.items.includes(n)){alert("Already exists.");return;}S.items.push(n);S.inventory[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.salesBaseline[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};saveState();renderAll();}
-function removeItem(name){if(!confirm("Remove "+name+"?"))return;S.items=S.items.filter(i=>i!==name);delete S.inventory[name];delete S.sales[name];delete S.salesBaseline[name];delete S.par[name];S.alerts=S.alerts.filter(a=>a.item!==name);saveState();renderAll();}
-function savePar(){S.items.forEach(item=>{LOCS.forEach(loc=>{const el=document.getElementById("par-"+sl(item)+"-"+sl(loc));if(el){if(!S.par[item])S.par[item]={};S.par[item][loc]=parseInt(el.value)||0;}});});checkAlerts();saveState();renderAll();const btn=document.getElementById("par-save-btn");if(btn){btn.textContent="Saved ✓";setTimeout(()=>btn.innerHTML='<i class="ti ti-device-floppy"></i> Save Par Levels',1500);}}
+function addItem(){const name=prompt("Item name:");if(!name||!name.trim())return;const n=name.trim();if(S.items.includes(n)){alert("Already exists.");return;}S.items.push(n);S.inventory[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.sales[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.salesBaseline[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.par[n]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.batchYields[n]=0;saveState();renderAll();}
+function removeItem(name){if(!confirm("Remove "+name+"?"))return;S.items=S.items.filter(i=>i!==name);delete S.inventory[name];delete S.sales[name];delete S.salesBaseline[name];delete S.par[name];delete S.batchYields[name];S.alerts=S.alerts.filter(a=>a.item!==name);saveState();renderAll();}
+function savePar(){S.items.forEach(item=>{LOCS.forEach(loc=>{const el=document.getElementById("par-"+sl(item)+"-"+sl(loc));if(el){if(!S.par[item])S.par[item]={};S.par[item][loc]=parseInt(el.value)||0;}});});checkAlerts();saveState();renderAll();const btn=document.getElementById("par-save-btn");if(btn){btn.textContent="Saved \u2713";setTimeout(()=>btn.innerHTML='<i class="ti ti-device-floppy"></i> Save Par Levels',1500);}}
 function sl(s){return s.replace(/[^a-z0-9]/gi,"_");}
 function checkAlerts(){const na=[];S.items.forEach(item=>{LOCS.forEach(loc=>{const qty=(S.inventory[item]||{})[loc]||0,par=(S.par[item]||{})[loc]||0,key=item+"||"+loc;if(par>0&&qty<=par){const ex=S.alerts.find(a=>a.key===key);if(!ex)na.push({key,item,loc,qty,par,time:new Date().toLocaleTimeString(),type:qty===0?"out":"low"});else{ex.qty=qty;ex.type=qty===0?"out":"low";}}else S.alerts=S.alerts.filter(a=>a.key!==key);});});S.alerts=[...S.alerts,...na];}
 function dismissAlert(key){S.alerts=S.alerts.filter(a=>a.key!==key);saveState();renderAll();}
 function dismissAllAlerts(){S.alerts=[];saveState();renderAll();}
 function updateInventory(item,loc,val){if(!S.inventory[item])S.inventory[item]={Warehouse:0,Restaurant:0,"Truck 1":0,"Truck 2":0,"Truck 3":0};S.inventory[item][loc]=Math.max(0,parseInt(val)||0);checkAlerts();saveState();renderAll();}
 function doTransfer(){const item=document.getElementById("xfr-item").value,from=document.getElementById("xfr-from").value,to=document.getElementById("xfr-to").value,qty=parseInt(document.getElementById("xfr-qty").value)||0;if(!item)return;if(from===to){alert("From and To must differ.");return;}if(qty<1){alert("Qty must be at least 1.");return;}const avail=(S.inventory[item]||{})[from]||0;if(qty>avail){alert("Only "+avail+" available at "+from+".");return;}S.inventory[item][from]-=qty;S.inventory[item][to]=(S.inventory[item][to]||0)+qty;S.transfers.unshift({time:new Date().toLocaleTimeString(),item,from,to,qty});if(S.transfers.length>200)S.transfers=S.transfers.slice(0,200);checkAlerts();saveState();renderAll();}
-function updateProdTarget(item,val){if(!S.prodTargets)S.prodTargets={};S.prodTargets[item]=parseInt(val)||0;saveState();}
-function esc(s){return String(s).replace(/'/g,"\'");}
+function esc(s){return String(s).replace(/'/g,"\\'");}
 function fmt(p){return p!=null?"$"+Number(p).toFixed(2):"--";}
 
 // ── RENDER ────────────────────────────────────────────────────────
 function renderAll(){renderOverview();renderLocations();if(currentLoc)renderLocDetail();renderInventory();renderPar();renderAlerts();renderTransfers();renderProduction();renderSales();renderSettings();}
 
-function renderOverview(){let low=0,out=0;S.items.forEach(item=>{LOCS.forEach(loc=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});});const aa=S.alerts.length;document.getElementById("m-skus").textContent=S.items.length;document.getElementById("m-low").textContent=low;document.getElementById("m-out").textContent=out;document.getElementById("m-alerts").textContent=aa;document.getElementById("m-sync").textContent=S.lastSync||"Never";const badge=document.getElementById("nav-alert-badge");badge.style.display=aa>0?"inline":"none";badge.textContent=aa;const oa=document.getElementById("overview-alerts");if(S.alerts.length>0){oa.innerHTML=S.alerts.slice(0,4).map(a=>{const li=LOCS.indexOf(a.loc),cls=a.type==="out"?"danger":"warn";return`<div class="alert-bar ${cls}"><div class="alert-body"><div class="alert-title">${a.type==="out"?"Out of stock":"Below par"}: ${a.item} @ <span class="loc-chip ${LC[li]}">${a.loc}</span></div><div class="alert-sub">Stock: ${a.qty} &middot; Par: ${a.par} &middot; ${a.time}</div></div><button class="alert-dismiss" onclick="dismissAlert('${esc(a.key)}')">&#x00D7;</button></div>`;}).join("");if(S.alerts.length>4)oa.innerHTML+=`<p style="font-size:12px;color:var(--text3);margin-bottom:12px;font-style:italic">+${S.alerts.length-4} more &mdash; see Alerts tab</p>`;}else{oa.innerHTML=S.items.length?'<div class="alert-bar success" style="margin-bottom:12px"><i class="ti ti-circle-check" style="font-size:16px"></i><div class="alert-body">All locations are at or above par.</div></div>':"";}document.getElementById("loc-summary").innerHTML=LOCS.map((loc,i)=>{let lLow=0,lOut=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)lOut++;else if(p>0&&q<=p)lLow++;});const status=lOut>0?'<span class="stock-out">Action needed</span>':lLow>0?'<span class="stock-low">Low stock</span>':'<span class="stock-ok">All good</span>';return`<tr style="cursor:pointer" onclick="openLocDetail('${loc}')"><td><span class="loc-chip ${LC[i]}">${loc}</span></td><td>${S.items.length}</td><td>${lLow||"—"}</td><td>${lOut||"—"}</td><td>${status}</td><td style="color:var(--text3);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">View &rarr;</td></tr>`;}).join("");}
+function renderOverview(){let low=0,out=0;S.items.forEach(item=>{LOCS.forEach(loc=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});});const aa=S.alerts.length;document.getElementById("m-skus").textContent=S.items.length;document.getElementById("m-low").textContent=low;document.getElementById("m-out").textContent=out;document.getElementById("m-alerts").textContent=aa;document.getElementById("m-sync").textContent=S.lastSync||"Never";const badge=document.getElementById("nav-alert-badge");badge.style.display=aa>0?"inline":"none";badge.textContent=aa;const oa=document.getElementById("overview-alerts");if(S.alerts.length>0){oa.innerHTML=S.alerts.slice(0,4).map(a=>{const li=LOCS.indexOf(a.loc),cls=a.type==="out"?"danger":"warn";return`<div class="alert-bar ${cls}"><div class="alert-body"><div class="alert-title">${a.type==="out"?"Out of stock":"Below par"}: ${a.item} @ <span class="loc-chip ${LC[li]}">${a.loc}</span></div><div class="alert-sub">Stock: ${a.qty} &middot; Par: ${a.par} &middot; ${a.time}</div></div><button class="alert-dismiss" onclick="dismissAlert('${esc(a.key)}')">&#x00D7;</button></div>`;}).join("");if(S.alerts.length>4)oa.innerHTML+=`<p style="font-size:12px;color:var(--text3);margin-bottom:12px;font-style:italic">+${S.alerts.length-4} more &mdash; see Alerts tab</p>`;}else{oa.innerHTML=S.items.length?'<div class="alert-bar success" style="margin-bottom:12px"><i class="ti ti-circle-check" style="font-size:16px"></i><div class="alert-body">All locations are at or above par.</div></div>':"";}document.getElementById("loc-summary").innerHTML=LOCS.map((loc,i)=>{let lLow=0,lOut=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)lOut++;else if(p>0&&q<=p)lLow++;});const status=lOut>0?'<span class="stock-out">Action needed</span>':lLow>0?'<span class="stock-low">Low stock</span>':'<span class="stock-ok">All good</span>';return`<tr style="cursor:pointer" onclick="openLocDetail('${loc}')"><td><span class="loc-chip ${LC[i]}">${loc}</span></td><td>${S.items.length}</td><td>${lLow||"\u2014"}</td><td>${lOut||"\u2014"}</td><td>${status}</td><td style="color:var(--text3);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">View &rarr;</td></tr>`;}).join("");}
 function renderLocations(){const grid=document.getElementById("loc-grid");if(!grid)return;grid.innerHTML=LOCS.map((loc,i)=>{let total=0,low=0,out=0,value=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});const statusColor=out>0?"var(--red)":low>0?"var(--amber)":"var(--green)";const statusText=out>0?out+" out of stock":low>0?low+" below par":"All good";return`<div class="loc-card" onclick="openLocDetail('${loc}')"><div class="loc-card-top"></div><div class="loc-card-name">${loc}</div><div class="loc-card-sub" style="color:${statusColor}">${statusText}</div><div class="loc-card-stats"><div><div class="loc-stat-val">${total}</div><div class="loc-stat-label">Units</div></div><div><div class="loc-stat-val">$${value.toFixed(0)}</div><div class="loc-stat-label">Value</div></div><div><div class="loc-stat-val">${S.items.length}</div><div class="loc-stat-label">SKUs</div></div></div><div class="loc-card-arrow"><i class="ti ti-arrow-right"></i></div></div>`;}).join("");}
-function renderLocDetail(){if(!currentLoc)return;const li=LOCS.indexOf(currentLoc);const filter=document.getElementById("loc-detail-cat-filter")?.value||"";const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;let total=0,low=0,out=0,value=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[currentLoc]||0,p=(S.par[item]||{})[currentLoc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});document.getElementById("loc-detail-header").innerHTML=`<div class="loc-detail-icon">${LOC_ICONS[li]}</div><div style="flex:1"><div class="loc-detail-name">${currentLoc}</div><div class="loc-detail-stats"><div class="loc-detail-stat"><strong>${total}</strong> units on hand</div><div class="loc-detail-stat"><strong>$${value.toFixed(2)}</strong> value</div><div class="loc-detail-stat"><strong>${out}</strong> out of stock</div><div class="loc-detail-stat"><strong>${low}</strong> below par</div></div></div><button class="btn btn-sm" style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.2);color:#fff" onclick="exportLocCSV()"><i class="ti ti-download"></i> Export</button>`;document.getElementById("loc-detail-title").textContent=currentLoc+" Inventory";document.getElementById("loc-detail-table").innerHTML=items.map(item=>{const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0,cat=S.categories[item]||"",price=S.prices[item]||0;const cls=qty===0?"stock-out":par>0&&qty<=par?"stock-low":"stock-ok";const statusText=qty===0?"Out of stock":par>0&&qty<=par?"Below par ("+qty+"/"+par+")":"In stock";const pct=par>0?Math.min(100,Math.round((qty/par)*100)):100;const barColor=qty===0?"var(--red)":par>0&&qty<=par?"var(--amber)":"var(--green)";return`<tr><td style="font-weight:700">${item}</td><td><span class="cat-chip ${cat==="Frozen Foods"?"cc-food":"cc-dessert"}">${cat==="Frozen Foods"?"Food":"Dessert"}</span></td><td style="font-weight:700;color:var(--green)">${fmt(price)}</td><td style="text-align:center"><input type="number" class="inv-input" value="${qty}" min="0" onchange="updateInventory('${esc(item)}','${currentLoc}',this.value)"></td><td style="text-align:center;color:var(--text3);font-weight:700">${par||"—"}</td><td><span class="${cls}">${statusText}</span>${par>0?`<div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${barColor}"></div></div>`:""}</td></tr>`;}).join("");}
+function renderLocDetail(){if(!currentLoc)return;const li=LOCS.indexOf(currentLoc);const filter=document.getElementById("loc-detail-cat-filter")?.value||"";const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;let total=0,low=0,out=0,value=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[currentLoc]||0,p=(S.par[item]||{})[currentLoc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});document.getElementById("loc-detail-header").innerHTML=`<div class="loc-detail-icon">${LOC_ICONS[li]}</div><div style="flex:1"><div class="loc-detail-name">${currentLoc}</div><div class="loc-detail-stats"><div class="loc-detail-stat"><strong>${total}</strong> units on hand</div><div class="loc-detail-stat"><strong>$${value.toFixed(2)}</strong> value</div><div class="loc-detail-stat"><strong>${out}</strong> out of stock</div><div class="loc-detail-stat"><strong>${low}</strong> below par</div></div></div><button class="btn btn-sm" style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.2);color:#fff" onclick="exportLocCSV()"><i class="ti ti-download"></i> Export</button>`;document.getElementById("loc-detail-title").textContent=currentLoc+" Inventory";document.getElementById("loc-detail-table").innerHTML=items.map(item=>{const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0,cat=S.categories[item]||"",price=S.prices[item]||0;const cls=qty===0?"stock-out":par>0&&qty<=par?"stock-low":"stock-ok";const statusText=qty===0?"Out of stock":par>0&&qty<=par?"Below par ("+qty+"/"+par+")":"In stock";const pct=par>0?Math.min(100,Math.round((qty/par)*100)):100;const barColor=qty===0?"var(--red)":par>0&&qty<=par?"var(--amber)":"var(--green)";return`<tr><td style="font-weight:700">${item}</td><td><span class="cat-chip ${cat==="Frozen Foods"?"cc-food":"cc-dessert"}">${cat==="Frozen Foods"?"Food":"Dessert"}</span></td><td style="font-weight:700;color:var(--green)">${fmt(price)}</td><td style="text-align:center"><input type="number" class="inv-input" value="${qty}" min="0" onchange="updateInventory('${esc(item)}','${currentLoc}',this.value)"></td><td style="text-align:center;color:var(--text3);font-weight:700">${par||"\u2014"}</td><td><span class="${cls}">${statusText}</span>${par>0?`<div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${barColor}"></div></div>`:""}</td></tr>`;}).join("");}
 function exportLocCSV(){if(!currentLoc)return;const rows=[["Item","Category","Price","On Hand","Par Level","Status","Inventory Value"]];S.items.forEach(item=>{const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0,price=S.prices[item]||0;const status=qty===0?"Out of stock":par>0&&qty<=par?"Below par":"In stock";rows.push([item,S.categories[item]||"",price.toFixed(2),qty,par||"",status,(qty*price).toFixed(2)]);});dl(currentLoc.replace(/\s+/g,"_")+"_inventory_"+new Date().toISOString().slice(0,10)+".csv",rows);}
 function renderInventory(){const filter=document.getElementById("inv-cat-filter")?.value||"";const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;document.getElementById("inv-table").innerHTML=items.map(item=>{const cols=LOCS.map(loc=>{const qty=(S.inventory[item]||{})[loc]||0,par=(S.par[item]||{})[loc]||0;const cls=qty===0?"stock-out":par>0&&qty<=par?"stock-low":"stock-ok";const pn=par>0?`<span class="qty-par">par ${par}</span>`:"";return`<td class="qty-cell"><span class="${cls}">${qty}</span>${pn}</td>`;}).join("");const total=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0),cat=S.categories[item]||"";return`<tr><td style="font-weight:700">${item}</td><td><span class="cat-chip ${cat==="Frozen Foods"?"cc-food":"cc-dessert"}">${cat==="Frozen Foods"?"Food":"Dessert"}</span></td><td style="font-weight:700;color:var(--green)">${fmt(S.prices[item])}</td>${cols}<td class="qty-cell" style="font-weight:700">${total}</td></tr>`;}).join("");}
 function renderPar(){document.getElementById("par-table-body").innerHTML=S.items.map(item=>{const cols=LOCS.map(loc=>{const id="par-"+sl(item)+"-"+sl(loc);return`<td class="par-cell"><input type="number" class="par-input" id="${id}" value="${(S.par[item]||{})[loc]||0}" min="0"></td>`;}).join("");return`<tr><td style="font-weight:700;white-space:nowrap;padding-right:16px">${item}</td>${cols}</tr>`;}).join("");}
 function renderAlerts(){document.getElementById("alerts-list").innerHTML=S.alerts.length?S.alerts.map(a=>{const li=LOCS.indexOf(a.loc),cls=a.type==="out"?"danger":"warn";return`<div class="alert-bar ${cls}"><div class="alert-body"><div class="alert-title">${a.type==="out"?"Out of stock":"Below par"}: ${a.item} @ <span class="loc-chip ${LC[li]}">${a.loc}</span></div><div class="alert-sub">Current: ${a.qty} &middot; Par: ${a.par} &middot; ${a.time}</div></div><button class="alert-dismiss" onclick="dismissAlert('${esc(a.key)}')">&#x00D7;</button></div>`;}).join(""):'<div class="empty-state"><i class="ti ti-circle-check" style="font-size:48px;display:block;margin-bottom:12px;color:var(--green)"></i>All locations are at or above par</div>';}
 function renderTransfers(){document.getElementById("xfr-item").innerHTML=S.items.map(i=>`<option>${i}</option>`).join("");document.getElementById("xfr-log").innerHTML=S.transfers.length?S.transfers.map(t=>{const fi=LOCS.indexOf(t.from),ti=LOCS.indexOf(t.to);return`<tr><td style="color:var(--text3);font-size:12px">${t.time}</td><td style="font-weight:700">${t.item}</td><td><span class="loc-chip ${LC[fi]}">${t.from}</span></td><td><span class="loc-chip ${LC[ti]}">${t.to}</span></td><td style="font-weight:700">${t.qty}</td></tr>`;}).join(""):'<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:24px;font-style:italic">No transfers yet.</td></tr>';}
-function renderProduction(){document.getElementById("prod-table").innerHTML=S.items.map(item=>{const total=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0),totalPar=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0),target=S.prodTargets?.[item]||0,need=Math.max(0,target-total),parGap=Math.max(0,totalPar-total),sc=total===0?"stock-out":totalPar>0&&total<=totalPar?"stock-low":"stock-ok",action=need>0?`<span class="stock-low">Make ${need}</span>`:parGap>0?`<span class="stock-low">Need ${parGap} for par</span>`:`<span class="stock-ok">&#x2713; On target</span>`;return`<tr><td style="font-weight:700">${item}</td><td style="text-align:center" class="${sc}">${total}</td><td style="text-align:center;color:var(--text3);font-weight:700">${totalPar||"—"}</td><td style="text-align:center"><input type="number" min="0" value="${target}" style="width:75px;text-align:center" onchange="updateProdTarget('${esc(item)}',this.value)"></td><td>${action}</td></tr>`;}).join("");}
+
+function renderProduction(){
+  const catFilter=document.getElementById("prod-cat-filter")?.value||"";
+  const statusFilter=document.getElementById("prod-status-filter")?.value||"";
+  let items=catFilter?S.items.filter(i=>S.categories[i]===catFilter):S.items;
+
+  // Compute all calcs first for summary metrics
+  const allCalcs=S.items.map(item=>({item,...calcProduction(item)}));
+  const needsProd=allCalcs.filter(c=>c.needed>0);
+  const totalBatches=needsProd.reduce((s,c)=>s+c.batches,0);
+  const itemsAtPar=allCalcs.filter(c=>c.needed===0).length;
+  const noYield=allCalcs.filter(c=>c.needed>0&&c.yield_===0).length;
+
+  // Summary metrics
+  const pm=document.getElementById("prod-metrics");
+  if(pm){
+    pm.innerHTML=`
+      <div class="metric"><div class="metric-label">Items Below Par</div><div class="metric-value ${needsProd.length>0?'red':''}">${needsProd.length}</div></div>
+      <div class="metric"><div class="metric-label">Total Batches Needed</div><div class="metric-value ${totalBatches>0?'amber':''}">${totalBatches}</div></div>
+      <div class="metric"><div class="metric-label">Items at Par</div><div class="metric-value green">${itemsAtPar}</div></div>
+      ${noYield>0?`<div class="metric"><div class="metric-label">Missing Yield Data</div><div class="metric-value amber">${noYield}</div></div>`:''}
+    `;
+  }
+
+  // Apply status filter
+  if(statusFilter==="make") items=items.filter(i=>{const c=calcProduction(i);return c.needed>0;});
+  else if(statusFilter==="ok") items=items.filter(i=>{const c=calcProduction(i);return c.needed===0;});
+
+  document.getElementById("prod-table").innerHTML=items.map(item=>{
+    const {onHand,totalPar,needed,yield_,batches,produces,surplus}=calcProduction(item);
+    const cat=S.categories[item]||"";
+
+    // Batch yield input — highlighted red if yield not set and production needed
+    const yieldHighlight=(needed>0&&yield_===0)?'style="border-color:var(--red);background:var(--red-bg)"':'';
+
+    // Result column
+    let resultHTML='';
+    if(needed===0){
+      resultHTML=`<span class="prod-status-ok">&#x2713; At par (${onHand}/${totalPar})</span>`;
+    } else if(yield_===0){
+      resultHTML=`<span class="prod-status-make">Set yield to calculate</span>`;
+    } else {
+      resultHTML=`
+        <span class="batch-pill">Make ${batches} batch${batches!==1?'es':''} &rarr; ${produces} units</span>
+        ${surplus>0?`<div class="surplus-note">${surplus} unit${surplus!==1?'s':''} surplus over par</div>`:''}
+      `;
+    }
+
+    return`<tr>
+      <td style="font-weight:700">${item}<br><span class="cat-chip ${cat==="Frozen Foods"?"cc-food":"cc-dessert"}" style="margin-top:4px">${cat==="Frozen Foods"?"Food":"Dessert"}</span></td>
+      <td style="text-align:center;font-family:'Abril Fatface',serif;font-size:18px;color:${onHand===0?"var(--red)":onHand<totalPar?"var(--amber)":"var(--green)"}">${onHand}</td>
+      <td style="text-align:center;color:var(--text3);font-weight:700">${totalPar||"\u2014"}</td>
+      <td style="text-align:center;font-weight:700;color:${needed>0?"var(--red)":"var(--green)"}">${needed>0?"+"+needed:"\u2013"}</td>
+      <td style="text-align:center">
+        <input type="number" id="yield-${sl(item)}" value="${yield_||''}" min="1" placeholder="e.g. 15"
+          style="width:80px;text-align:center" ${yieldHighlight}
+          onchange="S.batchYields['${esc(item)}']=Math.max(0,parseInt(this.value)||0);saveState();renderProduction()">
+      </td>
+      <td style="text-align:center;font-family:'Abril Fatface',serif;font-size:20px;color:${batches>0?"var(--sidebar)":"var(--text3)"}">${batches||"\u2013"}</td>
+      <td>${resultHTML}</td>
+    </tr>`;
+  }).join("");
+}
 
 function renderSales(){
   const salesData=salesViewDate?salesViewData:S.sales;
@@ -724,7 +786,7 @@ function renderSettings(){
 }
 
 function dl(filename,rows){const csv=rows.map(r=>r.map(v=>{const s=String(v==null?"":v);return s.includes(",")||s.includes('"')||s.includes("\n")?'"'+s.replace(/"/g,'""')+'"':s;}).join(",")).join("\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download=filename;a.click();}
-function exportCSV(type){const d=new Date().toISOString().slice(0,10);if(type==="inventory"){const rows=[["Item","Category","Price","Warehouse","Restaurant","Truck 1","Truck 2","Truck 3","Total"]];S.items.forEach(item=>{const t=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0);rows.push([item,S.categories[item]||"",fmt(S.prices[item]),...LOCS.map(l=>S.inventory[item]?.[l]||0),t]);});dl(`inventory_${d}.csv`,rows);}else if(type==="par"){const rows=[["Item","Category","Price","Warehouse","Restaurant","Truck 1","Truck 2","Truck 3","Total Par","Par Value ($)"]];S.items.forEach(item=>{const tp=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0);rows.push([item,S.categories[item]||"",fmt(S.prices[item]),...LOCS.map(l=>S.par[item]?.[l]||0),tp,(tp*(S.prices[item]||0)).toFixed(2)]);});const grand=S.items.reduce((s,item)=>s+LOCS.reduce((ss,l)=>ss+(S.par[item]?.[l]||0),0)*(S.prices[item]||0),0);rows.push([]);rows.push(["TOTAL PAR INVENTORY VALUE","","","","","","","","","$"+grand.toFixed(2)]);dl(`par_levels_${d}.csv`,rows);}else if(type==="production"){const rows=[["Item","Category","Price","On Hand","Total Par","Par Gap","Production Target","Need to Make"]];S.items.forEach(item=>{const oh=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0),tp=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0),tgt=S.prodTargets?.[item]||0;rows.push([item,S.categories[item]||"",fmt(S.prices[item]),oh,tp,Math.max(0,tp-oh),tgt,Math.max(0,tgt-oh)]);});dl(`production_${d}.csv`,rows);}else if(type==="transfers"){const rows=[["Time","Item","From","To","Quantity"]];S.transfers.forEach(t=>rows.push([t.time,t.item,t.from,t.to,t.qty]));dl(`transfers_${d}.csv`,rows);}}
+function exportCSV(type){const d=new Date().toISOString().slice(0,10);if(type==="inventory"){const rows=[["Item","Category","Price","Warehouse","Restaurant","Truck 1","Truck 2","Truck 3","Total"]];S.items.forEach(item=>{const t=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0);rows.push([item,S.categories[item]||"",fmt(S.prices[item]),...LOCS.map(l=>S.inventory[item]?.[l]||0),t]);});dl(`inventory_${d}.csv`,rows);}else if(type==="par"){const rows=[["Item","Category","Price","Warehouse","Restaurant","Truck 1","Truck 2","Truck 3","Total Par","Par Value ($)"]];S.items.forEach(item=>{const tp=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0);rows.push([item,S.categories[item]||"",fmt(S.prices[item]),...LOCS.map(l=>S.par[item]?.[l]||0),tp,(tp*(S.prices[item]||0)).toFixed(2)]);});const grand=S.items.reduce((s,item)=>s+LOCS.reduce((ss,l)=>ss+(S.par[item]?.[l]||0),0)*(S.prices[item]||0),0);rows.push([]);rows.push(["TOTAL PAR INVENTORY VALUE","","","","","","","","","$"+grand.toFixed(2)]);dl(`par_levels_${d}.csv`,rows);}else if(type==="production"){const rows=[["Item","Category","On Hand","Total Par","Units Needed","Batch Yield","Batches to Make","Units Produced","Surplus"]];S.items.forEach(item=>{const {onHand,totalPar,needed,yield_,batches,produces,surplus}=calcProduction(item);rows.push([item,S.categories[item]||"",onHand,totalPar,needed,yield_||"Not set",batches||0,produces,surplus]);});dl(`production_plan_${d}.csv`,rows);}else if(type==="transfers"){const rows=[["Time","Item","From","To","Quantity"]];S.transfers.forEach(t=>rows.push([t.time,t.item,t.from,t.to,t.qty]));dl(`transfers_${d}.csv`,rows);}}
 
 loadState();
 applyAllColors(S.colors);
