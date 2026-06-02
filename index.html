@@ -757,7 +757,7 @@ function renderOverview(){
   const oa=document.getElementById('overview-alerts');
   if(S.alerts.length){oa.innerHTML=S.alerts.slice(0,4).map(a=>{const li=LOCS.indexOf(a.loc),cls=a.type==='out'?'danger':'warn';return`<div class="alert-bar ${cls}"><div class="alert-body"><div class="alert-title">${a.type==='out'?'Out of stock':'Below par'}: ${a.item} @ <span class="loc-chip ${LC[li]}">${a.loc}</span></div><div class="alert-sub">Stock: ${a.qty} &middot; Par: ${a.par} &middot; ${a.time}</div></div><button class="alert-dismiss" onclick="dismissAlert('${esc(a.key)}')">&#x00D7;</button></div>`;}).join('');if(S.alerts.length>4)oa.innerHTML+=`<p style="font-size:12px;color:var(--text3);margin-bottom:12px;font-style:italic">+${S.alerts.length-4} more &mdash; see Alerts tab</p>`;}
   else{oa.innerHTML=S.items.length?'<div class="alert-bar success" style="margin-bottom:12px"><i class="ti ti-circle-check" style="font-size:16px"></i><div class="alert-body">All locations are at or above par.</div></div>':'';}
-  document.getElementById('loc-summary').innerHTML=LOCS.map((loc,i)=>{let lLow=0,lOut=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)lOut++;else if(p>0&&q<=p)lLow++;});const st=lOut>0?'<span class="stock-out">Action needed</span>':lLow>0?'<span class="stock-low">Low stock</span>':'<span class="stock-ok">All good</span>';return`<tr style="cursor:pointer" onclick="openLocDetail('${loc}')"><td><span class="loc-chip ${LC[i]}">${loc}</span></td><td>${S.items.length}</td><td>${lLow||'—'}</td><td>${lOut||'—'}</td><td>${st}</td><td style="color:var(--text3);font-size:11px;font-weight:700">View &rarr;</td></tr>`;}).join('');
+  document.getElementById('loc-summary').innerHTML=isMob()?renderLocSummaryMob():LOCS.map((loc,i)=>{let lLow=0,lOut=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)lOut++;else if(p>0&&q<=p)lLow++;});const st=lOut>0?'<span class="stock-out">Action needed</span>':lLow>0?'<span class="stock-low">Low stock</span>':'<span class="stock-ok">All good</span>';return`<tr style="cursor:pointer" onclick="openLocDetail('${loc}')"><td><span class="loc-chip ${LC[i]}">${loc}</span></td><td>${S.items.length}</td><td>${lLow||'—'}</td><td>${lOut||'—'}</td><td>${st}</td><td style="color:var(--text3);font-size:11px;font-weight:700">View &rarr;</td></tr>`;}).join('');
 }
 function renderLocations(){const grid=document.getElementById('loc-grid');if(!grid)return;grid.innerHTML=LOCS.map((loc,i)=>{let total=0,low=0,out=0,value=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});const sc=out>0?'var(--red)':low>0?'var(--amber)':'var(--green)';const st=out>0?out+' out of stock':low>0?low+' below par':'All good';return`<div class="loc-card" onclick="openLocDetail('${loc}')"><div class="loc-card-top"></div><div class="loc-card-name">${loc}</div><div class="loc-card-sub" style="color:${sc}">${st}</div><div class="loc-card-stats"><div><div class="loc-stat-val">${total}</div><div class="loc-stat-label">Units</div></div><div><div class="loc-stat-val">$${value.toFixed(0)}</div><div class="loc-stat-label">Value</div></div></div><div class="loc-card-arrow"><i class="ti ti-arrow-right"></i></div></div>`;}).join('');}
 function renderLocDetail(){if(!currentLoc)return;const li=LOCS.indexOf(currentLoc);const filter=document.getElementById('loc-detail-cat-filter')?.value||'';const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;let total=0,low=0,out=0,value=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[currentLoc]||0,p=(S.par[item]||{})[currentLoc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});document.getElementById('loc-detail-header').innerHTML=`<div class="loc-detail-icon">${LI[li]}</div><div style="flex:1"><div class="loc-detail-name">${currentLoc}</div><div class="loc-detail-stats"><div class="loc-detail-stat"><strong>${total}</strong> units</div><div class="loc-detail-stat"><strong>$${value.toFixed(2)}</strong> value</div><div class="loc-detail-stat"><strong>${out}</strong> out of stock</div><div class="loc-detail-stat"><strong>${low}</strong> below par</div></div></div><button class="btn btn-sm" style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.2);color:#fff" onclick="exportLocCSV()"><i class="ti ti-download"></i> Export</button>`;document.getElementById('loc-detail-title').textContent=currentLoc+' Inventory';document.getElementById('loc-detail-table').innerHTML=items.map(item=>{const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0,cat=S.categories[item]||'',price=S.prices[item]||0;const cls=qty===0?'stock-out':par>0&&qty<=par?'stock-low':'stock-ok';const st=qty===0?'Out of stock':par>0&&qty<=par?`Below par (${qty}/${par})`:'In stock';const pct=par>0?Math.min(100,Math.round((qty/par)*100)):100;const bc=qty===0?'var(--red)':par>0&&qty<=par?'var(--amber)':'var(--green)';return`<tr><td style="font-weight:700">${item}</td><td><span class="cat-chip ${cat==='Frozen Foods'?'cc-food':'cc-dessert'}">${cat==='Frozen Foods'?'Food':'Dessert'}</span></td><td style="font-weight:700;color:var(--green)">${fmt(price)}</td><td style="text-align:center"><input type="number" class="inv-input" value="${qty}" min="0" onchange="updateInventory('${esc(item)}','${currentLoc}',this.value)"></td><td style="text-align:center;color:var(--text3);font-weight:700">${par||'—'}</td><td><span class="${cls}">${st}</span>${par>0?`<div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${bc}"></div></div>`:''}</td></tr>`;}).join('');}
@@ -766,6 +766,7 @@ function renderPar(){if(isMob()){tog('par-tbl','par-mob',true);renderParMob();re
 function renderAlerts(){document.getElementById('alerts-list').innerHTML=S.alerts.length?S.alerts.map(a=>{const li=LOCS.indexOf(a.loc),cls=a.type==='out'?'danger':'warn';return`<div class="alert-bar ${cls}"><div class="alert-body"><div class="alert-title">${a.type==='out'?'Out of stock':'Below par'}: ${a.item} @ <span class="loc-chip ${LC[li]}">${a.loc}</span></div><div class="alert-sub">Current: ${a.qty} &middot; Par: ${a.par} &middot; ${a.time}</div></div><button class="alert-dismiss" onclick="dismissAlert('${esc(a.key)}')">&#x00D7;</button></div>`;}).join(''):'<div class="empty-state"><i class="ti ti-circle-check" style="font-size:48px;display:block;margin-bottom:12px;color:var(--green)"></i>All locations are at or above par</div>';}
 function renderTransfers(){document.getElementById('xfr-item').innerHTML=S.items.map(i=>`<option>${i}</option>`).join('');document.getElementById('xfr-log').innerHTML=S.transfers.length?S.transfers.map(t=>{const fi=LOCS.indexOf(t.from),ti=LOCS.indexOf(t.to);return`<tr><td style="color:var(--text3);font-size:12px">${t.time}</td><td style="font-weight:700">${t.item}</td><td><span class="loc-chip ${LC[fi]}">${t.from}</span></td><td><span class="loc-chip ${LC[ti]}">${t.to}</span></td><td style="font-weight:700">${t.qty}</td><td style="font-size:11px;color:var(--text3)">${t.by||''}</td></tr>`;}).join(''):'<tr><td colspan="6" style="color:var(--text3);text-align:center;padding:24px;font-style:italic">No transfers yet.</td></tr>';}
 function renderProduction(){
+  if(isMob()){tog('prod-tbl','prod-mob',true);renderProdMob();const a2=S.items.map(item=>({item,...calcProd(item)}));const n2=a2.filter(c=>c.nd>0);const b2=n2.reduce((s,c)=>s+c.b,0);const pm=document.getElementById('prod-metrics');if(pm)pm.innerHTML='<div class="metric"><div class="metric-label">Below Par</div><div class="metric-value '+(n2.length>0?'red':'')+'">'+n2.length+'</div></div><div class="metric"><div class="metric-label">Batches Needed</div><div class="metric-value '+(b2>0?'amber':'')+'">'+b2+'</div></div><div class="metric"><div class="metric-label">At Par</div><div class="metric-value green">'+a2.filter(c=>c.nd===0).length+'</div></div>';return;}tog('prod-tbl','prod-mob',false);
   const cf=document.getElementById('prod-cat-filter')?.value||'',sf=document.getElementById('prod-status-filter')?.value||'';
   let items=cf?S.items.filter(i=>S.categories[i]===cf):S.items;
   const all=S.items.map(item=>({item,...calcProd(item)}));const np=all.filter(c=>c.nd>0);const tb=np.reduce((s,c)=>s+c.b,0);
@@ -800,61 +801,179 @@ function dl(fn,rows){const csv=rows.map(r=>r.map(v=>{const s=String(v==null?'':v
 function exportCSV(type){const d=new Date().toISOString().slice(0,10);if(type==='inventory'){const rows=[['Item','Category','Price',...LOCS,'Total']];S.items.forEach(item=>{const t=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0);rows.push([item,S.categories[item]||'',fmt(S.prices[item]),...LOCS.map(l=>S.inventory[item]?.[l]||0),t]);});dl(`inventory_${d}.csv`,rows);}else if(type==='par'){const rows=[['Item','Category','Price',...LOCS,'Total Par','Par Value']];S.items.forEach(item=>{const tp=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0);rows.push([item,S.categories[item]||'',fmt(S.prices[item]),...LOCS.map(l=>S.par[item]?.[l]||0),tp,(tp*(S.prices[item]||0)).toFixed(2)]);});dl(`par_levels_${d}.csv`,rows);}else if(type==='production'){const rows=[['Item','Category','On Hand','Total Par','Units Needed','Batch Yield','Batches','Units Produced','Surplus']];S.items.forEach(item=>{const{oh,tp,nd,y,b,pr,su}=calcProd(item);rows.push([item,S.categories[item]||'',oh,tp,nd,y||'Not set',b,pr,su]);});dl(`production_${d}.csv`,rows);}else if(type==='transfers'){const rows=[['Time','Item','From','To','Qty','By']];S.transfers.forEach(t=>rows.push([t.time,t.item,t.from,t.to,t.qty,t.by||'']));dl(`transfers_${d}.csv`,rows);}}
 
 
+// ── MOBILE ────────────────────────────────────────────────────────
 function isMob(){return window.innerWidth<=768;}
 let mobParLoc='Warehouse';
 window.addEventListener('resize',()=>renderAll());
-function tog(tblId,mobId,mob){const t=document.getElementById(tblId),m=document.getElementById(mobId);if(t)t.style.display=mob?'none':'';if(m)m.style.display=mob?'block':'none';}
-function setStActive(id){document.querySelectorAll('.st-item').forEach(b=>b.classList.remove('active'));if(id){const el=document.getElementById(id);if(el){el.classList.add('active');el.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});}}}
-function setBnActive(id){}
+function tog(t,m,mob){const te=document.getElementById(t),me=document.getElementById(m);if(te)te.style.display=mob?'none':'';if(me)me.style.display=mob?'block':'none';}
+function setStActive(id){
+  document.querySelectorAll('.st-item').forEach(b=>b.classList.remove('active'));
+  if(id){const el=document.getElementById(id);if(el){el.classList.add('active');el.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});}}
+}
+function setBnActive(){}
 
+// card style shared across all mobile cards
+const MC='background:#fff;border:1px solid #844f06;border-radius:8px;padding:13px;margin-bottom:8px;';
+const LOC_LABS=['WH','Rest','Tr1','Tr2','Tr3'];
+
+// ── INVENTORY ─────────────────────────────────────────────────────
 function renderInvMob(){
   const filter=document.getElementById('inv-cat-filter')?.value||'';
   const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;
-  const LABS=['WH','Rest','Tr1','Tr2','Tr3'];
   const el=document.getElementById('inv-mob');if(!el)return;
   el.innerHTML=items.map(item=>{
-    const total=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0);const cat=S.categories[item]||'';
-    const locs=LOCS.map((loc,i)=>{const qty=(S.inventory[item]||{})[loc]||0,par=(S.par[item]||{})[loc]||0;const cls=qty===0&&par>0?'stock-out':par>0&&qty<=par?'stock-low':'stock-ok';return`<div class="mob-loc-col"><span class="mob-loc-lbl">${LABS[i]}</span><span class="${cls} mob-loc-qty">${qty}</span></div>`;}).join('');
-    return`<div class="mob-item-card"><div class="mic-top"><span class="mic-name">${item}</span><span class="cat-chip ${cat==='Frozen Foods'?'cc-food':'cc-dessert'}">${cat==='Frozen Foods'?'Food':'Dessert'}</span><span style="font-size:12px;font-weight:700;color:var(--green)">${fmt(S.prices[item])}</span></div><div class="mic-locs">${locs}</div><div class="mic-footer"><span style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Total on hand</span><span style="font-weight:700;font-size:16px">${total}</span></div></div>`;
+    const total=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0);
+    const cat=S.categories[item]||'';
+    const isFood=cat==='Frozen Foods';
+    const locBoxes=LOCS.map((loc,i)=>{
+      const qty=(S.inventory[item]||{})[loc]||0;
+      const par=(S.par[item]||{})[loc]||0;
+      const col=qty===0&&par>0?'#A82020':par>0&&qty<=par?'#B05A00':'#2A6B3A';
+      return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;background:#fbe5cb;border-radius:6px;padding:7px 2px;">
+        <span style="font-size:8px;color:#9C7A58;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${LOC_LABS[i]}</span>
+        <span style="font-size:16px;font-weight:700;color:${col};line-height:1">${qty}</span>
+      </div>`;
+    }).join('');
+    return`<div style="${MC}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <span style="font-weight:700;font-size:14px;flex:1;min-width:0;color:#1C0F06">${item}</span>
+        <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;background:${isFood?'#fff':'#fff'};border:1px solid #ddd;color:#333">${isFood?'Food':'Dessert'}</span>
+        <span style="font-size:12px;font-weight:700;color:#2A6B3A">${fmt(S.prices[item])}</span>
+      </div>
+      <div style="display:flex;gap:4px;margin-bottom:10px">${locBoxes}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid #f3dcc0">
+        <span style="font-size:9px;font-weight:700;color:#9C7A58;text-transform:uppercase;letter-spacing:.06em">Total on hand</span>
+        <span style="font-weight:700;font-size:17px;color:#1C0F06">${total}</span>
+      </div>
+    </div>`;
   }).join('');
 }
 
+// ── PAR LEVELS ────────────────────────────────────────────────────
 function renderParMob(){
   const el=document.getElementById('par-mob');if(!el)return;
   const loc=mobParLoc;
-  const pills=LOCS.map(l=>`<button class="mob-loc-pill${l===loc?' active':''}" onclick="mobParLoc='${l}';renderPar()">${l}</button>`).join('');
-  const items=S.items.map(item=>{
-    const hidden=LOCS.filter(l=>l!==loc).map(l=>`<input type="number" id="par-${sl(item)}-${sl(l)}" value="${(S.par[item]||{})[l]||0}" min="0" style="display:none">`).join('');
-    return`<div class="mob-par-row"><span class="mob-par-name">${item}</span>${hidden}<input type="number" id="par-${sl(item)}-${sl(loc)}" class="par-input" value="${(S.par[item]||{})[loc]||0}" min="0"></div>`;
+  const pills=LOCS.map(l=>{
+    const active=l===loc;
+    return`<button onclick="mobParLoc='${l}';renderPar()" style="padding:9px 16px;border-radius:20px;border:1px solid ${active?'#5e3303':'#844f06'};background:${active?'#5e3303':'#fff'};color:${active?'#fff':'#5e3303'};font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:var(--font-body);min-height:40px;flex-shrink:0">${l}</button>`;
   }).join('');
-  el.innerHTML=`<div class="mob-loc-pills">${pills}</div><div class="mob-par-list">${items}</div>`;
+  const hidden=LOCS.filter(l=>l!==loc).map(l=>S.items.map(item=>`<input type="number" id="par-${sl(item)}-${sl(l)}" value="${(S.par[item]||{})[l]||0}" min="0" style="display:none">`).join('')).join('');
+  const rows=S.items.map(item=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f3dcc0">
+      <span style="font-size:13px;font-weight:700;color:#1C0F06;flex:1;padding-right:12px;min-width:0">${item}</span>
+      <input type="number" id="par-${sl(item)}-${sl(loc)}" value="${(S.par[item]||{})[loc]||0}" min="0"
+        style="width:60px;text-align:center;border:1px solid #844f06;border-radius:6px;padding:8px 6px;font-size:16px;font-weight:700;color:#1C0F06;background:#fff">
+    </div>`).join('');
+  el.innerHTML=`
+    <div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:14px;scrollbar-width:none;-webkit-overflow-scrolling:touch">${pills}</div>
+    ${hidden}
+    <div style="background:#fff;border:1px solid #844f06;border-radius:8px;padding:0 13px">${rows}</div>`;
 }
 
+// ── PRODUCTION ────────────────────────────────────────────────────
 function renderProdMob(){
-  const cf=document.getElementById('prod-cat-filter')?.value||'';const sf=document.getElementById('prod-status-filter')?.value||'';
+  const cf=document.getElementById('prod-cat-filter')?.value||'';
+  const sf=document.getElementById('prod-status-filter')?.value||'';
   let items=cf?S.items.filter(i=>S.categories[i]===cf):S.items;
-  if(sf==='make')items=items.filter(i=>calcProd(i).nd>0);else if(sf==='ok')items=items.filter(i=>calcProd(i).nd===0);
+  if(sf==='make')items=items.filter(i=>calcProd(i).nd>0);
+  else if(sf==='ok')items=items.filter(i=>calcProd(i).nd===0);
   const el=document.getElementById('prod-mob');if(!el)return;
   el.innerHTML=items.map(item=>{
-    const{oh,tp,nd,y,b,pr,su}=calcProd(item);const cat=S.categories[item]||'';
-    const ohC=oh===0?'var(--red)':oh<tp?'var(--amber)':'var(--green)';const ndC=nd>0?'var(--red)':'var(--green)';
-    const yh=nd>0&&y===0?'border-color:var(--red);background:var(--red-bg)':'';
+    const{oh,tp,nd,y,b,pr,su}=calcProd(item);
+    const cat=S.categories[item]||'';const isFood=cat==='Frozen Foods';
+    const ohCol=oh===0?'#A82020':oh<tp?'#B05A00':'#2A6B3A';
+    const ndCol=nd>0?'#A82020':'#2A6B3A';
+    const yhl=nd>0&&y===0?'border-color:#A82020;background:#FBECEC':'border-color:#844f06';
     let result='';
-    if(nd===0)result=`<div class="mpc-result" style="background:var(--green-bg);color:var(--green)">✓ On par — no production needed</div>`;
-    else if(y===0)result=`<div class="mpc-result" style="background:var(--amber-bg);color:var(--amber)">Enter batch yield to calculate</div>`;
-    else result=`<div class="mpc-result" style="background:var(--sidebar);color:#fff">Make ${b} batch${b!==1?'es':''} → ${pr} units${su>0?' ('+su+' surplus)':''}</div>`;
-    return`<div class="mob-prod-card"><div class="mpc-header"><span class="mpc-name">${item}</span><span class="cat-chip ${cat==='Frozen Foods'?'cc-food':'cc-dessert'}">${cat==='Frozen Foods'?'Food':'Dessert'}</span></div><div class="mpc-stats"><div class="mpc-stat"><div class="mpc-stat-val" style="color:${ohC}">${oh}</div><div class="mpc-stat-lbl">On Hand</div></div><div class="mpc-stat"><div class="mpc-stat-val" style="color:var(--text3)">${tp||'—'}</div><div class="mpc-stat-lbl">Total Par</div></div><div class="mpc-stat"><div class="mpc-stat-val" style="color:${ndC}">${nd>0?'+'+nd:'✓'}</div><div class="mpc-stat-lbl">Needed</div></div></div><div class="mpc-yield-row"><label>Batch yield (units per batch)</label><input type="number" id="yield-${sl(item)}" value="${y||''}" min="1" placeholder="e.g. 15" style="width:90px;text-align:center;font-size:16px;${yh}" onchange="S.batchYields['${esc(item)}']=Math.max(0,parseInt(this.value)||0);renderProduction()"></div>${result}</div>`;
+    if(nd===0){
+      result=`<div style="padding:9px 12px;border-radius:6px;font-size:12px;font-weight:700;background:#E8F4EB;color:#2A6B3A">✓ On par — no production needed</div>`;
+    }else if(y===0){
+      result=`<div style="padding:9px 12px;border-radius:6px;font-size:12px;font-weight:700;background:#FFF0DC;color:#B05A00">Enter batch yield to calculate batches needed</div>`;
+    }else{
+      result=`<div style="padding:9px 12px;border-radius:6px;font-size:12px;font-weight:700;background:#5e3303;color:#fff">Make ${b} batch${b!==1?'es':''} → ${pr} units${su>0?' ('+su+' surplus)':''}</div>`;
+    }
+    return`<div style="${MC}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <span style="font-weight:700;font-size:14px;flex:1;min-width:0;color:#1C0F06">${item}</span>
+        <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;border:1px solid #ddd;color:#333">${isFood?'Food':'Dessert'}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:10px">
+        <div style="background:#fbe5cb;border-radius:6px;padding:9px 4px;text-align:center">
+          <div style="font-family:'Abril Fatface',serif;font-size:20px;color:${ohCol};line-height:1">${oh}</div>
+          <div style="font-size:9px;color:#9C7A58;text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-top:3px">On Hand</div>
+        </div>
+        <div style="background:#fbe5cb;border-radius:6px;padding:9px 4px;text-align:center">
+          <div style="font-family:'Abril Fatface',serif;font-size:20px;color:#9C7A58;line-height:1">${tp||'—'}</div>
+          <div style="font-size:9px;color:#9C7A58;text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-top:3px">Total Par</div>
+        </div>
+        <div style="background:#fbe5cb;border-radius:6px;padding:9px 4px;text-align:center">
+          <div style="font-family:'Abril Fatface',serif;font-size:20px;color:${ndCol};line-height:1">${nd>0?'+'+nd:'✓'}</div>
+          <div style="font-size:9px;color:#9C7A58;text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-top:3px">Needed</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <label style="font-size:11px;font-weight:700;color:#9C7A58;text-transform:uppercase;letter-spacing:.06em;flex:1">Batch yield (units / batch)</label>
+        <input type="number" id="yield-${sl(item)}" value="${y||''}" min="1" placeholder="e.g. 15"
+          style="width:80px;text-align:center;font-size:16px;font-weight:700;border:1px solid;${yhl};border-radius:6px;padding:7px;color:#1C0F06;background:#fff"
+          onchange="S.batchYields['${esc(item)}']=Math.max(0,parseInt(this.value)||0);renderProduction()">
+      </div>
+      ${result}
+    </div>`;
   }).join('');
 }
 
+// ── SALES ─────────────────────────────────────────────────────────
 function renderSalesMob(){
-  const sd=salesViewDate?salesViewData:S.sales;const el=document.getElementById('sales-mob');if(!el)return;
-  const LABS=['WH','Rest','Tr1','Tr2','Tr3'];
-  let grandU=0,grandR=0;const locT={};const locR={};LOCS.forEach(l=>{locT[l]=0;locR[l]=0;});
+  const sd=salesViewDate?salesViewData:S.sales;
+  const el=document.getElementById('sales-mob');if(!el)return;
+  let grandU=0,grandR=0;
+  const locT={};const locR={};LOCS.forEach(l=>{locT[l]=0;locR[l]=0;});
   S.items.forEach(item=>{const p=S.prices[item]||0;LOCS.forEach(loc=>{const q=(sd?.[item]||{})[loc]||0;locT[loc]+=q;locR[loc]+=q*p;grandU+=q;grandR+=q*p;});});
-  const summary=`<div class="mob-sales-summary"><div class="mss-item"><div class="mss-val">${grandU}</div><div class="mss-lbl">Units Sold</div></div><div class="mss-item"><div class="mss-val">$${grandR.toFixed(0)}</div><div class="mss-lbl">Revenue</div></div><div class="mss-item"><div class="mss-val">${locT['Truck 1']}</div><div class="mss-lbl">Truck 1</div></div><div class="mss-item"><div class="mss-val">${locT['Truck 2']}</div><div class="mss-lbl">Truck 2</div></div></div>`;
-  const rows=S.items.map(item=>{const p=S.prices[item]||0;const total=LOCS.reduce((s,l)=>s+((sd?.[item]||{})[l]||0),0);if(total===0)return'';const lstr=LOCS.map((loc,i)=>{const q=(sd?.[item]||{})[loc]||0;return q>0?`${LABS[i]}:${q}`:null;}).filter(Boolean).join(' ');return`<div class="mob-sale-row"><span class="msr-name">${item}</span><span class="msr-locs">${lstr}</span><div class="msr-right"><span class="msr-total">${total} sold</span><span class="msr-rev">$${(total*p).toFixed(2)}</span></div></div>`;}).filter(Boolean).join('');
-  el.innerHTML=summary+`<div class="mob-sale-list">${rows||'<p style="padding:16px;color:var(--text3);text-align:center;font-style:italic">No sales yet today</p>'}</div>`;
+  // Summary bar matching mockup
+  const summary=`<div style="background:#5e3303;border-radius:8px;padding:14px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div><div style="font-family:'Abril Fatface',serif;font-size:22px;color:#fff;line-height:1">${grandU}</div><div style="font-size:9px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin-top:3px">Units Sold</div></div>
+    <div><div style="font-family:'Abril Fatface',serif;font-size:22px;color:#fff;line-height:1">$${grandR.toFixed(0)}</div><div style="font-size:9px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin-top:3px">Revenue</div></div>
+    <div><div style="font-family:'Abril Fatface',serif;font-size:22px;color:#fff;line-height:1">${locT['Truck 1']}</div><div style="font-size:9px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin-top:3px">Truck 1</div></div>
+    <div><div style="font-family:'Abril Fatface',serif;font-size:22px;color:#fff;line-height:1">${locT['Truck 2']}</div><div style="font-size:9px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin-top:3px">Truck 2</div></div>
+  </div>`;
+  // Item rows — only show items with sales
+  const rows=S.items.map(item=>{
+    const p=S.prices[item]||0;
+    const total=LOCS.reduce((s,l)=>s+((sd?.[item]||{})[l]||0),0);
+    if(total===0)return'';
+    const lstr=LOCS.map((loc,i)=>{const q=(sd?.[item]||{})[loc]||0;return q>0?`${LOC_LABS[i]}:${q}`:null;}).filter(Boolean).join('  ');
+    return`<div style="display:flex;align-items:center;padding:10px 0;border-bottom:1px solid #f3dcc0;gap:8px">
+      <span style="font-size:12px;font-weight:700;color:#1C0F06;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item}</span>
+      <span style="font-size:10px;color:#9C7A58;white-space:nowrap;flex-shrink:0">${lstr}</span>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0">
+        <span style="font-size:13px;font-weight:700;color:#1C0F06">${total} sold</span>
+        <span style="font-size:10px;font-weight:700;color:#2A6B3A">$${(total*p).toFixed(2)}</span>
+      </div>
+    </div>`;
+  }).filter(Boolean).join('');
+  el.innerHTML=summary+`<div style="background:#fff;border:1px solid #844f06;border-radius:8px;padding:0 13px">${rows||'<p style="padding:16px;color:#9C7A58;text-align:center;font-style:italic">No sales recorded yet</p>'}</div>`;
+}
+
+// ── OVERVIEW LOCATION CARDS ────────────────────────────────────────
+function renderLocSummaryMob(){
+  return LOCS.map((loc,i)=>{
+    let lLow=0,lOut=0,total=0;
+    S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;total+=q;if(q===0&&p>0)lOut++;else if(p>0&&q<=p)lLow++;});
+    const sc=lOut>0?'#A82020':lLow>0?'#B05A00':'#2A6B3A';
+    const st=lOut>0?lOut+' out of stock':lLow>0?lLow+' below par':'All good';
+    return`<tr onclick="openLocDetail('${loc}')" style="cursor:pointer"><td colspan="6" style="padding:0 0 8px;border:none">
+      <div style="background:#fff;border:1px solid #844f06;border-radius:8px;padding:13px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-family:'Abril Fatface',serif;font-size:15px;color:#5e3303;margin-bottom:3px">${loc}</div>
+          <div style="font-size:11px;font-weight:700;color:${sc};text-transform:uppercase;letter-spacing:.04em">${st}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-family:'Abril Fatface',serif;font-size:22px;color:#5e3303;line-height:1">${total}</div>
+          <div style="font-size:9px;color:#9C7A58;font-weight:700;text-transform:uppercase;letter-spacing:.05em">units</div>
+        </div>
+      </div>
+    </td></tr>`;
+  }).join('');
 }
 
 init();
