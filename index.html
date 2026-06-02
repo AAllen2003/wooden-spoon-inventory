@@ -8,8 +8,8 @@
 <meta name="apple-mobile-web-app-title" content="WS Inventory">
 <meta name="theme-color" content="#5e3303">
 <title>The Wooden Spoon — Inventory Manager</title>
-<link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-512.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -149,6 +149,10 @@ select{min-height:40px;}
 .loc-chip{font-size:9px;padding:2px 7px;}
 .cat-chip{font-size:9px;padding:2px 6px;}
 .item-row{padding:10px 12px;font-size:12px;}
+}
+@media(max-width:768px){
+#loc-sum-card{background:transparent;border:none;box-shadow:none;padding:0;}
+#loc-sum-header{display:none;}
 }</style>
 </head>
 <body>
@@ -251,9 +255,10 @@ select{min-height:40px;}
         <div class="metric"><div class="metric-label">Last Synced</div><div class="metric-value" style="font-family:var(--font-body);font-size:12px;padding-top:6px;font-weight:700" id="m-sync">Never</div></div>
       </div>
       <div id="overview-alerts"></div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">Location Summary</span></div>
-        <div class="tbl-wrap"><table><thead><tr><th>Location</th><th>Items</th><th>Below Par</th><th>Out of Stock</th><th>Status</th><th></th></tr></thead><tbody id="loc-summary"></tbody></table></div>
+      <div class="card" id="loc-sum-card">
+        <div class="card-header" id="loc-sum-header"><span class="card-title">Location Summary</span></div>
+        <div id="loc-sum-mob"></div>
+        <div id="loc-sum-tbl" class="tbl-wrap"><table><thead><tr><th>Location</th><th>Items</th><th>Below Par</th><th>Out of Stock</th><th>Status</th><th></th></tr></thead><tbody id="loc-summary"></tbody></table></div>
       </div>
     </div>
 
@@ -757,7 +762,18 @@ function renderOverview(){
   const oa=document.getElementById('overview-alerts');
   if(S.alerts.length){oa.innerHTML=S.alerts.slice(0,4).map(a=>{const li=LOCS.indexOf(a.loc),cls=a.type==='out'?'danger':'warn';return`<div class="alert-bar ${cls}"><div class="alert-body"><div class="alert-title">${a.type==='out'?'Out of stock':'Below par'}: ${a.item} @ <span class="loc-chip ${LC[li]}">${a.loc}</span></div><div class="alert-sub">Stock: ${a.qty} &middot; Par: ${a.par} &middot; ${a.time}</div></div><button class="alert-dismiss" onclick="dismissAlert('${esc(a.key)}')">&#x00D7;</button></div>`;}).join('');if(S.alerts.length>4)oa.innerHTML+=`<p style="font-size:12px;color:var(--text3);margin-bottom:12px;font-style:italic">+${S.alerts.length-4} more &mdash; see Alerts tab</p>`;}
   else{oa.innerHTML=S.items.length?'<div class="alert-bar success" style="margin-bottom:12px"><i class="ti ti-circle-check" style="font-size:16px"></i><div class="alert-body">All locations are at or above par.</div></div>':'';}
-  document.getElementById('loc-summary').innerHTML=isMob()?renderLocSummaryMob():LOCS.map((loc,i)=>{let lLow=0,lOut=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)lOut++;else if(p>0&&q<=p)lLow++;});const st=lOut>0?'<span class="stock-out">Action needed</span>':lLow>0?'<span class="stock-low">Low stock</span>':'<span class="stock-ok">All good</span>';return`<tr style="cursor:pointer" onclick="openLocDetail('${loc}')"><td><span class="loc-chip ${LC[i]}">${loc}</span></td><td>${S.items.length}</td><td>${lLow||'—'}</td><td>${lOut||'—'}</td><td>${st}</td><td style="color:var(--text3);font-size:11px;font-weight:700">View &rarr;</td></tr>`;}).join('');
+  if(isMob()){
+  // Mobile: hide table, show cards in separate div, hide card header
+  const lsh=document.getElementById('loc-sum-header');if(lsh)lsh.style.display='none';
+  const lst=document.getElementById('loc-sum-tbl');if(lst)lst.style.display='none';
+  const lsm=document.getElementById('loc-sum-mob');if(lsm)lsm.innerHTML=renderLocSummaryMobDiv();
+}else{
+  // Desktop: show table, hide mobile cards
+  const lsh=document.getElementById('loc-sum-header');if(lsh)lsh.style.display='';
+  const lst=document.getElementById('loc-sum-tbl');if(lst)lst.style.display='';
+  const lsm=document.getElementById('loc-sum-mob');if(lsm)lsm.innerHTML='';
+  document.getElementById('loc-summary').innerHTML=LOCS.map((loc,i)=>{let lLow=0,lOut=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)lOut++;else if(p>0&&q<=p)lLow++;});const st=lOut>0?'<span class="stock-out">Action needed</span>':lLow>0?'<span class="stock-low">Low stock</span>':'<span class="stock-ok">All good</span>';return`<tr style="cursor:pointer" onclick="openLocDetail('${loc}')"><td><span class="loc-chip ${LC[i]}">${loc}</span></td><td>${S.items.length}</td><td>${lLow||'—'}</td><td>${lOut||'—'}</td><td>${st}</td><td style="color:var(--text3);font-size:11px;font-weight:700">View &rarr;</td></tr>`;}).join('');
+}
 }
 function renderLocations(){const grid=document.getElementById('loc-grid');if(!grid)return;grid.innerHTML=LOCS.map((loc,i)=>{let total=0,low=0,out=0,value=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});const sc=out>0?'var(--red)':low>0?'var(--amber)':'var(--green)';const st=out>0?out+' out of stock':low>0?low+' below par':'All good';return`<div class="loc-card" onclick="openLocDetail('${loc}')"><div class="loc-card-top"></div><div class="loc-card-name">${loc}</div><div class="loc-card-sub" style="color:${sc}">${st}</div><div class="loc-card-stats"><div><div class="loc-stat-val">${total}</div><div class="loc-stat-label">Units</div></div><div><div class="loc-stat-val">$${value.toFixed(0)}</div><div class="loc-stat-label">Value</div></div></div><div class="loc-card-arrow"><i class="ti ti-arrow-right"></i></div></div>`;}).join('');}
 function renderLocDetail(){if(!currentLoc)return;const li=LOCS.indexOf(currentLoc);const filter=document.getElementById('loc-detail-cat-filter')?.value||'';const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;let total=0,low=0,out=0,value=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[currentLoc]||0,p=(S.par[item]||{})[currentLoc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});document.getElementById('loc-detail-header').innerHTML=`<div class="loc-detail-icon">${LI[li]}</div><div style="flex:1"><div class="loc-detail-name">${currentLoc}</div><div class="loc-detail-stats"><div class="loc-detail-stat"><strong>${total}</strong> units</div><div class="loc-detail-stat"><strong>$${value.toFixed(2)}</strong> value</div><div class="loc-detail-stat"><strong>${out}</strong> out of stock</div><div class="loc-detail-stat"><strong>${low}</strong> below par</div></div></div><button class="btn btn-sm" style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.2);color:#fff" onclick="exportLocCSV()"><i class="ti ti-download"></i> Export</button>`;document.getElementById('loc-detail-title').textContent=currentLoc+' Inventory';document.getElementById('loc-detail-table').innerHTML=items.map(item=>{const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0,cat=S.categories[item]||'',price=S.prices[item]||0;const cls=qty===0?'stock-out':par>0&&qty<=par?'stock-low':'stock-ok';const st=qty===0?'Out of stock':par>0&&qty<=par?`Below par (${qty}/${par})`:'In stock';const pct=par>0?Math.min(100,Math.round((qty/par)*100)):100;const bc=qty===0?'var(--red)':par>0&&qty<=par?'var(--amber)':'var(--green)';return`<tr><td style="font-weight:700">${item}</td><td><span class="cat-chip ${cat==='Frozen Foods'?'cc-food':'cc-dessert'}">${cat==='Frozen Foods'?'Food':'Dessert'}</span></td><td style="font-weight:700;color:var(--green)">${fmt(price)}</td><td style="text-align:center"><input type="number" class="inv-input" value="${qty}" min="0" onchange="updateInventory('${esc(item)}','${currentLoc}',this.value)"></td><td style="text-align:center;color:var(--text3);font-weight:700">${par||'—'}</td><td><span class="${cls}">${st}</span>${par>0?`<div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${bc}"></div></div>`:''}</td></tr>`;}).join('');}
@@ -955,6 +971,24 @@ function renderSalesMob(){
 }
 
 // ── OVERVIEW LOCATION CARDS ────────────────────────────────────────
+function renderLocSummaryMobDiv(){
+  return LOCS.map((loc,i)=>{
+    let lLow=0,lOut=0,total=0;
+    S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;total+=q;if(q===0&&p>0)lOut++;else if(p>0&&q<=p)lLow++;});
+    const sc=lOut>0?'#A82020':lLow>0?'#B05A00':'#2A6B3A';
+    const st=lOut>0?lOut+' out of stock':lLow>0?lLow+' below par':'All good';
+    return`<div onclick="openLocDetail('${loc}')" style="background:#fff;border:1px solid #844f06;border-radius:8px;padding:13px;display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer">
+      <div>
+        <div style="font-family:'Abril Fatface',serif;font-size:15px;color:#5e3303;margin-bottom:3px">${loc}</div>
+        <div style="font-size:11px;font-weight:700;color:${sc};text-transform:uppercase;letter-spacing:.04em">${st}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-family:'Abril Fatface',serif;font-size:22px;color:#5e3303;line-height:1">${total}</div>
+        <div style="font-size:9px;color:#9C7A58;font-weight:700;text-transform:uppercase;letter-spacing:.05em">units</div>
+      </div>
+    </div>`;
+  }).join('');
+}
 function renderLocSummaryMob(){
   return LOCS.map((loc,i)=>{
     let lLow=0,lOut=0,total=0;
@@ -1085,9 +1119,10 @@ init();
         <div class="metric"><div class="metric-label">Last Synced</div><div class="metric-value" style="font-family:var(--font-body);font-size:12px;padding-top:6px;font-weight:700" id="m-sync">Never</div></div>
       </div>
       <div id="overview-alerts"></div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">Location Summary</span></div>
-        <div class="tbl-wrap"><table><thead><tr><th>Location</th><th>Items</th><th>Below Par</th><th>Out of Stock</th><th>Status</th><th></th></tr></thead><tbody id="loc-summary"></tbody></table></div>
+      <div class="card" id="loc-sum-card">
+        <div class="card-header" id="loc-sum-header"><span class="card-title">Location Summary</span></div>
+        <div id="loc-sum-mob"></div>
+        <div id="loc-sum-tbl" class="tbl-wrap"><table><thead><tr><th>Location</th><th>Items</th><th>Below Par</th><th>Out of Stock</th><th>Status</th><th></th></tr></thead><tbody id="loc-summary"></tbody></table></div>
       </div>
     </div>
 
