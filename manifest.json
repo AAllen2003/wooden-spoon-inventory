@@ -2,13 +2,14 @@
   "name": "The Wooden Spoon Inventory",
   "short_name": "WS Inventory",
   "description": "Inventory and production planning for The Wooden Spoon Restaurant",
-  "start_url": "/",
+  "start_url": "/wooden-spoon-inventory/",
+  "scope": "/wooden-spoon-inventory/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#5e3303",
   "orientation": "any",
   "icons": [
-    { "src": "icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any maskable" },
+    { "src": "icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any" },
     { "src": "icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any maskable" }
   ]
 }
