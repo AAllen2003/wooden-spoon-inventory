@@ -14,7 +14,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>:root{--bg:#fbe5cb;--bg2:#f3ddc3;--surface:#ffffff;--border:#844f06;--border2:#784300;--text:#1C0F06;--text2:#5C3D22;--text3:#9C7A58;--sidebar:#5e3303;--sidebar-border:rgba(255,255,255,.08);--sidebar-text:#ffffff;--sidebar-text2:#ffffff;--accent:#9f7014;--green:#2A6B3A;--green-bg:#E8F4EB;--amber:#B05A00;--amber-bg:#FFF0DC;--red:#A82020;--red-bg:#FBECEC;--radius:6px;--radius-lg:10px;--shadow:0 1px 4px rgba(0,0,0,.07);--shadow-md:0 3px 12px rgba(0,0,0,.1);--font-display:'Abril Fatface',serif;--font-body:'Lato',sans-serif;--bnav:65px;--badge-warehouse-bg:#ffffff;--badge-warehouse-text:#000000;--badge-restaurant-bg:#ffffff;--badge-restaurant-text:#000000;--badge-truck1-bg:#ffffff;--badge-truck1-text:#000000;--badge-truck2-bg:#ffffff;--badge-truck2-text:#000000;--badge-truck3-bg:#ffffff;--badge-truck3-text:#000000;--badge-food-bg:#ffffff;--badge-food-text:#000000;--badge-dessert-bg:#ffffff;--badge-dessert-text:#000000;}
-*{box-sizing:border-box;margin:0;padding:0;}body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.5;}
+*{box-sizing:border-box;margin:0;padding:0;}html{overflow-x:hidden;}body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.5;overflow-x:hidden;max-width:100vw;}
 .lo{position:fixed;inset:0;background:var(--sidebar);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2000;gap:16px;}.lo.hidden{display:none;}.lo img{width:120px;border-radius:8px;}.lo-spin{width:32px;height:32px;border:3px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;}.lo-txt{color:rgba(255,255,255,.7);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;}
 .auth-screen{position:fixed;inset:0;background:var(--sidebar);display:flex;align-items:center;justify-content:center;z-index:1000;padding:24px;}.auth-card{background:var(--surface);border-radius:14px;padding:36px 40px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.25);}.auth-logo{width:120px;display:block;margin:0 auto 18px;border-radius:8px;}.auth-title{font-family:var(--font-display);font-size:22px;color:var(--sidebar);text-align:center;margin-bottom:4px;}.auth-sub{font-size:12px;color:var(--text3);text-align:center;margin-bottom:22px;}.auth-field{margin-bottom:14px;}.auth-field label{display:block;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;}.auth-field input{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:var(--font-body);background:var(--surface);color:var(--text);}.auth-field input:focus{outline:none;border-color:var(--accent);}.auth-btn{width:100%;padding:12px;background:var(--sidebar);color:#fff;border:none;border-radius:var(--radius);font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font-body);text-transform:uppercase;letter-spacing:.06em;margin-top:8px;transition:opacity .15s;}.auth-btn:hover{opacity:.88;}.auth-btn.sec{background:rgba(0,0,0,.07);color:var(--text);}.auth-err{background:var(--red-bg);color:var(--red);padding:10px 12px;border-radius:var(--radius);font-size:12px;font-weight:700;margin-top:10px;display:none;}.auth-steps{background:var(--bg);border-radius:var(--radius);padding:14px 16px;margin-bottom:18px;}.auth-steps p{font-size:12px;color:var(--text2);margin-bottom:6px;line-height:1.6;}.auth-steps p:last-child{margin-bottom:0;}.auth-steps strong{color:var(--sidebar);}.auth-note{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;line-height:1.6;}
 #screen-app{display:none;}.shell{display:flex;min-height:100vh;}
@@ -80,150 +80,75 @@ input[type=text],input[type=password],input[type=number],input[type=url],input[t
 .msr-total{font-size:13px;font-weight:700;}
 .msr-rev{font-size:10px;color:var(--green);font-weight:700;}
 .mob-sale-totals-row{display:flex;align-items:center;padding:11px 0;gap:8px;background:var(--bg2);border-radius:0 0 var(--radius) var(--radius);margin:0 -13px;padding:11px 13px;font-weight:700;}
-.scroll-tabs{display:none;background:var(--sidebar);overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;border-bottom:1px solid var(--sidebar-border);white-space:nowrap;}.scroll-tabs::-webkit-scrollbar{display:none;}.st-item{display:inline-flex;flex-direction:column;align-items:center;gap:3px;padding:8px 14px;background:none;border:none;color:rgba(255,255,255,.5);cursor:pointer;font-family:var(--font-body);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;position:relative;white-space:nowrap;transition:color .12s;}.st-item i{font-size:18px;}.st-item.active{color:#fff;}.st-item.active::after{content:"";position:absolute;bottom:0;left:10%;right:10%;height:2px;background:var(--accent);border-radius:2px 2px 0 0;}.st-badge{position:absolute;top:5px;right:6px;background:var(--accent);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;display:none;}
-@media(max-width:768px){@media(max-width:768px){
-
-/* ── STRUCTURE ────────────────────────── */
+.scroll-tabs{display:none;background:var(--sidebar);overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;border-bottom:1px solid var(--sidebar-border);white-space:nowrap;width:100%;max-width:100vw;}.scroll-tabs::-webkit-scrollbar{display:none;}.st-item{display:inline-flex;flex-direction:column;align-items:center;gap:3px;padding:8px 14px;background:none;border:none;color:rgba(255,255,255,.5);cursor:pointer;font-family:var(--font-body);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;position:relative;white-space:nowrap;transition:color .12s;}.st-item i{font-size:18px;}.st-item.active{color:#fff;}.st-item.active::after{content:"";position:absolute;bottom:0;left:10%;right:10%;height:2px;background:var(--accent);border-radius:2px 2px 0 0;}.st-badge{position:absolute;top:5px;right:6px;background:var(--accent);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;display:none;}
+@media(max-width:768px){
+html,body{overflow-x:hidden;max-width:100vw;}
 .sidebar{display:none;}
-.scroll-tabs{display:block;position:sticky;top:48px;z-index:40;}
 .bottom-nav{display:none;}
-.main{margin-left:0;padding-bottom:16px;}
-.topbar{padding:0 14px;height:48px;}
+.scroll-tabs{display:block;position:sticky;top:0;z-index:40;width:100%;max-width:100vw;}
+.st-item{padding:8px 14px;font-size:9px;gap:3px;letter-spacing:.05em;}
+.st-item i{font-size:18px;}
+.main{margin-left:0;padding-bottom:20px;overflow-x:hidden;max-width:100vw;}
+.topbar{padding:0 16px;height:52px;}
 .page-title{font-size:16px;}
 .back-btn{font-size:11px;padding:4px 8px;}
-.content{padding:12px;}
-
-/* ── SCROLL TABS ──────────────────────── */
-.st-item{padding:7px 12px;font-size:9px;gap:2px;}
-.st-item i{font-size:17px;}
-
-/* ── CARDS ────────────────────────────── */
-.card{padding:14px;margin-bottom:10px;}
-.card-header{margin-bottom:12px;gap:8px;flex-wrap:wrap;}
-.card-title{font-size:14px;}
-
-/* ── METRICS ──────────────────────────── */
-.metrics-grid{grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px;}
-.metric{padding:12px;}
+.content{padding:12px;overflow-x:hidden;max-width:100%;}
+.section{max-width:100%;overflow-x:hidden;}
+.metrics-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px;}
+.metric{padding:12px 10px;}
 .metric-value{font-size:22px;}
 .metric-label{font-size:9px;margin-bottom:5px;}
-.metric::before{height:3px;}
-
-/* ── LOCATION CARDS ───────────────────── */
-.loc-grid{grid-template-columns:repeat(2,1fr);gap:10px;}
+.loc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
 .loc-card{padding:14px 12px;}
 .loc-card-name{font-size:14px;}
 .loc-card-sub{font-size:10px;margin-bottom:10px;}
 .loc-card-stats{gap:10px;}
 .loc-stat-val{font-size:17px;}
-.loc-stat-label{font-size:8px;}
-
-/* ── LOCATION DETAIL ──────────────────── */
+.loc-card-arrow{display:none;}
 .loc-detail-header{padding:14px;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
 .loc-detail-icon{width:40px;height:40px;font-size:18px;}
 .loc-detail-name{font-size:17px;}
-.loc-detail-stats{gap:12px;margin-top:4px;}
+.loc-detail-stats{gap:10px;flex-wrap:wrap;}
 .loc-detail-stat{font-size:11px;}
-
-/* ── TABLES ───────────────────────────── */
-/* Horizontal scroll with sticky item name column */
-.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;
-  border-radius:var(--radius);
-  /* subtle scroll hint shadow on right edge */
-  background:linear-gradient(to right,var(--surface) 30%,rgba(255,255,255,0)) left center,
-             linear-gradient(to right,rgba(255,255,255,0),var(--surface) 70%) right center;
-  background-size:40px 100%,40px 100%;
-  background-repeat:no-repeat;
-  background-attachment:local,local;}
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;}
 table{min-width:max-content;}
-th{padding:8px 10px;font-size:9px;}
-td{padding:9px 10px;font-size:12px;}
-
-/* Sticky first column so item name always visible while scrolling sideways */
-.tbl-wrap th:first-child,.tbl-wrap td:first-child{
-  position:sticky;left:0;z-index:2;
-  min-width:110px;max-width:130px;
-  white-space:normal;word-break:break-word;
-}
+th{padding:8px 10px;font-size:9px;}td{padding:9px 10px;font-size:12px;}
+.tbl-wrap th:first-child,.tbl-wrap td:first-child{position:sticky;left:0;z-index:2;min-width:100px;max-width:120px;white-space:normal;word-break:break-word;}
 .tbl-wrap thead th:first-child{background:var(--bg2);}
 .tbl-wrap tbody td:first-child{background:var(--surface);}
 .tbl-wrap tbody tr:hover td:first-child{background:var(--bg);}
 .tbl-wrap .tfoot-row td:first-child{background:var(--sidebar)!important;}
-
-/* ── INPUTS & TOUCH TARGETS ───────────── */
-/* font-size 16px prevents iOS auto-zoom on focus */
-input[type=text],input[type=password],input[type=number],
-input[type=url],input[type=date],select{
-  font-size:16px;padding:9px 11px;min-height:42px;}
+input[type=text],input[type=password],input[type=number],input[type=url],input[type=date],select{font-size:16px;padding:9px 11px;min-height:42px;max-width:100%;}
 .inv-input{width:64px;min-height:40px;padding:6px;font-size:15px;text-align:center;}
-.par-input{width:52px;min-height:36px;font-size:14px;}
+.par-input{width:56px;min-height:40px;font-size:15px;text-align:center;}
 select{min-height:40px;}
-
-/* ── BUTTONS ──────────────────────────── */
 .btn{min-height:40px;padding:8px 14px;font-size:12px;}
 .btn-sm{min-height:36px;padding:6px 11px;font-size:11px;}
-.btn-xs{min-height:32px;padding:4px 9px;font-size:10px;}
-
-/* ── TRANSFERS ────────────────────────── */
+.btn-xs{min-height:32px;}
+.card{padding:14px;margin-bottom:10px;max-width:100%;}
+.card-header{margin-bottom:12px;gap:8px;flex-wrap:wrap;}
+.card-title{font-size:14px;}
 .transfer-grid{grid-template-columns:1fr 1fr;gap:10px;}
-.transfer-grid>div:nth-child(3){grid-column:1;}
-.transfer-grid>div:nth-child(4){grid-column:2;display:flex;flex-direction:column;gap:5px;}
 .transfer-grid>div:last-child{grid-column:span 2;}
-.fg input[type=number]{width:100%;}
-.fg label{font-size:11px;}
-
-/* ── PRODUCTION HEADER ────────────────── */
-#sec-production>.card:first-child{padding:14px;}
-#sec-production>.card:first-child div:first-child div:first-child{font-size:15px;}
-#sec-production>.card:first-child div:first-child div:last-child{font-size:11px;}
-
-/* ── ALERTS ───────────────────────────── */
 .alert-bar{padding:10px 12px;font-size:12px;}
-.alert-title{font-size:12px;}
-.alert-sub{font-size:10px;}
-
-/* ── SALES ────────────────────────────── */
-.sales-nav{margin-bottom:10px;gap:8px;}
-.sales-date-label{font-size:13px;}
-.history-list{gap:6px;}
+.sales-nav{margin-bottom:10px;}
 .history-date-btn{padding:5px 10px;font-size:10px;}
-
-/* ── SECTION INTRO ────────────────────── */
-.section-intro{font-size:11px;margin-bottom:10px;line-height:1.5;}
-
-/* ── SYNC ROW ─────────────────────────── */
+.section-intro{font-size:11px;margin-bottom:10px;}
 .sync-row{font-size:10px;margin-bottom:10px;}
-
-/* ── SETTINGS ACCORDION ───────────────── */
 .acc-header{padding:12px 14px;}
 .acc-title{font-size:14px;}
 .acc-body{padding:0 14px 14px;}
-.color-settings-grid{grid-template-columns:1fr;}
-.color-group{padding:12px;}
+.color-settings-grid{grid-template-columns:minmax(0,1fr);}
 .theme-presets{gap:6px;}
 .preset-btn{padding:5px 10px;font-size:10px;}
-
-/* ── AUTH SCREENS ─────────────────────── */
-.auth-card{padding:24px 20px;}
-.auth-title{font-size:19px;}
-
-/* ── EXPORT STRIP ─────────────────────── */
-.export-strip{gap:6px;}
 .export-strip span{display:none;}
-
-/* ── BATCH PILL ───────────────────────── */
-.batch-pill{font-size:11px;padding:4px 10px;}
-
-/* ── LOC CHIP / CAT CHIP ──────────────── */
+.auth-card{padding:24px 20px;}
 .loc-chip{font-size:9px;padding:2px 7px;}
 .cat-chip{font-size:9px;padding:2px 6px;}
-
-/* ── ITEM ROW ─────────────────────────── */
-.item-row{padding:10px 12px;font-size:12px;gap:8px;}
-
-/* ── OVERVIEW LOCATION SUMMARY TABLE ─── */
-#loc-summary td,#loc-summary th{padding:8px 10px;font-size:11px;}
-
+.item-row{padding:10px 12px;font-size:12px;}
+.mic-locs{grid-template-columns:repeat(5,minmax(0,1fr));}
+.mob-sales-summary{grid-template-columns:repeat(2,minmax(0,1fr));}
+.mpc-stats{grid-template-columns:repeat(3,minmax(0,1fr));}
 }</style>
 </head>
 <body>
@@ -320,274 +245,10 @@ select{min-height:40px;}
     <button class="st-item active" id="st-overview" onclick="showSection('overview',null);setStActive('st-overview')"><i class="ti ti-chart-bar" aria-hidden="true"></i>Overview</button>
     <button class="st-item" id="st-inventory" onclick="showSection('inventory',null);setStActive('st-inventory')"><i class="ti ti-package" aria-hidden="true"></i>Inventory</button>
     <button class="st-item" id="st-locations" onclick="showSection('locations',null);setStActive('st-locations')"><i class="ti ti-map-pin" aria-hidden="true"></i>Locations</button>
-    <button class="st-item" id="st-par" onclick="showSection('par',null);setStActive('st-par')"><i class="ti ti-target" aria-hidden="true"></i>Par Levels</button>
-    <button class="st-item" id="st-alerts" onclick="showSection('alerts',null);setStActive('st-alerts')"><span class="st-badge" id="st-badge">0</span><i class="ti ti-bell" aria-hidden="true"></i>Alerts</button>
-    <button class="st-item" id="st-transfers" onclick="showSection('transfers',null);setStActive('st-transfers')"><i class="ti ti-arrows-exchange" aria-hidden="true"></i>Transfers</button>
     <button class="st-item" id="st-production" onclick="showSection('production',null);setStActive('st-production')"><i class="ti ti-tool" aria-hidden="true"></i>Production</button>
     <button class="st-item" id="st-sales" onclick="showSection('sales',null);setStActive('st-sales')"><i class="ti ti-currency-dollar" aria-hidden="true"></i>Sales</button>
-    <button class="st-item" id="st-settings" onclick="showSection('settings',null);setStActive('st-settings')"><i class="ti ti-settings" aria-hidden="true"></i>Settings</button>
+    <button class="st-item" id="st-more-trigger" onclick="openMoreDrawer()"><span class="st-badge" id="st-badge">0</span><i class="ti ti-menu-2" aria-hidden="true"></i>More</button>
   </div>
-  <div class="content">
-
-    <div class="section active" id="sec-overview">
-      <div class="metrics-grid">
-        <div class="metric"><div class="metric-label">Total SKUs</div><div class="metric-value" id="m-skus">0</div></div>
-        <div class="metric"><div class="metric-label">Below Par</div><div class="metric-value amber" id="m-low">0</div></div>
-        <div class="metric"><div class="metric-label">Out of Stock</div><div class="metric-value red" id="m-out">0</div></div>
-        <div class="metric"><div class="metric-label">Active Alerts</div><div class="metric-value red" id="m-alerts">0</div></div>
-        <div class="metric"><div class="metric-label">Last Synced</div><div class="metric-value" style="font-family:var(--font-body);font-size:12px;padding-top:6px;font-weight:700" id="m-sync">Never</div></div>
-      </div>
-      <div id="overview-alerts"></div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">Location Summary</span></div>
-        <div class="tbl-wrap"><table><thead><tr><th>Location</th><th>Items</th><th>Below Par</th><th>Out of Stock</th><th>Status</th><th></th></tr></thead><tbody id="loc-summary"></tbody></table></div>
-      </div>
-    </div>
-
-    <div class="section" id="sec-inventory">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Inventory by Item &amp; Location</span>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <select id="inv-cat-filter" onchange="renderInventory()"><option value="">All categories</option><option>Frozen Foods</option><option>Frozen Desserts</option></select>
-            <button class="btn btn-sm" onclick="exportCSV('inventory')"><i class="ti ti-download"></i> Export</button>
-          </div>
-        </div>
-        <div class="sync-row"><div class="inv-spinner" id="inv-spinner"></div><span id="inv-sync-msg">Sales deducted on sync. Data shared live across all devices.</span></div>
-        <div id="inv-mob"></div><div id="inv-tbl" class="tbl-wrap"><table><thead><tr><th>Item</th><th>Category</th><th>Price</th><th class="qty-cell">Warehouse</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total</th></tr></thead><tbody id="inv-table"></tbody></table></div>
-      </div>
-    </div>
-
-    <div class="section" id="sec-locations">
-      <p class="section-intro">Click any location to view and edit its full inventory.</p>
-      <div class="loc-grid" id="loc-grid"></div>
-    </div>
-
-    <div class="section" id="sec-loc-detail">
-      <div class="loc-detail-header" id="loc-detail-header"></div>
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title" id="loc-detail-title">Inventory</span>
-          <div style="display:flex;gap:8px">
-            <select id="loc-detail-cat-filter" onchange="renderLocDetail()"><option value="">All</option><option>Frozen Foods</option><option>Frozen Desserts</option></select>
-            <button class="btn btn-sm" onclick="exportLocCSV()"><i class="ti ti-download"></i> Export</button>
-          </div>
-        </div>
-        <p class="section-intro">Edit quantities directly &mdash; changes save to cloud instantly and update all devices.</p>
-        <div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Category</th><th>Price</th><th style="text-align:center">On Hand</th><th style="text-align:center">Par</th><th>Status</th></tr></thead><tbody id="loc-detail-table"></tbody></table></div>
-      </div>
-    </div>
-
-    <div class="section" id="sec-par">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Par Levels</span>
-          <div style="display:flex;gap:8px">
-            <button class="btn btn-sm" onclick="exportCSV('par')"><i class="ti ti-download"></i> Export</button>
-            <button class="btn btn-sm btn-primary" id="par-save-btn" onclick="savePar()"><i class="ti ti-device-floppy"></i> Save</button>
-          </div>
-        </div>
-        <p class="section-intro">Minimum stock per item per location. Saved to cloud &mdash; shared with all staff.</p>
-        <div id="par-mob"></div><div id="par-tbl" class="tbl-wrap"><table><thead><tr><th>Item</th><th class="par-cell">Warehouse</th><th class="par-cell">Restaurant</th><th class="par-cell">Truck 1</th><th class="par-cell">Truck 2</th><th class="par-cell">Truck 3</th></tr></thead><tbody id="par-table-body"></tbody></table></div>
-      </div>
-    </div>
-
-    <div class="section" id="sec-alerts">
-      <div class="card">
-        <div class="card-header"><span class="card-title">Active Alerts</span><button class="btn btn-sm btn-danger" onclick="dismissAllAlerts()">Dismiss All</button></div>
-        <div id="alerts-list"></div>
-      </div>
-    </div>
-
-    <div class="section" id="sec-transfers">
-      <div class="card">
-        <div class="card-header"><span class="card-title">Transfer Inventory</span></div>
-        <div class="transfer-grid">
-          <div class="fg"><label>Item</label><select id="xfr-item"></select></div>
-          <div class="fg"><label>From</label><select id="xfr-from"><option>Warehouse</option><option>Restaurant</option><option>Truck 1</option><option>Truck 2</option><option>Truck 3</option></select></div>
-          <div class="fg"><label>To</label><select id="xfr-to"><option>Restaurant</option><option>Warehouse</option><option>Truck 1</option><option>Truck 2</option><option>Truck 3</option></select></div>
-          <div class="fg"><label>Qty</label><input type="number" id="xfr-qty" value="1" min="1" style="width:72px"></div>
-          <div class="fg"><label>&nbsp;</label><button class="btn btn-primary" onclick="doTransfer()"><i class="ti ti-arrow-right"></i> Transfer</button></div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">Transfer Log</span><button class="btn btn-sm" onclick="exportCSV('transfers')"><i class="ti ti-download"></i> Export</button></div>
-        <div class="tbl-wrap"><table><thead><tr><th>Time</th><th>Item</th><th>From</th><th>To</th><th>Qty</th><th>By</th></tr></thead><tbody id="xfr-log"></tbody></table></div>
-      </div>
-    </div>
-
-    <div class="section" id="sec-production">
-      <div class="card" style="background:var(--sidebar);border-color:var(--sidebar);margin-bottom:20px">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
-          <div><div style="font-family:var(--font-display);font-size:18px;color:#fff;margin-bottom:4px">Production Plan</div><div style="font-size:12px;color:rgba(255,255,255,.65);line-height:1.5">Based on aggregate inventory vs. total par levels across all locations.</div></div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-sm" style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.2);color:#fff" onclick="saveBatchYields()"><i class="ti ti-device-floppy"></i> Save Yields</button>
-            <button class="btn btn-sm" style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.2);color:#fff" onclick="exportCSV('production')"><i class="ti ti-download"></i> Export</button>
-          </div>
-        </div>
-      </div>
-      <div class="metrics-grid" id="prod-metrics"></div>
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Batch Yields &amp; Production Needs</span>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <select id="prod-cat-filter" onchange="renderProduction()"><option value="">All categories</option><option>Frozen Foods</option><option>Frozen Desserts</option></select>
-            <select id="prod-status-filter" onchange="renderProduction()"><option value="">All items</option><option value="make">Needs production</option><option value="ok">At or above par</option></select>
-          </div>
-        </div>
-        <p class="section-intro">Set each item's batch yield (units per batch). Yields are saved to cloud and shared with all staff.</p>
-        <div id="prod-mob"></div><div id="prod-tbl" class="tbl-wrap"><table><thead><tr><th>Item</th><th style="text-align:center">On Hand</th><th style="text-align:center">Total Par</th><th style="text-align:center">Needed</th><th style="text-align:center">Batch Yield</th><th style="text-align:center">Batches</th><th>Result</th></tr></thead><tbody id="prod-table"></tbody></table></div>
-      </div>
-    </div>
-
-    <div class="section" id="sec-sales">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Sales</span>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <button class="btn btn-sm" onclick="loadTodaySales()"><i class="ti ti-calendar-today"></i> Today</button>
-            <input type="date" id="sales-date-picker" onchange="loadArchiveDate(this.value)">
-            <button class="btn btn-sm" onclick="exportSalesCSV()"><i class="ti ti-download"></i> Export</button>
-          </div>
-        </div>
-        <div class="sales-nav"><span class="sales-date-label" id="sales-date-label">Today</span><span class="sales-date-badge" id="sales-date-badge">Live</span></div>
-        <div id="sales-history-bar" style="margin-bottom:12px;display:none">
-          <p style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Recent Days</p>
-          <div class="history-list" id="history-list"></div>
-        </div>
-        <div class="sync-row"><div class="inv-spinner" id="sales-spinner"></div><span id="sales-msg">Sales reset at midnight. Use the date picker or quick buttons to view past days.</span></div>
-        <div id="sales-mob"></div><div id="sales-tbl" class="tbl-wrap"><table><thead><tr><th>Item</th><th>Price</th><th class="qty-cell">Warehouse</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total</th><th class="qty-cell">Revenue</th></tr></thead><tbody id="sales-table"></tbody><tfoot><tr class="tfoot-row" id="sales-totals-row"></tr></tfoot></table></div>
-      </div>
-    </div>
-
-    <div class="section" id="sec-settings">
-      <div class="acc-section">
-        <div class="acc-header" onclick="toggleAcc('acc-colors')"><div class="acc-header-left"><span class="acc-icon">&#x1F3A8;</span><div><div class="acc-title">App Colors</div><div class="acc-subtitle">Sidebar, content, text &amp; accent</div></div></div><span class="acc-chevron" id="chv-acc-colors">&#x25BC;</span></div>
-        <div class="acc-body" id="acc-colors">
-          <div class="color-preview-bar" id="color-preview-bar" style="background:var(--sidebar);color:rgba(255,255,255,.9)">Preview &mdash; The Wooden Spoon</div>
-          <p style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Quick Presets</p>
-          <div class="theme-presets">
-            <button class="preset-btn" onclick="applyPreset('warmcraft')"><span class="preset-dot" style="background:#1A3328"></span>Warm Craft</button>
-            <button class="preset-btn" onclick="applyPreset('dark')"><span class="preset-dot" style="background:#0F1117"></span>Dark</button>
-            <button class="preset-btn" onclick="applyPreset('slate')"><span class="preset-dot" style="background:#1B2B4B"></span>Slate</button>
-            <button class="preset-btn" onclick="applyPreset('white')"><span class="preset-dot" style="background:#111;border:1px solid #ccc"></span>White</button>
-            <button class="preset-btn" onclick="applyPreset('forest')"><span class="preset-dot" style="background:#1B4332"></span>Forest</button>
-            <button class="preset-btn" onclick="applyPreset('midnight')"><span class="preset-dot" style="background:#2D1B69"></span>Midnight</button>
-            <button class="preset-btn" onclick="applyPreset('yours')"><span class="preset-dot" style="background:#5e3303"></span>My Theme</button>
-          </div>
-          <div class="color-settings-grid">
-            <div class="color-group"><div class="color-group-title">Sidebar</div>
-              <div class="color-row"><label>Background</label><input type="color" id="c-sidebar" oninput="liveColor('--sidebar',this.value,'h-sidebar');document.getElementById('color-preview-bar').style.background=this.value"><input type="text" class="color-hex" id="h-sidebar" maxlength="7" oninput="hexInput('h-sidebar','c-sidebar','--sidebar')"></div>
-              <div class="color-row"><label>Nav text</label><input type="color" id="c-sidebar-text" oninput="liveColor('--sidebar-text',this.value,'h-sidebar-text')"><input type="text" class="color-hex" id="h-sidebar-text" maxlength="7" oninput="hexInput('h-sidebar-text','c-sidebar-text','--sidebar-text')"></div>
-              <div class="color-row"><label>Nav muted</label><input type="color" id="c-sidebar-text2" oninput="liveColor('--sidebar-text2',this.value,'h-sidebar-text2')"><input type="text" class="color-hex" id="h-sidebar-text2" maxlength="7" oninput="hexInput('h-sidebar-text2','c-sidebar-text2','--sidebar-text2')"></div>
-            </div>
-            <div class="color-group"><div class="color-group-title">Content</div>
-              <div class="color-row"><label>Page background</label><input type="color" id="c-bg" oninput="liveColor('--bg',this.value,'h-bg')"><input type="text" class="color-hex" id="h-bg" maxlength="7" oninput="hexInput('h-bg','c-bg','--bg')"></div>
-              <div class="color-row"><label>Card surface</label><input type="color" id="c-surface" oninput="liveColor('--surface',this.value,'h-surface')"><input type="text" class="color-hex" id="h-surface" maxlength="7" oninput="hexInput('h-surface','c-surface','--surface')"></div>
-              <div class="color-row"><label>Borders</label><input type="color" id="c-border" oninput="liveColor('--border',this.value,'h-border')"><input type="text" class="color-hex" id="h-border" maxlength="7" oninput="hexInput('h-border','c-border','--border')"></div>
-            </div>
-            <div class="color-group"><div class="color-group-title">Text</div>
-              <div class="color-row"><label>Primary</label><input type="color" id="c-text" oninput="liveColor('--text',this.value,'h-text')"><input type="text" class="color-hex" id="h-text" maxlength="7" oninput="hexInput('h-text','c-text','--text')"></div>
-              <div class="color-row"><label>Secondary</label><input type="color" id="c-text2" oninput="liveColor('--text2',this.value,'h-text2')"><input type="text" class="color-hex" id="h-text2" maxlength="7" oninput="hexInput('h-text2','c-text2','--text2')"></div>
-              <div class="color-row"><label>Muted</label><input type="color" id="c-text3" oninput="liveColor('--text3',this.value,'h-text3')"><input type="text" class="color-hex" id="h-text3" maxlength="7" oninput="hexInput('h-text3','c-text3','--text3')"></div>
-            </div>
-            <div class="color-group"><div class="color-group-title">Accent</div>
-              <div class="color-row"><label>Buttons &amp; highlights</label><input type="color" id="c-accent" oninput="liveColor('--accent',this.value,'h-accent')"><input type="text" class="color-hex" id="h-accent" maxlength="7" oninput="hexInput('h-accent','c-accent','--accent')"></div>
-            </div>
-          </div>
-          <div style="margin-top:12px;text-align:right"><button class="btn btn-sm btn-danger" onclick="resetColors()"><i class="ti ti-refresh"></i> Reset Colors</button></div>
-        </div>
-      </div>
-      <div class="acc-section">
-        <div class="acc-header" onclick="toggleAcc('acc-badges')"><div class="acc-header-left"><span class="acc-icon">&#x1F3F7;</span><div><div class="acc-title">Badge Colors</div><div class="acc-subtitle">Location &amp; category badges</div></div></div><span class="acc-chevron" id="chv-acc-badges">&#x25BC;</span></div>
-        <div class="acc-body" id="acc-badges">
-          <div class="color-settings-grid" style="margin-top:14px">
-            <div class="color-group" style="grid-column:span 2"><div class="color-group-title">Location Badges</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview lc-0">Warehouse</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-warehouse-bg" oninput="liveBadge('--badge-warehouse-bg',this.value,'h-badge-warehouse-bg')"><input type="text" class="color-hex" id="h-badge-warehouse-bg" maxlength="7" oninput="hexBadge('h-badge-warehouse-bg','c-badge-warehouse-bg','--badge-warehouse-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Txt</span><div class="badge-pair-controls"><input type="color" id="c-badge-warehouse-text" oninput="liveBadge('--badge-warehouse-text',this.value,'h-badge-warehouse-text')"><input type="text" class="color-hex" id="h-badge-warehouse-text" maxlength="7" oninput="hexBadge('h-badge-warehouse-text','c-badge-warehouse-text','--badge-warehouse-text')"></div></div></div><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview lc-1">Restaurant</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-restaurant-bg" oninput="liveBadge('--badge-restaurant-bg',this.value,'h-badge-restaurant-bg')"><input type="text" class="color-hex" id="h-badge-restaurant-bg" maxlength="7" oninput="hexBadge('h-badge-restaurant-bg','c-badge-restaurant-bg','--badge-restaurant-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Txt</span><div class="badge-pair-controls"><input type="color" id="c-badge-restaurant-text" oninput="liveBadge('--badge-restaurant-text',this.value,'h-badge-restaurant-text')"><input type="text" class="color-hex" id="h-badge-restaurant-text" maxlength="7" oninput="hexBadge('h-badge-restaurant-text','c-badge-restaurant-text','--badge-restaurant-text')"></div></div></div><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview lc-2">Truck 1</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck1-bg" oninput="liveBadge('--badge-truck1-bg',this.value,'h-badge-truck1-bg')"><input type="text" class="color-hex" id="h-badge-truck1-bg" maxlength="7" oninput="hexBadge('h-badge-truck1-bg','c-badge-truck1-bg','--badge-truck1-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Txt</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck1-text" oninput="liveBadge('--badge-truck1-text',this.value,'h-badge-truck1-text')"><input type="text" class="color-hex" id="h-badge-truck1-text" maxlength="7" oninput="hexBadge('h-badge-truck1-text','c-badge-truck1-text','--badge-truck1-text')"></div></div></div><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview lc-3">Truck 2</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck2-bg" oninput="liveBadge('--badge-truck2-bg',this.value,'h-badge-truck2-bg')"><input type="text" class="color-hex" id="h-badge-truck2-bg" maxlength="7" oninput="hexBadge('h-badge-truck2-bg','c-badge-truck2-bg','--badge-truck2-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Txt</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck2-text" oninput="liveBadge('--badge-truck2-text',this.value,'h-badge-truck2-text')"><input type="text" class="color-hex" id="h-badge-truck2-text" maxlength="7" oninput="hexBadge('h-badge-truck2-text','c-badge-truck2-text','--badge-truck2-text')"></div></div></div><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview lc-4">Truck 3</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck3-bg" oninput="liveBadge('--badge-truck3-bg',this.value,'h-badge-truck3-bg')"><input type="text" class="color-hex" id="h-badge-truck3-bg" maxlength="7" oninput="hexBadge('h-badge-truck3-bg','c-badge-truck3-bg','--badge-truck3-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Txt</span><div class="badge-pair-controls"><input type="color" id="c-badge-truck3-text" oninput="liveBadge('--badge-truck3-text',this.value,'h-badge-truck3-text')"><input type="text" class="color-hex" id="h-badge-truck3-text" maxlength="7" oninput="hexBadge('h-badge-truck3-text','c-badge-truck3-text','--badge-truck3-text')"></div></div></div></div></div>
-            <div class="color-group"><div class="color-group-title">Category Badges</div><div style="margin-bottom:16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview cc-food">Food</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-food-bg" oninput="liveBadge('--badge-food-bg',this.value,'h-badge-food-bg')"><input type="text" class="color-hex" id="h-badge-food-bg" maxlength="7" oninput="hexBadge('h-badge-food-bg','c-badge-food-bg','--badge-food-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Txt</span><div class="badge-pair-controls"><input type="color" id="c-badge-food-text" oninput="liveBadge('--badge-food-text',this.value,'h-badge-food-text')"><input type="text" class="color-hex" id="h-badge-food-text" maxlength="7" oninput="hexBadge('h-badge-food-text','c-badge-food-text','--badge-food-text')"></div></div></div><div style="margin-bottom:16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge-preview cc-dessert">Dessert</span></div><div class="badge-pair-row"><span class="badge-pair-sub">BG</span><div class="badge-pair-controls"><input type="color" id="c-badge-dessert-bg" oninput="liveBadge('--badge-dessert-bg',this.value,'h-badge-dessert-bg')"><input type="text" class="color-hex" id="h-badge-dessert-bg" maxlength="7" oninput="hexBadge('h-badge-dessert-bg','c-badge-dessert-bg','--badge-dessert-bg')"></div></div><div class="badge-pair-row"><span class="badge-pair-sub">Txt</span><div class="badge-pair-controls"><input type="color" id="c-badge-dessert-text" oninput="liveBadge('--badge-dessert-text',this.value,'h-badge-dessert-text')"><input type="text" class="color-hex" id="h-badge-dessert-text" maxlength="7" oninput="hexBadge('h-badge-dessert-text','c-badge-dessert-text','--badge-dessert-text')"></div></div></div></div>
-          </div>
-          <div style="margin-top:12px;text-align:right"><button class="btn btn-sm btn-danger" onclick="resetBadgeColors()"><i class="ti ti-refresh"></i> Reset Badges</button></div>
-        </div>
-      </div>
-      <div class="acc-section">
-        <div class="acc-header" onclick="toggleAcc('acc-worker')"><div class="acc-header-left"><span class="acc-icon">&#x26A1;</span><div><div class="acc-title">Square Sync</div><div class="acc-subtitle">Worker URL &amp; access token</div></div></div><span class="acc-chevron" id="chv-acc-worker">&#x25BC;</span></div>
-        <div class="acc-body" id="acc-worker">
-          <div style="padding-top:14px">
-            <p style="font-size:12px;color:var(--text3);margin-bottom:12px;font-style:italic">Worker syncs Square sales and pulls live prices. URL is saved to cloud. Token is stored only on this device.</p>
-            <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px">Worker URL</label>
-            <div style="display:flex;gap:8px;margin-bottom:10px"><input type="url" id="worker-url" placeholder="https://dawn-union-f0b2.asa-allen.workers.dev" style="flex:1"><button class="btn btn-accent" onclick="saveWorkerUrl()">Save &amp; Test</button></div>
-            <div class="worker-status" id="worker-status"></div>
-            <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;display:block;margin-top:12px;margin-bottom:6px">Square Access Token</label>
-            <div style="display:flex;gap:8px"><input type="password" id="sq-token" placeholder="Production access token" style="flex:1"><button class="btn btn-primary" onclick="saveToken()">Save</button></div>
-          </div>
-        </div>
-      </div>
-      <div class="acc-section">
-        <div class="acc-header" onclick="toggleAcc('acc-locations')"><div class="acc-header-left"><span class="acc-icon">&#x1F4CD;</span><div><div class="acc-title">Square Location IDs</div><div class="acc-subtitle">Truck 1 &amp; Truck 2 configured</div></div></div><span class="acc-chevron" id="chv-acc-locations">&#x25BC;</span></div>
-        <div class="acc-body" id="acc-locations">
-          <div style="padding-top:14px">
-            <table style="font-size:13px"><thead><tr><th>Location</th><th>Square Location ID</th></tr></thead><tbody>
-              <tr><td><span class="loc-chip lc-0">Warehouse</span></td><td><input id="loc-wh" placeholder="No Square ID" style="width:200px;margin:3px 0"></td></tr>
-              <tr><td><span class="loc-chip lc-1">Restaurant</span></td><td><input id="loc-rs" placeholder="Uses Toast (future)" style="width:200px;margin:3px 0"></td></tr>
-              <tr><td><span class="loc-chip lc-2">Truck 1</span></td><td><input id="loc-t1" value="L9GK918KVE679" style="width:200px;margin:3px 0"></td></tr>
-              <tr><td><span class="loc-chip lc-3">Truck 2</span></td><td><input id="loc-t2" value="LRGD3HKCTVGFW" style="width:200px;margin:3px 0"></td></tr>
-              <tr><td><span class="loc-chip lc-4">Truck 3</span></td><td><input id="loc-t3" placeholder="Not in use" style="width:200px;margin:3px 0"></td></tr>
-            </tbody></table>
-            <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="saveLocations()">Save Locations</button>
-          </div>
-        </div>
-      </div>
-      <div class="acc-section">
-        <div class="acc-header" onclick="toggleAcc('acc-items')"><div class="acc-header-left"><span class="acc-icon">&#x1F4E6;</span><div><div class="acc-title">Items</div><div class="acc-subtitle" id="items-subtitle">28 items</div></div></div><span class="acc-chevron" id="chv-acc-items">&#x25BC;</span></div>
-        <div class="acc-body" id="acc-items">
-          <div style="padding-top:14px"><div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn btn-sm btn-primary" onclick="addItem()"><i class="ti ti-plus"></i> Add Item</button></div><div id="items-list"></div></div>
-        </div>
-      </div>
-      <div class="acc-section">
-        <div class="acc-header" onclick="toggleAcc('acc-export')"><div class="acc-header-left"><span class="acc-icon">&#x2193;</span><div><div class="acc-title">Export Data</div><div class="acc-subtitle">Download any dataset as CSV</div></div></div><span class="acc-chevron" id="chv-acc-export">&#x25BC;</span></div>
-        <div class="acc-body" id="acc-export">
-          <div style="padding-top:14px"><div class="export-strip"><span>Download any dataset</span><button class="btn btn-sm" onclick="exportCSV('inventory')"><i class="ti ti-download"></i> Inventory</button><button class="btn btn-sm" onclick="exportCSV('par')"><i class="ti ti-download"></i> Par Levels</button><button class="btn btn-sm" onclick="exportSalesCSV()"><i class="ti ti-download"></i> Sales</button><button class="btn btn-sm" onclick="exportCSV('production')"><i class="ti ti-download"></i> Production</button><button class="btn btn-sm" onclick="exportCSV('transfers')"><i class="ti ti-download"></i> Transfers</button></div></div>
-        </div>
-      </div>
-      <div class="acc-section">
-        <div class="acc-header" onclick="toggleAcc('acc-account')"><div class="acc-header-left"><span class="acc-icon">&#x1F464;</span><div><div class="acc-title">Account</div><div class="acc-subtitle" id="account-subtitle">Signed in</div></div></div><span class="acc-chevron" id="chv-acc-account">&#x25BC;</span></div>
-        <div class="acc-body" id="acc-account">
-          <div style="padding-top:14px">
-            <p style="font-size:13px;color:var(--text2);margin-bottom:14px">Signed in as <strong id="account-email"></strong></p>
-            <p style="font-size:12px;color:var(--text3);margin-bottom:14px;font-style:italic;line-height:1.6">To invite staff: Supabase dashboard &rarr; Authentication &rarr; Users &rarr; Invite User. They receive an email to set their password.</p>
-            <button class="btn btn-danger" onclick="doSignOut()"><i class="ti ti-logout"></i> Sign Out</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-</main>
-
-<nav class="bottom-nav">
-  <div class="bn-inner">
-    <button class="bn-item active" id="bn-overview" onclick="showSection('overview',null);setBnActive('bn-overview')"><i class="ti ti-chart-bar"></i><span>Overview</span></button>
-    <button class="bn-item" id="bn-inventory" onclick="showSection('inventory',null);setBnActive('bn-inventory')"><i class="ti ti-package"></i><span>Inventory</span></button>
-    <button class="bn-item" id="bn-production" onclick="showSection('production',null);setBnActive('bn-production')"><i class="ti ti-tool"></i><span>Production</span></button>
-    <button class="bn-item" id="bn-sales" onclick="showSection('sales',null);setBnActive('bn-sales')"><i class="ti ti-currency-dollar"></i><span>Sales</span></button>
-    <button class="bn-item" id="bn-more" onclick="openMoreDrawer()"><span class="bn-badge" id="bn-badge">0</span><i class="ti ti-menu-2"></i><span>More</span></button>
-  </div>
-</nav>
-<div class="more-overlay" id="more-overlay" onclick="closeMoreDrawer()"></div>
-<div class="more-drawer" id="more-drawer">
-  <div class="more-handle"></div>
-  <div class="more-grid">
-    <button class="more-item" onclick="showSection('locations',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-map-pin"></i> Locations</button>
-    <button class="more-item" onclick="showSection('par',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-target"></i> Par Levels</button>
-    <button class="more-item" onclick="showSection('alerts',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-bell"></i> Alerts</button>
-    <button class="more-item" onclick="showSection('transfers',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-arrows-exchange"></i> Transfers</button>
-    <button class="more-item" onclick="showSection('settings',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-settings"></i> Settings</button>
-    <button class="more-item" onclick="syncNow();closeMoreDrawer()"><i class="ti ti-refresh"></i> Sync Square</button>
-    <hr class="more-divider">
-    <button class="more-signout" onclick="doSignOut()"><i class="ti ti-logout"></i> Sign Out</button>
-  </div>
-</div>
-
-</div>
 </div>
 <script>
 const WU='https://dawn-union-f0b2.asa-allen.workers.dev';
