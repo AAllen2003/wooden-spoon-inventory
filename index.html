@@ -404,6 +404,7 @@ input[type=text],input[type=password],input[type=number],input[type=url],input[t
         <div class="sync-row"><div class="inv-spinner" id="sales-spinner"></div><span id="sales-msg">Sales reset at midnight. Use the date picker or quick buttons to view past days.</span></div>
         <div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Price</th><th class="qty-cell">Warehouse</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total</th><th class="qty-cell">Revenue</th></tr></thead><tbody id="sales-table"></tbody><tfoot><tr class="tfoot-row" id="sales-totals-row"></tr></tfoot></table></div>
       </div>
+      <div id="online-sales-panel" style="display:none"></div>
     </div>
 
     <div class="section" id="sec-settings">
@@ -548,8 +549,8 @@ const DCOL={"sidebar": "#5e3303", "sidebar-text": "#ffffff", "sidebar-text2": "#
 const DBDG={"warehouse-bg": "#ffffff", "warehouse-text": "#000000", "restaurant-bg": "#ffffff", "restaurant-text": "#000000", "truck1-bg": "#ffffff", "truck1-text": "#000000", "truck2-bg": "#ffffff", "truck2-text": "#000000", "truck3-bg": "#ffffff", "truck3-text": "#000000", "food-bg": "#ffffff", "food-text": "#000000", "dessert-bg": "#ffffff", "dessert-text": "#000000"};
 const PRESETS={warmcraft:{sidebar:'#1A3328','sidebar-text':'#D8EBD8','sidebar-text2':'#8AB898',bg:'#FDF6EE',surface:'#FFFCF8',border:'#E2CDB0',text:'#1C0F06',text2:'#5C3D22',text3:'#9C7A58',accent:'#C42B2B'},dark:{sidebar:'#16181F','sidebar-text':'#E2E4EC','sidebar-text2':'#9099B0',bg:'#0F1117',surface:'#1E2030',border:'#2A2D38',text:'#E2E4EC',text2:'#B0B8CC',text3:'#707888',accent:'#7C6FFF'},slate:{sidebar:'#1B2B4B','sidebar-text':'#C8D6EE','sidebar-text2':'#8AA5C8',bg:'#F4F6F9',surface:'#FFFFFF',border:'#DDE3EE',text:'#1B2B4B',text2:'#3A5278',text3:'#7A8AAA',accent:'#4EA8F8'},white:{sidebar:'#111','sidebar-text':'#FFF','sidebar-text2':'#AAA',bg:'#F8F8F8',surface:'#FFF',border:'#E4E4E4',text:'#111',text2:'#444',text3:'#999',accent:'#111'},forest:{sidebar:'#1B4332','sidebar-text':'#D8F3DC','sidebar-text2':'#74C69D',bg:'#F0FFF4',surface:'#FFF',border:'#C8E6D0',text:'#1B4332',text2:'#2D6A4F',text3:'#74C69D',accent:'#2D6A4F'},midnight:{sidebar:'#2D1B69','sidebar-text':'#E9D5FF','sidebar-text2':'#A78BFA',bg:'#F5F3FF',surface:'#FFF',border:'#DDD6FE',text:'#1E1B4B',text2:'#4338CA',text3:'#7C3AED',accent:'#7C3AED'},yours:DCOL};
 
-let sb=null,currentUser=null,colorT=null,badgeT=null,salesViewData=null,salesViewDate=null,availDates=[],currentLoc=null;
-let S={items:[...DI],categories:{...DC},prices:{...DP},inventory:{},par:{},batchYields:{},transfers:[],alerts:[],sales:{},salesBaseline:{},lastSync:'',workerUrl:WU,locationIds:{Warehouse:'',Restaurant:'','Truck 1':'L9GK918KVE679','Truck 2':'LRGD3HKCTVGFW','Truck 3':''},colors:{...DCOL},badges:{...DBDG},token:''};
+let sb=null,currentUser=null,colorT=null,badgeT=null,salesViewData=null,salesViewDataOnline=null,salesViewDate=null,availDates=[],currentLoc=null;
+let S={items:[...DI],categories:{...DC},prices:{...DP},inventory:{},par:{},batchYields:{},transfers:[],alerts:[],sales:{},salesOnline:{},salesBaseline:{},lastSync:'',workerUrl:WU,locationIds:{Warehouse:'',Restaurant:'','Truck 1':'L9GK918KVE679','Truck 2':'LRGD3HKCTVGFW','Truck 3':''},colors:{...DCOL},badges:{...DBDG},token:''};
 function iblank(){S.items.forEach(n=>{S.inventory[n]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};S.par[n]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};S.batchYields[n]=0;S.sales[n]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};S.salesBaseline[n]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};});}
 iblank();
 
@@ -720,7 +721,7 @@ async function syncNow(){
   try{
     const res=await fetch(S.workerUrl+'/sales',{mode:'cors'});
     if(!res.ok)throw new Error('Worker returned '+res.status);
-    const data=await res.json();const cs=data.sales||{};
+    const data=await res.json();const cs=data.sales||{};const cso=data.salesOnline||{};S.salesOnline=cso;
     const iu=[];
     S.items.forEach(item=>{LOCS.forEach(loc=>{const cur=(cs[item]||{})[loc]||0,base=(S.salesBaseline[item]||{})[loc]||0,delta=Math.max(0,cur-base);if(delta>0){S.inventory[item][loc]=Math.max(0,(S.inventory[item][loc]||0)-delta);deducted+=delta;iu.push({item_name:item,location:loc,quantity:S.inventory[item][loc]});}S.sales[item]=S.sales[item]||{};S.sales[item][loc]=cur;});});
     S.items.forEach(item=>{LOCS.forEach(loc=>{S.salesBaseline[item]=S.salesBaseline[item]||{};S.salesBaseline[item][loc]=(cs[item]||{})[loc]||0;});});
@@ -741,7 +742,7 @@ async function syncNow(){
 async function loadAvailDates(){if(!S.workerUrl)return;try{const r=await fetch(S.workerUrl+'/sales/dates',{mode:'cors'});if(!r.ok)return;const d=await r.json();availDates=d.dates||[];renderHistBar();}catch(e){}}
 function renderHistBar(){const bar=document.getElementById('sales-history-bar'),list=document.getElementById('history-list');if(!list)return;if(!availDates.length){if(bar)bar.style.display='none';return;}if(bar)bar.style.display='block';list.innerHTML=availDates.slice(0,14).map(d=>`<button class="history-date-btn ${d===salesViewDate?'selected':''}" onclick="loadArchDate('${d}')">${fmtDL(d)}</button>`).join('');}
 function fmtDL(d){try{return new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});}catch(e){return d;}}
-async function loadArchDate(dateStr){if(!dateStr||!S.workerUrl)return;const sp=document.getElementById('sales-spinner'),sm=document.getElementById('sales-msg');sp.style.display='block';if(sm)sm.textContent='Loading '+dateStr+'...';try{const r=await fetch(S.workerUrl+'/sales/archive?date='+dateStr,{mode:'cors'});if(!r.ok)throw new Error('No data');const d=await r.json();salesViewData=d.sales||{};salesViewDate=dateStr;const p=document.getElementById('sales-date-picker');if(p)p.value=dateStr;renderSales();if(sm)sm.textContent='Showing archived data for '+dateStr;}catch(e){if(sm)sm.textContent='No data for '+dateStr;}sp.style.display='none';}
+async function loadArchDate(dateStr){if(!dateStr||!S.workerUrl)return;const sp=document.getElementById('sales-spinner'),sm=document.getElementById('sales-msg');sp.style.display='block';if(sm)sm.textContent='Loading '+dateStr+'...';try{const r=await fetch(S.workerUrl+'/sales/archive?date='+dateStr,{mode:'cors'});if(!r.ok)throw new Error('No data');const d=await r.json();salesViewData=d.sales||{};salesViewDataOnline=d.salesOnline||{};salesViewDate=dateStr;const p=document.getElementById('sales-date-picker');if(p)p.value=dateStr;renderSales();if(sm)sm.textContent='Showing archived data for '+dateStr;}catch(e){if(sm)sm.textContent='No data for '+dateStr;}sp.style.display='none';}
 function loadTodaySales(){salesViewData=null;salesViewDate=null;const p=document.getElementById('sales-date-picker');if(p)p.value='';renderSales();}
 
 // ── ACTIONS ───────────────────────────────────────────────────────
@@ -820,6 +821,26 @@ function renderSales(){
   const lt={},lr={};LOCS.forEach(l=>{lt[l]=0;lr[l]=0;});let gu=0,gr=0;
   document.getElementById('sales-table').innerHTML=S.items.map(item=>{const d=sd||{},price=S.prices[item]||0;const cols=LOCS.map(loc=>{const qty=(d[item]||{})[loc]||0;lt[loc]+=qty;lr[loc]+=qty*price;gu+=qty;gr+=qty*price;return`<td class="qty-cell">${qty}</td>`;}).join('');const total=LOCS.reduce((s,l)=>s+((d[item]||{})[l]||0),0);return`<tr><td style="font-weight:700">${item}</td><td style="font-weight:700;color:var(--green)">${fmt(price)}</td>${cols}<td class="qty-cell" style="font-weight:700">${total}</td><td class="qty-cell" style="font-weight:700;color:var(--green)">$${(total*price).toFixed(2)}</td></tr>`;}).join('');
   const tr=document.getElementById('sales-totals-row');if(tr)tr.innerHTML=`<td>Totals</td><td></td>${LOCS.map(l=>`<td class="qty-cell">${lt[l]}<br><span style="font-size:10px;opacity:.75">$${lr[l].toFixed(0)}</span></td>`).join('')}<td class="qty-cell">${gu}</td><td class="qty-cell">$${gr.toFixed(2)}</td>`;
+  // Online sales (pending delivery) panel
+  const sdOnlineD=salesViewDate?(salesViewDataOnline||{}):(S.salesOnline||{});
+  const onlinePanel=document.getElementById('online-sales-panel');
+  if(onlinePanel){
+    const items=Object.keys(sdOnlineD).filter(item=>Object.values(sdOnlineD[item]||{}).some(q=>q>0));
+    if(items.length){
+      let oU=0,oR=0;
+      const rows=items.map(item=>{
+        const p=S.prices[item]||0;
+        const total=Object.values(sdOnlineD[item]||{}).reduce((s,q)=>s+q,0);
+        oU+=total;oR+=total*p;
+        return`<tr><td style="font-weight:700">${item}</td><td class="qty-cell" style="font-weight:700">${total}</td><td class="qty-cell" style="font-weight:700;color:var(--green)">$${(total*p).toFixed(2)}</td></tr>`;
+      }).join('');
+      onlinePanel.style.display='block';
+      onlinePanel.innerHTML=`<div class="card" style="background:#FFF0DC;border-color:#B05A00;margin-top:16px"><div class="card-header"><span class="card-title" style="color:#B05A00">Online Sales — Pending Delivery</span><span style="font-size:13px;font-weight:700;color:#B05A00">${oU} units &middot; $${oR.toFixed(2)}</span></div><p class="section-intro" style="color:#9C7A58;margin-top:4px">Online sales (WooCommerce/Square Online) are delivered Mondays. Inventory is NOT auto-deducted — update warehouse stock manually after delivery.</p><div class="tbl-wrap"><table><thead><tr><th>Item</th><th class="qty-cell">Pending Qty</th><th class="qty-cell">Revenue</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    } else {
+      onlinePanel.style.display='none';
+      onlinePanel.innerHTML='';
+    }
+  }
 }
 function renderSettings(){const wu=document.getElementById('worker-url');if(wu&&S.workerUrl)wu.value=S.workerUrl;const sqt=document.getElementById('sq-token');if(sqt&&S.token)sqt.value=S.token;['loc-wh','loc-rs','loc-t1','loc-t2','loc-t3'].forEach((id,i)=>{const el=document.getElementById(id);if(el)el.value=Object.values(S.locationIds)[i]||'';});if(S.workerUrl)setStatus('Worker configured',true);const sub=document.getElementById('items-subtitle');if(sub)sub.textContent=S.items.length+' items';document.getElementById('items-list').innerHTML=S.items.map(item=>`<div class="item-row"><span style="flex:1;font-weight:700">${item}</span><span style="font-size:12px;font-weight:700;color:var(--green)">${fmt(S.prices[item])}</span><span class="cat-chip ${(S.categories[item]||'')==='Frozen Foods'?'cc-food':'cc-dessert'}">${(S.categories[item]||'')==='Frozen Foods'?'Food':'Dessert'}</span><button class="btn btn-xs btn-danger" onclick="removeItem('${esc(item)}')">Remove</button></div>`).join('');}
 
@@ -1020,6 +1041,7 @@ async function mobSaveYields(){
 
 function mobSalesHTML(){
   const sd=salesViewDate?salesViewData:S.sales;
+  const sdOnline=salesViewDate?(salesViewDataOnline||{}):(S.salesOnline||{});
   let gU=0,gR=0;const lT={};LOCS.forEach(l=>lT[l]=0);
   S.items.forEach(item=>{const p=S.prices[item]||0;LOCS.forEach(loc=>{const q=(sd?.[item]||{})[loc]||0;lT[loc]+=q;gU+=q;gR+=q*p;});});
   const dateLabel=salesViewDate?new Date(salesViewDate+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'Today';
@@ -1032,6 +1054,20 @@ function mobSalesHTML(){
     return`<div class="m-sale-row"><span class="m-sale-name">${item}</span><span class="m-sale-locs">${lstr}</span><div class="m-sale-right"><span class="m-sale-units">${total} sold</span><span class="m-sale-rev">$${(total*p).toFixed(2)}</span></div></div>`;
   }).filter(Boolean).join('');
   h+=`<div class="m-sale-list">${rows||'<p style="padding:14px;color:#9C7A58;text-align:center;font-style:italic;font-size:10px">No sales recorded yet</p>'}</div>`;
+  // ── Online sales (pending delivery) ──
+  const onlineItems=Object.keys(sdOnline).filter(item=>{
+    return Object.values(sdOnline[item]||{}).some(q=>q>0);
+  });
+  if(onlineItems.length){
+    let oU=0,oR=0;
+    const onlineRows=onlineItems.map(item=>{
+      const p=S.prices[item]||0;
+      const total=Object.values(sdOnline[item]||{}).reduce((s,q)=>s+q,0);
+      oU+=total;oR+=total*p;
+      return`<div class="m-sale-row"><span class="m-sale-name">${item}</span><div class="m-sale-right"><span class="m-sale-units">${total} sold</span><span class="m-sale-rev">$${(total*p).toFixed(2)}</span></div></div>`;
+    }).join('');
+    h+=`<div style="margin-top:18px;padding:14px;background:#FFF0DC;border:1px solid #B05A00;border-radius:8px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><span style="font-size:13px;font-weight:700;color:#B05A00;text-transform:uppercase;letter-spacing:.06em">Online Sales — Pending Delivery</span><span style="font-size:13px;font-weight:700;color:#B05A00">${oU} units &middot; $${oR.toFixed(2)}</span></div><div style="font-size:11px;color:#9C7A58;line-height:1.4;margin-bottom:10px">Online sales delivered on Mondays. Inventory is NOT auto-deducted — update warehouse stock manually after delivery.</div><div style="background:#fff;border-radius:6px;padding:0 12px">${onlineRows}</div></div>`;
+  }
   return h;
 }
 
