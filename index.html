@@ -464,13 +464,7 @@ input[type=text],input[type=password],input[type=number],input[type=url],input[t
             <div class="worker-status" id="worker-status"></div>
             <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;display:block;margin-top:12px;margin-bottom:6px">Square Access Token</label>
             <div style="display:flex;gap:8px"><input type="password" id="sq-token" placeholder="Production access token" style="flex:1"><button class="btn btn-primary" onclick="saveToken()">Save</button></div>
-            <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
-              <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px">Reset Today's Sales</label>
-              <p style="font-size:11px;color:var(--text3);margin:0 0 10px 0;line-height:1.5">If today's sales don't match Square (e.g. old sales bleeding into today), use this to clear today's data and re-fetch fresh from Square.</p>
-              <button class="btn btn-accent" onclick="resetTodaySales()" style="background:#9f7014;color:#fff">Reset &amp; Refresh Today's Sales</button>
-              <div id="reset-today-status" style="font-size:11px;margin-top:10px"></div>
             </div>
-          </div>
         </div>
       </div>
       <div class="acc-section">
@@ -1043,56 +1037,11 @@ function mobSalesHTML(){
 
 function mobSettingsHTML(){
   return`<div class="m-card"><div style="font-size:14px;font-weight:700;color:#5e3303;margin-bottom:12px">Account</div><div style="font-size:13px;color:#1C0F06;margin-bottom:12px">Signed in as <strong>${currentUser?.email||''}</strong></div><button class="m-btn" onclick="doSignOut()">Sign Out</button></div>
-  <div class="m-card" style="margin-top:8px"><div style="font-size:14px;font-weight:700;color:#5e3303;margin-bottom:12px">Sales Sync</div><div style="font-size:12px;color:#9C7A58;margin-bottom:12px;line-height:1.5">If today's sales don't match Square (e.g. old sales bleeding into today), use this to clear today's data and re-fetch fresh from Square.</div><button class="m-btn" onclick="mobResetToday()" style="background:#9f7014">Reset &amp; Refresh Today's Sales</button><div id="mob-reset-status" style="font-size:12px;margin-top:10px;text-align:center"></div></div>
-  <div class="m-card" style="margin-top:8px"><div style="font-size:14px;font-weight:700;color:#5e3303;margin-bottom:12px">Square Worker</div><div style="font-size:12px;color:#9C7A58;margin-bottom:10px">Worker URL</div><input type="url" id="mob-worker-url" value="${S.workerUrl||''}" placeholder="https://your-worker.workers.dev" style="width:100%;padding:10px 12px;border:1px solid #844f06;border-radius:6px;font-size:14px;font-family:'Lato',sans-serif;margin-bottom:8px"><button class="m-btn" onclick="mobSaveWorker()">Save &amp; Test</button><div id="mob-worker-status" style="font-size:12px;margin-top:8px"></div></div>
+<div class="m-card" style="margin-top:8px"><div style="font-size:14px;font-weight:700;color:#5e3303;margin-bottom:12px">Square Worker</div><div style="font-size:12px;color:#9C7A58;margin-bottom:10px">Worker URL</div><input type="url" id="mob-worker-url" value="${S.workerUrl||''}" placeholder="https://your-worker.workers.dev" style="width:100%;padding:10px 12px;border:1px solid #844f06;border-radius:6px;font-size:14px;font-family:'Lato',sans-serif;margin-bottom:8px"><button class="m-btn" onclick="mobSaveWorker()">Save &amp; Test</button><div id="mob-worker-status" style="font-size:12px;margin-top:8px"></div></div>
   <div class="m-card" style="margin-top:8px"><div style="font-size:14px;font-weight:700;color:#5e3303;margin-bottom:4px">For full settings</div><div style="font-size:12px;color:#9C7A58;line-height:1.5">Open on desktop for color customization, location IDs, and item management.</div></div>`;
 }
 
-async function resetTodaySales(){
-  const st=document.getElementById('reset-today-status');
-  if(!confirm("This will reset today's sales counter to zero. New sales coming in from Square will be tracked normally going forward. Continue?")){return;}
-  if(!S.workerUrl){st.textContent='Square Worker URL not configured';st.style.color='var(--red)';return;}
-  st.textContent="Resetting today's sales...";st.style.color='var(--text3)';
-  try{
-    const r=await fetch(S.workerUrl+'/archive-now',{method:'POST',mode:'cors'});
-    if(!r.ok)throw new Error('Worker returned '+r.status);
-    S.salesBaseline={};
-    S.items.forEach(item=>{S.salesBaseline[item]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};});
-    if(sb)await sb.from('app_settings').upsert({key:'sales_baseline',value:S.salesBaseline});
-    await syncNow();
-    st.textContent="✓ Today's sales reset. New sales will track normally.";st.style.color='var(--green)';
-    renderAll();
-  }catch(e){
-    console.error(e);
-    st.textContent='✗ Error: '+(e.message||e);st.style.color='var(--red)';
-  }
-}
 
-async function mobResetToday(){
-  const st=document.getElementById('mob-reset-status');
-  if(!confirm("This will reset today's sales counter to zero. New sales coming in from Square will be tracked normally going forward. Continue?"))return;
-  if(!S.workerUrl){st.textContent='Square Worker URL not configured';st.style.color='#A82020';return;}
-  st.textContent="Resetting today's sales...";
-  st.style.color='#9C7A58';
-  try{
-    // Tell the Worker to archive current bad live data and reset live counter to 0
-    const r=await fetch(S.workerUrl+'/archive-now',{method:'POST',mode:'cors'});
-    if(!r.ok)throw new Error('Worker returned '+r.status);
-    // Reset local baseline so syncNow doesn't think we have negative sales
-    S.salesBaseline={};
-    S.items.forEach(item=>{S.salesBaseline[item]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};});
-    if(sb)await sb.from('app_settings').upsert({key:'sales_baseline',value:S.salesBaseline});
-    // Force a fresh sync from the now-empty worker
-    await syncNow();
-    st.textContent="✓ Today's sales reset. New sales will track normally.";
-    st.style.color='#2A6B3A';
-    mobRender();
-  }catch(e){
-    console.error(e);
-    st.textContent='✗ Error: '+(e.message||e);
-    st.style.color='#A82020';
-  }
-}
 async function mobSaveWorker(){
   const url=(document.getElementById('mob-worker-url')?.value||'').trim().replace(/\/+$/,'');
   const st=document.getElementById('mob-worker-status');
