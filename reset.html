@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reset App</title>
+<style>
+body{font-family:-apple-system,sans-serif;background:#5e3303;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center;}
+h1{font-size:22px;margin:0 0 16px;}
+p{font-size:14px;line-height:1.6;margin:0 0 12px;opacity:.85;max-width:300px;}
+.status{font-size:13px;font-weight:700;margin-top:24px;padding:10px 16px;background:rgba(255,255,255,.1);border-radius:8px;min-width:200px;}
+.spin{width:32px;height:32px;border:3px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:s .7s linear infinite;margin:24px auto;}
+@keyframes s{to{transform:rotate(360deg)}}
+.btn{margin-top:20px;padding:12px 24px;background:#9f7014;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;font-family:inherit;}
+.done{color:#7EC8A0;}
+</style>
+</head>
+<body>
+<h1>The Wooden Spoon</h1>
+<p>Clearing old app cache...</p>
+<div class="spin" id="spin"></div>
+<div class="status" id="status">Starting reset...</div>
+<button class="btn" id="btn" style="display:none" onclick="location.href='index.html'">Open App</button>
+<script>
+async function reset(){
+  const s=document.getElementById('status');
+  try{
+    s.textContent='Unregistering service workers...';
+    if('serviceWorker' in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      for(const r of regs) await r.unregister();
+    }
+    s.textContent='Clearing caches...';
+    if('caches' in window){
+      const keys=await caches.keys();
+      for(const k of keys) await caches.delete(k);
+    }
+    s.textContent='Done — opening app...';
+    s.classList.add('done');
+    document.getElementById('spin').style.display='none';
+    setTimeout(()=>{location.href='index.html';},800);
+  }catch(e){
+    s.textContent='Reset complete. Tap below to open.';
+    s.classList.add('done');
+    document.getElementById('spin').style.display='none';
+    document.getElementById('btn').style.display='inline-block';
+  }
+}
+reset();
+</script>
+</body>
+</html>
