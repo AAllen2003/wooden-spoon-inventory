@@ -1050,21 +1050,18 @@ function mobSettingsHTML(){
 
 async function resetTodaySales(){
   const st=document.getElementById('reset-today-status');
-  if(!confirm("This will DELETE all of today's sales from the database and re-fetch them fresh from Square. Continue?")){return;}
-  if(!sb){st.textContent='Not connected to database';st.style.color='var(--red)';return;}
+  if(!confirm("This will reset today's sales counter to zero. New sales coming in from Square will be tracked normally going forward. Continue?")){return;}
   if(!S.workerUrl){st.textContent='Square Worker URL not configured';st.style.color='var(--red)';return;}
-  st.textContent='Clearing today\'s sales...';st.style.color='var(--text3)';
+  st.textContent="Resetting today's sales...";st.style.color='var(--text3)';
   try{
-    const today=new Date();
-    const tStr=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
-    const{error:delErr}=await sb.from('sales').delete().eq('date',tStr);
-    if(delErr)throw delErr;
-    st.textContent='Re-fetching from Square...';
-    const r=await fetch(S.workerUrl+'/backfill?start='+tStr+'&end='+tStr,{mode:'cors'});
+    const r=await fetch(S.workerUrl+'/archive-now',{method:'POST',mode:'cors'});
     if(!r.ok)throw new Error('Worker returned '+r.status);
-    const data=await r.json();
-    st.textContent='✓ Reset complete. '+(data.processed||0)+' sales imported.';st.style.color='var(--green)';
-    await loadAllData();renderAll();
+    S.salesBaseline={};
+    S.items.forEach(item=>{S.salesBaseline[item]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};});
+    if(sb)await sb.from('app_settings').upsert({key:'sales_baseline',value:S.salesBaseline});
+    await syncNow();
+    st.textContent="✓ Today's sales reset. New sales will track normally.";st.style.color='var(--green)';
+    renderAll();
   }catch(e){
     console.error(e);
     st.textContent='✗ Error: '+(e.message||e);st.style.color='var(--red)';
@@ -1073,26 +1070,22 @@ async function resetTodaySales(){
 
 async function mobResetToday(){
   const st=document.getElementById('mob-reset-status');
-  if(!confirm('This will DELETE all of today\'s sales from the database and re-fetch them fresh from Square. Continue?'))return;
-  if(!sb){st.textContent='Not connected to database';st.style.color='#A82020';return;}
+  if(!confirm("This will reset today's sales counter to zero. New sales coming in from Square will be tracked normally going forward. Continue?"))return;
   if(!S.workerUrl){st.textContent='Square Worker URL not configured';st.style.color='#A82020';return;}
-  st.textContent='Clearing today\'s sales...';
+  st.textContent="Resetting today's sales...";
   st.style.color='#9C7A58';
   try{
-    const today=new Date();
-    const tStr=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
-    // Delete today's sales from Supabase
-    const{error:delErr}=await sb.from('sales').delete().eq('date',tStr);
-    if(delErr)throw delErr;
-    st.textContent='Re-fetching from Square...';
-    // Backfill from Square via worker
-    const r=await fetch(S.workerUrl+'/backfill?start='+tStr+'&end='+tStr,{mode:'cors'});
+    // Tell the Worker to archive current bad live data and reset live counter to 0
+    const r=await fetch(S.workerUrl+'/archive-now',{method:'POST',mode:'cors'});
     if(!r.ok)throw new Error('Worker returned '+r.status);
-    const data=await r.json();
-    st.textContent='✓ Reset complete. '+(data.processed||0)+' sales imported.';
+    // Reset local baseline so syncNow doesn't think we have negative sales
+    S.salesBaseline={};
+    S.items.forEach(item=>{S.salesBaseline[item]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};});
+    if(sb)await sb.from('app_settings').upsert({key:'sales_baseline',value:S.salesBaseline});
+    // Force a fresh sync from the now-empty worker
+    await syncNow();
+    st.textContent="✓ Today's sales reset. New sales will track normally.";
     st.style.color='#2A6B3A';
-    // Reload sales data
-    await loadAllData();
     mobRender();
   }catch(e){
     console.error(e);
