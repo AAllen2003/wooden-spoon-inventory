@@ -464,6 +464,12 @@ input[type=text],input[type=password],input[type=number],input[type=url],input[t
             <div class="worker-status" id="worker-status"></div>
             <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;display:block;margin-top:12px;margin-bottom:6px">Square Access Token</label>
             <div style="display:flex;gap:8px"><input type="password" id="sq-token" placeholder="Production access token" style="flex:1"><button class="btn btn-primary" onclick="saveToken()">Save</button></div>
+            <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
+              <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px">Reset Today's Sales</label>
+              <p style="font-size:11px;color:var(--text3);margin:0 0 10px 0;line-height:1.5">If today's sales don't match Square (e.g. old sales bleeding into today), use this to clear today's data and re-fetch fresh from Square.</p>
+              <button class="btn btn-accent" onclick="resetTodaySales()" style="background:#9f7014;color:#fff">Reset &amp; Refresh Today's Sales</button>
+              <div id="reset-today-status" style="font-size:11px;margin-top:10px"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -536,7 +542,6 @@ input[type=text],input[type=password],input[type=number],input[type=url],input[t
 </div>
 </div>
 <script>function isMob(){return window.innerWidth<=768;}
-let sb_client=null;
 
 const WU='https://dawn-union-f0b2.asa-allen.workers.dev';
 const LOCS=['Warehouse','Restaurant','Truck 1','Truck 2','Truck 3'];
@@ -595,7 +600,7 @@ async function doLogin(){
   document.getElementById('loading').classList.remove('hidden');
   await loadAll();
   if(await needsMig()){hideLo();showScreen('migration');return;}
-  setupRT();hideLo();showScreen('app');applyAC(S.colors);applyAB(S.badges);renderAll();updateUserUI();sb_client=sb;
+  setupRT();hideLo();showScreen('app');applyAC(S.colors);applyAB(S.badges);renderAll();updateUserUI();sb=sb;
 }
 async function doSignOut(){if(sb)await sb.auth.signOut();showScreen('login');document.getElementById('login-email').value='';document.getElementById('login-pw').value='';}
 function updateUserUI(){const e=currentUser?.email||'';['sidebar-user','account-email','account-subtitle'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=e;});}
@@ -946,7 +951,7 @@ async function mobUpdateInv(item,loc,val){
   const qty=Math.max(0,parseInt(val)||0);
   if(!S.inventory[item])S.inventory[item]={};
   S.inventory[item][loc]=qty;
-  if(sb_client)await sb_client.from('inventory').upsert({item_name:item,location:loc,quantity:qty});
+  if(sb)await sb.from('inventory').upsert({item_name:item,location:loc,quantity:qty});
   checkAlerts();
 }
 
@@ -960,7 +965,7 @@ function mobParHTML(){
 async function mobSavePar(){
   const rows=[];
   S.items.forEach(item=>{LOCS.forEach(loc=>{const id='mpar-'+mobSl(item)+'-'+mobSl(loc);const el=document.getElementById(id);if(el){const q=parseInt(el.value)||0;if(!S.par[item])S.par[item]={};S.par[item][loc]=q;rows.push({item_name:item,location:loc,quantity:q});}});});
-  if(sb_client)await sb_client.from('par_levels').upsert(rows);
+  if(sb)await sb.from('par_levels').upsert(rows);
   checkAlerts();
   const btn=document.querySelector('#mob-body .m-btn');
   if(btn){btn.textContent='✓ Saved!';setTimeout(()=>{btn.textContent='Save Par Levels';},1500);}
@@ -989,7 +994,7 @@ async function mobDoXfr(){
   S.inventory[item][from]-=qty;S.inventory[item][to]=(S.inventory[item][to]||0)+qty;
   const t={item,from,to,qty,time:new Date().toLocaleString(),by:currentUser?.email||''};
   S.transfers.unshift(t);
-  if(sb_client){await sb_client.from('inventory').upsert([{item_name:item,location:from,quantity:S.inventory[item][from]},{item_name:item,location:to,quantity:S.inventory[item][to]}]);await sb_client.from('transfers').insert({item_name:item,from_location:from,to_location:to,quantity:qty,transferred_by:t.by});}
+  if(sb){await sb.from('inventory').upsert([{item_name:item,location:from,quantity:S.inventory[item][from]},{item_name:item,location:to,quantity:S.inventory[item][to]}]);await sb.from('transfers').insert({item_name:item,from_location:from,to_location:to,quantity:qty,transferred_by:t.by});}
   checkAlerts();mobRender();
 }
 
@@ -1014,7 +1019,7 @@ function mobProdHTML(){
 }
 async function mobSaveYields(){
   const upd=S.items.map(item=>({name:item,category:S.categories[item]||'',price:S.prices[item]||0,batch_yield:S.batchYields[item]||0,sort_order:S.items.indexOf(item)}));
-  if(sb_client)await sb_client.from('items').upsert(upd);
+  if(sb)await sb.from('items').upsert(upd);
   const btn=document.querySelector('#mob-body .m-btn:last-child');
   if(btn){btn.textContent='✓ Saved!';setTimeout(()=>btn.textContent='Save Batch Yields',1500);}
 }
@@ -1043,10 +1048,33 @@ function mobSettingsHTML(){
   <div class="m-card" style="margin-top:8px"><div style="font-size:14px;font-weight:700;color:#5e3303;margin-bottom:4px">For full settings</div><div style="font-size:12px;color:#9C7A58;line-height:1.5">Open on desktop for color customization, location IDs, and item management.</div></div>`;
 }
 
+async function resetTodaySales(){
+  const st=document.getElementById('reset-today-status');
+  if(!confirm("This will DELETE all of today's sales from the database and re-fetch them fresh from Square. Continue?")){return;}
+  if(!sb){st.textContent='Not connected to database';st.style.color='var(--red)';return;}
+  if(!S.workerUrl){st.textContent='Square Worker URL not configured';st.style.color='var(--red)';return;}
+  st.textContent='Clearing today\'s sales...';st.style.color='var(--text3)';
+  try{
+    const today=new Date();
+    const tStr=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+    const{error:delErr}=await sb.from('sales').delete().eq('date',tStr);
+    if(delErr)throw delErr;
+    st.textContent='Re-fetching from Square...';
+    const r=await fetch(S.workerUrl+'/backfill?start='+tStr+'&end='+tStr,{mode:'cors'});
+    if(!r.ok)throw new Error('Worker returned '+r.status);
+    const data=await r.json();
+    st.textContent='✓ Reset complete. '+(data.processed||0)+' sales imported.';st.style.color='var(--green)';
+    await loadAllData();renderAll();
+  }catch(e){
+    console.error(e);
+    st.textContent='✗ Error: '+(e.message||e);st.style.color='var(--red)';
+  }
+}
+
 async function mobResetToday(){
   const st=document.getElementById('mob-reset-status');
   if(!confirm('This will DELETE all of today\'s sales from the database and re-fetch them fresh from Square. Continue?'))return;
-  if(!sb_client){st.textContent='Not connected to database';st.style.color='#A82020';return;}
+  if(!sb){st.textContent='Not connected to database';st.style.color='#A82020';return;}
   if(!S.workerUrl){st.textContent='Square Worker URL not configured';st.style.color='#A82020';return;}
   st.textContent='Clearing today\'s sales...';
   st.style.color='#9C7A58';
@@ -1054,7 +1082,7 @@ async function mobResetToday(){
     const today=new Date();
     const tStr=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
     // Delete today's sales from Supabase
-    const{error:delErr}=await sb_client.from('sales').delete().eq('date',tStr);
+    const{error:delErr}=await sb.from('sales').delete().eq('date',tStr);
     if(delErr)throw delErr;
     st.textContent='Re-fetching from Square...';
     // Backfill from Square via worker
@@ -1077,7 +1105,7 @@ async function mobSaveWorker(){
   const st=document.getElementById('mob-worker-status');
   if(!url)return;
   st.textContent='Testing...';st.style.color='#9C7A58';
-  try{const r=await fetch(url+'/health',{mode:'cors'});if(r.ok){S.workerUrl=url;if(sb_client)await sb_client.from('app_settings').upsert({key:'worker_url',value:url});st.textContent='✓ Connected!';st.style.color='#2A6B3A';}else{st.textContent='✗ Error '+r.status;st.style.color='#A82020';}}catch(e){st.textContent='✗ Cannot reach worker';st.style.color='#A82020';}
+  try{const r=await fetch(url+'/health',{mode:'cors'});if(r.ok){S.workerUrl=url;if(sb)await sb.from('app_settings').upsert({key:'worker_url',value:url});st.textContent='✓ Connected!';st.style.color='#2A6B3A';}else{st.textContent='✗ Error '+r.status;st.style.color='#A82020';}}catch(e){st.textContent='✗ Cannot reach worker';st.style.color='#A82020';}
 }
 async function mobSync(){
   const btn=document.getElementById('mob-sync-btn');
