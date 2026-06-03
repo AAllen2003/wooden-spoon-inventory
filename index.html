@@ -59,12 +59,12 @@ input[type=text],input[type=password],input[type=number],input[type=url],input[t
 }
 .mob-bar{
   background:#5e3303;color:#fff;
-  padding:10px 12px 8px;
+  padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px;
   display:flex;align-items:center;justify-content:space-between;
   flex-shrink:0;
 }
-.mob-bar-title{font-size:13px;font-weight:700;}
-.mob-bar-icon{font-size:18px;opacity:.7;background:none;border:none;color:#fff;cursor:pointer;}
+.mob-bar-title{font-size:16px;font-weight:700;}
+.mob-bar-icon{font-size:22px;opacity:.85;background:none;border:none;color:#fff;cursor:pointer;padding:8px;margin:-8px;}
 .mob-tabs{
   background:#5e3303;
   display:flex;
@@ -77,23 +77,24 @@ input[type=text],input[type=password],input[type=number],input[type=url],input[t
 .mob-tabs::-webkit-scrollbar{display:none;}
 .mob-tab{
   flex-shrink:0;
-  padding:6px 10px;
+  padding:10px 16px 10px;
   display:flex;flex-direction:column;
-  align-items:center;gap:2px;
+  align-items:center;gap:4px;
   color:rgba(255,255,255,.5);
-  font-size:8px;font-weight:700;
+  font-size:10px;font-weight:700;
   text-transform:uppercase;letter-spacing:.04em;
-  border-bottom:2px solid transparent;
+  border-bottom:3px solid transparent;
   border-top:none;border-left:none;border-right:none;
   background:none;cursor:pointer;
   font-family:'Lato',sans-serif;
   white-space:nowrap;
   position:relative;
+  min-height:52px;
 }
-.mob-tab i{font-size:14px;}
+.mob-tab i{font-size:20px;}
 .mob-tab.active{color:#fff;border-bottom-color:#9f7014;}
 .mob-tab-badge{
-  position:absolute;top:3px;right:4px;
+  position:absolute;top:5px;right:6px;
   background:#9f7014;color:#fff;
   font-size:8px;font-weight:700;
   padding:1px 4px;border-radius:6px;
