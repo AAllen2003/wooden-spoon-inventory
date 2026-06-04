@@ -766,7 +766,7 @@ async function syncNow(){
   }catch(e){if(sm)sm.textContent='Sales sync failed: '+e.message;setStatus('Sync error',false);sp.style.display=ts.style.display='none';checkAlerts();renderAll();return;}
   try{
     const pr=await fetch(S.workerUrl+'/prices',{mode:'cors'});
-    if(pr.ok){const pd=await pr.json();if(pd.prices&&Object.keys(pd.prices).length){const pu=[];Object.entries(pd.prices).forEach(([item,price])=>{S.prices[item]=price;pu.push({name:item,price,category:S.categories[item]||'',batch_yield:S.batchYields[item]||0,sort_order:S.items.indexOf(item)});});if(sb)await sb.from('items').upsert(pu);const ind=document.getElementById('sync-ind');if(ind){ind.style.display='block';setTimeout(()=>ind.style.display='none',3000);}}}
+    if(pr.ok){const pd=await pr.json();if(pd.prices&&Object.keys(pd.prices).length){const pu=[];Object.entries(pd.prices).forEach(([item,price])=>{if(S.items.includes(item)){S.prices[item]=price;pu.push({name:item,price,category:S.categories[item]||'',batch_yield:S.batchYields[item]||0,sort_order:S.items.indexOf(item)});}});if(sb&&pu.length)await sb.from('items').upsert(pu);const ind=document.getElementById('sync-ind');if(ind){ind.style.display='block';setTimeout(()=>ind.style.display='none',3000);}}}
   }catch(e){}
   checkAlerts();renderAll();if(!salesViewDate)renderSales();sp.style.display=ts.style.display='none';
 }
