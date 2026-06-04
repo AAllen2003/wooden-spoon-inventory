@@ -869,14 +869,6 @@ function buildBreakdownHTML(t, opts){
     html+=renderBlock(byLoc[name],name);
   }
 
-  // In-person vs online split (only if BOTH exist)
-  const hasOnline=(on.totalCollected||0)>0;
-  const hasInPerson=(ip.totalCollected||0)>0;
-  if(hasInPerson && hasOnline){
-    html+=renderBlock(ip,'In-Person (POS)');
-    html+=renderBlock(on,'Online');
-  }
-
   html+=`</div>`;
   return html;
 }
