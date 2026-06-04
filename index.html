@@ -269,6 +269,7 @@ input[type=text],input[type=password],input[type=number],input[type=url],input[t
     <button class="nav-item" onclick="showSection('par',this)"><i class="ti ti-target"></i> Par Levels</button>
     <button class="nav-item" onclick="showSection('alerts',this)"><i class="ti ti-bell"></i> Alerts <span class="nav-badge" id="nav-alert-badge">0</span></button>
     <div class="nav-section">Operations</div>
+    <button class="nav-item" onclick="showSection('picklist',this)"><i class="ti ti-clipboard-list"></i> Pick List</button>
     <button class="nav-item" onclick="showSection('transfers',this)"><i class="ti ti-arrows-exchange"></i> Transfers</button>
     <button class="nav-item" onclick="showSection('production',this)"><i class="ti ti-tool"></i> Production</button>
     <button class="nav-item" onclick="showSection('sales',this)"><i class="ti ti-currency-dollar"></i> Sales</button>
@@ -364,6 +365,14 @@ input[type=text],input[type=password],input[type=number],input[type=url],input[t
       <div class="card">
         <div class="card-header"><span class="card-title">Active Alerts</span><button class="btn btn-sm btn-danger" onclick="dismissAllAlerts()">Dismiss All</button></div>
         <div id="alerts-list"></div>
+      </div>
+    </div>
+
+    <div class="section" id="sec-picklist">
+      <div class="content-card">
+        <h2 class="card-h"><i class="ti ti-clipboard-list"></i> Pick List <span class="sub-h">Items to pull from Warehouse to restock trucks</span></h2>
+        <p class="section-intro">For each truck, this shows how many of each item to pick from the warehouse so that the truck reaches its par level. One-tap "Pick" performs a warehouse → truck transfer for that item.</p>
+        <div id="picklist-container"></div>
       </div>
     </div>
 
@@ -815,7 +824,7 @@ function esc(s){return String(s).replace(/'/g,"\\'");}
 function fmt(p){return p!=null?'$'+Number(p).toFixed(2):'--';}
 
 // ── RENDER ────────────────────────────────────────────────────────
-function renderAll(){renderOverview();renderLocations();if(currentLoc)renderLocDetail();renderInventory();renderPar();renderAlerts();renderTransfers();renderProduction();renderSales();renderSettings();if(isMob()){try{mobRender();}catch(e){console.error('mobRender error:',e);}}applyPermissions();}
+function renderAll(){renderOverview();renderLocations();if(currentLoc)renderLocDetail();renderInventory();renderPar();renderAlerts();renderTransfers();renderPickList();renderProduction();renderSales();renderSettings();if(isMob()){try{mobRender();}catch(e){console.error('mobRender error:',e);}}applyPermissions();}
 
 // Use actual revenue from Square if available (covers WooCommerce items with no catalog price)
 
@@ -873,6 +882,129 @@ function buildBreakdownHTML(t, opts){
   return html;
 }
 
+
+
+// ═══════════════════════════════════════════════════════
+// PICK LIST — items to pull from Warehouse to restock trucks
+// ═══════════════════════════════════════════════════════
+function calcPickList(){
+  const trucks=['Truck 1','Truck 2','Truck 3'];
+  const result={};
+  trucks.forEach(truck=>{
+    if(!S.locationIds[truck])return;
+    const items=[];
+    S.items.forEach(item=>{
+      const current=(S.inventory[item]||{})[truck]||0;
+      const par=(S.par[item]||{})[truck]||0;
+      const need=Math.max(0,par-current);
+      if(need>0){
+        const whStock=(S.inventory[item]||{}).Warehouse||0;
+        items.push({item,current,par,need,whStock,short:whStock<need});
+      }
+    });
+    if(items.length)result[truck]=items;
+  });
+  return result;
+}
+
+async function executePick(truck,item,requestedQty){
+  const whCur=(S.inventory[item]||{}).Warehouse||0;
+  const actual=Math.min(requestedQty,whCur);
+  if(actual<=0){alert('Warehouse has 0 of "'+item+'". Cannot pick.');return;}
+  if(!sb){alert('Not connected to database.');return;}
+  if(!S.inventory[item])S.inventory[item]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};
+  S.inventory[item].Warehouse=whCur-actual;
+  S.inventory[item][truck]=(S.inventory[item][truck]||0)+actual;
+  try{
+    await sb.from('inventory').upsert([
+      {item_name:item,location:'Warehouse',quantity:S.inventory[item].Warehouse},
+      {item_name:item,location:truck,quantity:S.inventory[item][truck]}
+    ]);
+    await sb.from('transfers').insert({
+      item_name:item,
+      from_location:'Warehouse',
+      to_location:truck,
+      quantity:actual,
+      transferred_by:currentUser?.email||''
+    });
+    S.transfers.unshift({time:new Date().toLocaleString(),item,from:'Warehouse',to:truck,qty:actual,by:currentUser?.email||''});
+  }catch(e){alert('Save failed: '+e.message);return;}
+  renderAll();
+}
+
+async function executePickAll(truck){
+  const pl=calcPickList()[truck];
+  if(!pl||!pl.length){return;}
+  if(!confirm('Pick '+pl.length+' items for '+truck+' from Warehouse?'))return;
+  for(const row of pl){
+    if(row.whStock<=0)continue;
+    const actual=Math.min(row.need,(S.inventory[row.item]||{}).Warehouse||0);
+    if(actual<=0)continue;
+    S.inventory[row.item].Warehouse-=actual;
+    S.inventory[row.item][truck]=(S.inventory[row.item][truck]||0)+actual;
+    try{
+      await sb.from('inventory').upsert([
+        {item_name:row.item,location:'Warehouse',quantity:S.inventory[row.item].Warehouse},
+        {item_name:row.item,location:truck,quantity:S.inventory[row.item][truck]}
+      ]);
+      await sb.from('transfers').insert({
+        item_name:row.item,
+        from_location:'Warehouse',
+        to_location:truck,
+        quantity:actual,
+        transferred_by:currentUser?.email||''
+      });
+      S.transfers.unshift({time:new Date().toLocaleString(),item:row.item,from:'Warehouse',to:truck,qty:actual,by:currentUser?.email||''});
+    }catch(e){console.error('Pick failed for '+row.item+':',e);}
+  }
+  renderAll();
+}
+
+function renderPickList(){
+  const container=document.getElementById('picklist-container');
+  if(!container)return;
+  const pl=calcPickList();
+  const trucks=Object.keys(pl);
+  if(!trucks.length){
+    container.innerHTML='<p style="font-size:14px;color:var(--text3);padding:20px;text-align:center;font-style:italic">All trucks are at or above par levels. Nothing to pick.</p>';
+    return;
+  }
+  let h='';
+  trucks.forEach(truck=>{
+    const rows=pl[truck];
+    let totalNeed=0,canFulfill=0;
+    rows.forEach(r=>{totalNeed+=r.need;canFulfill+=Math.min(r.need,r.whStock);});
+    h+='<div class="card" style="margin-bottom:18px"><div class="card-header"><span class="card-title"><i class="ti ti-truck"></i> '+truck+'</span><div style="display:flex;align-items:center;gap:10px"><span style="font-size:12px;color:var(--text3)">'+rows.length+' item'+(rows.length>1?'s':'')+' — '+totalNeed+' units needed'+(canFulfill<totalNeed?' (only '+canFulfill+' available)':'')+'</span><button class="btn btn-primary" onclick="executePickAll(\''+truck+'\')">Pick All</button></div></div><div class="tbl-wrap"><table><thead><tr><th>Item</th><th class="qty-cell">Current</th><th class="qty-cell">Par</th><th class="qty-cell">Need</th><th class="qty-cell">Warehouse</th><th class="qty-cell">Action</th></tr></thead><tbody>';
+    rows.forEach(r=>{
+      const shortStyle=r.short?'color:#A82020;font-weight:700':'';
+      const disabled=r.whStock<=0?'disabled style="opacity:.4;cursor:not-allowed"':'';
+      h+='<tr><td style="font-weight:700">'+r.item+'</td><td class="qty-cell">'+r.current+'</td><td class="qty-cell">'+r.par+'</td><td class="qty-cell" style="font-weight:700">'+r.need+'</td><td class="qty-cell" style="'+shortStyle+'">'+r.whStock+(r.short?' ⚠':'')+'</td><td class="qty-cell"><button class="btn btn-sm btn-primary" onclick="executePick(\''+truck+'\',\''+r.item.replace(/'/g,"&#39;")+'\','+r.need+')" '+disabled+'>Pick '+Math.min(r.need,r.whStock)+'</button></td></tr>';
+    });
+    h+='</tbody></table></div></div>';
+  });
+  container.innerHTML=h;
+}
+
+function mobPickListHTML(){
+  const pl=calcPickList();
+  const trucks=Object.keys(pl);
+  if(!trucks.length){
+    return '<div class="m-card" style="text-align:center;padding:20px"><p style="font-size:14px;color:#9C7A58;font-style:italic">All trucks are at or above par levels. Nothing to pick.</p></div>';
+  }
+  let h='';
+  trucks.forEach(truck=>{
+    const rows=pl[truck];
+    let totalNeed=0;rows.forEach(r=>{totalNeed+=r.need;});
+    h+='<div class="m-card" style="margin-bottom:14px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><div><div style="font-size:16px;font-weight:700;color:#5e3303"><i class="ti ti-truck"></i> '+truck+'</div><div style="font-size:11px;color:#9C7A58;margin-top:3px">'+rows.length+' items — '+totalNeed+' units needed</div></div><button class="m-btn" style="background:#9f7014;color:#fff;font-size:12px;padding:10px 16px" onclick="executePickAll(\''+truck+'\')">Pick All</button></div>';
+    rows.forEach(r=>{
+      const shortStyle=r.short?'color:#A82020':'';
+      const disabled=r.whStock<=0?'disabled style="background:#ccc;opacity:.5"':'';
+      h+='<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-top:1px solid rgba(132,79,6,.15)"><div style="flex:1"><div style="font-size:14px;font-weight:700;color:#1C0F06">'+r.item+'</div><div style="font-size:11px;color:#9C7A58;margin-top:3px">Have '+r.current+' → Need '+r.par+' • Pick <strong>'+r.need+'</strong> • WH: <span style="'+shortStyle+'">'+r.whStock+(r.short?' ⚠':'')+'</span></div></div><button class="m-btn" style="font-size:13px;padding:10px 14px;min-width:80px" onclick="executePick(\''+truck+'\',\''+r.item.replace(/'/g,"&#39;")+'\','+r.need+')" '+disabled+'>Pick '+Math.min(r.need,r.whStock)+'</button></div>';
+    });
+    h+='</div>';
+  });
+  return h;
+}
 
 function getRev(item, loc, qty, revMap){
   const v=(revMap?.[item]||{})[loc];
@@ -1057,7 +1189,7 @@ function mobShow(sec,btn){
   // Scroll active tab into view
   if(btn)btn.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
   // Update title
-  const titles={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production',sales:'Sales',settings:'Settings'};
+  const titles={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',settings:'Settings'};
   document.getElementById('mob-title').textContent=titles[sec]||sec;
   // Render immediately with whatever data we have
   mobRender();
@@ -1077,6 +1209,7 @@ function mobRender(){
   else if(mobSection==='locations')el.innerHTML=mobLocsHTML();
   else if(mobSection==='par')el.innerHTML=mobParHTML();
   else if(mobSection==='alerts')el.innerHTML=mobAlertsHTML();
+  else if(mobSection==='picklist')el.innerHTML=mobPickListHTML();
   else if(mobSection==='transfers')el.innerHTML=mobXfrHTML();
   else if(mobSection==='production')el.innerHTML=mobProdHTML();
   else if(mobSection==='sales')el.innerHTML=mobSalesHTML();
@@ -1341,6 +1474,7 @@ init();
     <button class="mob-tab" data-sec="locations" onclick="mobShow('locations',this)"><i class="ti ti-map-pin"></i>Locations</button>
     <button class="mob-tab" data-sec="par" onclick="mobShow('par',this)"><i class="ti ti-target"></i>Par Levels</button>
     <button class="mob-tab" data-sec="alerts" onclick="mobShow('alerts',this)"><span class="mob-tab-badge" id="mob-alert-badge"></span><i class="ti ti-bell"></i>Alerts</button>
+    <button class="mob-tab" data-sec="picklist" onclick="mobShow('picklist',this)"><i class="ti ti-clipboard-list"></i>Pick List</button>
     <button class="mob-tab" data-sec="transfers" onclick="mobShow('transfers',this)"><i class="ti ti-arrows-exchange"></i>Transfers</button>
     <button class="mob-tab" data-sec="production" onclick="mobShow('production',this)"><i class="ti ti-tool"></i>Production</button>
     <button class="mob-tab" data-sec="sales" onclick="mobShow('sales',this)"><i class="ti ti-currency-dollar"></i>Sales</button>
