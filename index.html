@@ -1204,10 +1204,31 @@ async function mobSaveWorker(){
 async function mobSync(){
   const btn=document.getElementById('mob-sync-btn');
   if(btn){btn.style.opacity='.4';btn.style.pointerEvents='none';}
-  await syncNow();
-  mobRender();
+  try{
+    // Reload all data from Supabase first (picks up changes from desktop)
+    await loadAll();
+    // Then sync Square sales
+    await syncNow();
+  }catch(e){console.error('Mobile sync error:',e);}
+  renderAll();
   if(btn){btn.style.opacity='';btn.style.pointerEvents='';}
 }
+
+// Auto-refresh when the app becomes visible again (e.g. switching back from another app)
+let _lastRefresh=Date.now();
+document.addEventListener('visibilitychange',async ()=>{
+  if(document.visibilityState!=='visible')return;
+  // Throttle: only refresh if it's been >5s since last refresh
+  if(Date.now()-_lastRefresh<5000)return;
+  _lastRefresh=Date.now();
+  try{
+    if(sb && currentUser){
+      await loadAll();
+      renderAll();
+    }
+  }catch(e){console.error('Visibility refresh error:',e);}
+});
+
 
 function mobSl(s){return s.replace(/[^a-z0-9]/gi,'_');}
 function mobEsc(s){return String(s).replace(/'/g,"\\'");}
