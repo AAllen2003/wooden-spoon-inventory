@@ -822,7 +822,7 @@ function renderAll(){renderOverview();renderLocations();if(currentLoc)renderLocD
 // Build the Square-style breakdown HTML from a totals object
 function buildBreakdownHTML(t, opts){
   if(!t){return '';}
-  const c=t.combined||{},ip=t.inPerson||{},on=t.online||{};
+  const c=t.combined||{},ip=t.inPerson||{},on=t.online||{},byLoc=t.byLocation||{};
   const fmt=v=>'$'+(v||0).toFixed(2);
   const isMobile=opts?.mobile;
   const styleBox=isMobile
@@ -837,10 +837,24 @@ function buildBreakdownHTML(t, opts){
     :'display:flex;justify-content:space-between;padding:12px 0;margin-top:8px;border-top:2px solid var(--border);font-size:16px;font-weight:700;color:var(--text)';
   const sectionStyle=isMobile?'margin-top:14px;padding-top:10px;border-top:1px dashed rgba(132,79,6,.3)':'margin-top:16px;padding-top:12px;border-top:1px dashed var(--border)';
   const sectionTitleStyle=isMobile?'font-size:11px;font-weight:700;color:#9C7A58;letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px':'font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px';
-  const hasOnline=(on.totalCollected||0)>0;
-  const hasInPerson=(ip.totalCollected||0)>0;
+
+  // Helper to render a single block of totals
+  const renderBlock=(b,title,small)=>{
+    let s=`<div style="${sectionStyle}"><div style="${sectionTitleStyle}">${title}</div>`;
+    s+=`<div style="${rowStyle}"><span>Gross Sales</span><span>${fmt(b.gross)}</span></div>`;
+    if((b.discounts||0)>0)s+=`<div style="${rowStyle}"><span>Discounts</span><span style="color:#A82020">-${fmt(b.discounts)}</span></div>`;
+    s+=`<div style="${rowStyle}"><span>Net Sales</span><span>${fmt(b.netSales)}</span></div>`;
+    s+=`<div style="${rowStyle}"><span>Tax</span><span>${fmt(b.tax)}</span></div>`;
+    s+=`<div style="${rowStyle}"><span>Tips</span><span>${fmt(b.tips)}</span></div>`;
+    if((b.serviceCharges||0)>0)s+=`<div style="${rowStyle}"><span>Service Charges</span><span>${fmt(b.serviceCharges)}</span></div>`;
+    s+=`<div style="${rowStyle};font-weight:700;padding-top:6px;border-top:1px solid rgba(132,79,6,.15)"><span>Total Collected</span><span>${fmt(b.totalCollected)}</span></div>`;
+    s+=`</div>`;
+    return s;
+  };
+
+  // Top: combined breakdown
   let html=`<div style="${styleBox}">
-    <div style="${styleTitle}">Sales Breakdown</div>
+    <div style="${styleTitle}">Sales Breakdown — All Locations</div>
     <div style="${rowStyle}"><span>Gross Sales</span><span>${fmt(c.gross)}</span></div>
     <div style="${rowStyle}"><span>Discounts</span><span style="color:#A82020">${c.discounts>0?'-':''}${fmt(c.discounts)}</span></div>
     <div style="${rowStyle};font-weight:700;border-top:1px solid rgba(132,79,6,.15);padding-top:8px;margin-top:4px"><span>Net Sales</span><span>${fmt(c.netSales)}</span></div>
@@ -848,23 +862,25 @@ function buildBreakdownHTML(t, opts){
     <div style="${rowStyle}"><span>Tips</span><span>${fmt(c.tips)}</span></div>`;
   if((c.serviceCharges||0)>0){html+=`<div style="${rowStyle}"><span>Service Charges</span><span>${fmt(c.serviceCharges)}</span></div>`;}
   html+=`<div style="${totalRowStyle}"><span>Total Collected</span><span>${fmt(c.totalCollected)}</span></div>`;
-  if(hasInPerson && hasOnline){
-    html+=`<div style="${sectionStyle}">
-      <div style="${sectionTitleStyle}">In-Person (POS)</div>
-      <div style="${rowStyle}"><span>Net Sales</span><span>${fmt(ip.netSales)}</span></div>
-      <div style="${rowStyle}"><span>Tax + Tips + Charges</span><span>${fmt((ip.tax||0)+(ip.tips||0)+(ip.serviceCharges||0))}</span></div>
-      <div style="${rowStyle};font-weight:700"><span>Total</span><span>${fmt(ip.totalCollected)}</span></div>
-    </div>
-    <div style="${sectionStyle}">
-      <div style="${sectionTitleStyle}">Online</div>
-      <div style="${rowStyle}"><span>Net Sales</span><span>${fmt(on.netSales)}</span></div>
-      <div style="${rowStyle}"><span>Tax + Tips + Charges</span><span>${fmt((on.tax||0)+(on.tips||0)+(on.serviceCharges||0))}</span></div>
-      <div style="${rowStyle};font-weight:700"><span>Total</span><span>${fmt(on.totalCollected)}</span></div>
-    </div>`;
+
+  // Per-location breakdowns
+  const locNames=Object.keys(byLoc).filter(name=>(byLoc[name].totalCollected||0)>0);
+  for(const name of locNames){
+    html+=renderBlock(byLoc[name],name);
   }
+
+  // In-person vs online split (only if BOTH exist)
+  const hasOnline=(on.totalCollected||0)>0;
+  const hasInPerson=(ip.totalCollected||0)>0;
+  if(hasInPerson && hasOnline){
+    html+=renderBlock(ip,'In-Person (POS)');
+    html+=renderBlock(on,'Online');
+  }
+
   html+=`</div>`;
   return html;
 }
+
 
 function getRev(item, loc, qty, revMap){
   const v=(revMap?.[item]||{})[loc];
