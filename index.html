@@ -403,6 +403,27 @@ input[type=text],input[type=password],input[type=number],input[type=url],input[t
           </div>
         </div>
       </div>
+
+      <div class="card" style="margin-bottom:20px;border-left:4px solid #9f7014">
+        <div class="card-header">
+          <span class="card-title"><i class="ti ti-plus"></i> Log Production</span>
+          <span style="font-size:11px;color:var(--text3)">Add items produced to Warehouse inventory</span>
+        </div>
+        <p class="section-intro">After producing items, log how many were made. The quantity entered here will be added to the existing Warehouse count.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+          <div style="flex:2;min-width:200px">
+            <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:4px">Item</label>
+            <select id="log-prod-item" style="width:100%"><option value="">-- Select an item --</option></select>
+          </div>
+          <div style="flex:1;min-width:120px">
+            <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:4px">Quantity Produced</label>
+            <input type="number" id="log-prod-qty" min="1" placeholder="0" style="width:100%">
+          </div>
+          <button class="btn btn-primary" onclick="logProduction()" style="background:#9f7014">Add to Warehouse</button>
+        </div>
+        <div id="log-prod-status" style="font-size:12px;margin-top:10px"></div>
+      </div>
+
       <div class="metrics-grid" id="prod-metrics"></div>
       <div class="card">
         <div class="card-header">
@@ -749,6 +770,7 @@ function showSection(name,btn){
   if(name==='sales'){renderSales();loadAvailDates();}
   if(name==='transfers')renderTransfers();
   if(name==='settings'){renderSettings();syncCI(S.colors);syncBI(S.badges);}
+  applyPermissions();
 }
 function openLocDetail(loc){currentLoc=loc;document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.getElementById('sec-loc-detail').classList.add('active');document.getElementById('page-title').textContent=loc;document.getElementById('back-btn').style.display='inline-flex';document.getElementById('loc-detail-cat-filter').value='';renderLocDetail();}
 function goBack(){showSection('locations',null);document.querySelectorAll('.nav-item').forEach(b=>{if(b.textContent.includes('Locations'))b.classList.add('active');});}
@@ -795,6 +817,7 @@ function saveLocations(){S.locationIds.Warehouse=document.getElementById('loc-wh
 async function addItem(){const name=prompt('Item name:');if(!name||!name.trim())return;const n=name.trim();if(S.items.includes(n)){alert('Already exists.');return;}S.items.push(n);S.inventory[n]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};S.par[n]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};S.batchYields[n]=0;S.sales[n]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};S.salesBaseline[n]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};await dbItem({name:n,category:DC[n]||'',price:DP[n]||0,batch_yield:0},S.items.length-1);renderAll();}
 async function removeItem(name){if(!confirm('Remove '+name+'?'))return;S.items=S.items.filter(i=>i!==name);delete S.inventory[name];delete S.par[name];delete S.batchYields[name];delete S.sales[name];delete S.salesBaseline[name];S.alerts=S.alerts.filter(a=>a.item!==name);await dbDelItem(name);renderAll();}
 async function savePar(){
+  if(!isAdmin()){alert('Only admins can save par levels.');return;}
   const rows=[];S.items.forEach(item=>{LOCS.forEach(loc=>{const el=document.getElementById('par-'+sl(item)+'-'+sl(loc));if(el){const q=parseInt(el.value)||0;S.par[item]=S.par[item]||{};S.par[item][loc]=q;rows.push({item_name:item,location:loc,quantity:q});}});});
   await dbPar(rows);checkAlerts();renderAll();
   const btn=document.getElementById('par-save-btn');if(btn){btn.textContent='Saved ✓';setTimeout(()=>btn.innerHTML='<i class="ti ti-device-floppy"></i> Save',1500);}
@@ -814,6 +837,7 @@ async function doTransfer(){
   const item=document.getElementById('xfr-item').value,from=document.getElementById('xfr-from').value,to=document.getElementById('xfr-to').value,qty=parseInt(document.getElementById('xfr-qty').value)||0;
   if(!item)return;if(from===to){alert('From and To must differ.');return;}if(qty<1){alert('Qty must be at least 1.');return;}
   const avail=(S.inventory[item]||{})[from]||0;if(qty>avail){alert('Only '+avail+' available at '+from+'.');return;}
+  if(!confirm('You are about to transfer '+qty+' '+item+' from '+from+' to '+to+'. Confirm?'))return;
   S.inventory[item][from]-=qty;S.inventory[item][to]=(S.inventory[item][to]||0)+qty;
   const t={item,from,to,qty,time:new Date().toLocaleString(),by:currentUser?.email||''};S.transfers.unshift(t);if(S.transfers.length>200)S.transfers=S.transfers.slice(0,200);
   await dbInv(item,from,S.inventory[item][from]);await dbInv(item,to,S.inventory[item][to]);await dbXfr(t);checkAlerts();renderAll();
@@ -911,6 +935,7 @@ async function executePick(truck,item,requestedQty){
   const whCur=(S.inventory[item]||{}).Warehouse||0;
   const actual=Math.min(requestedQty,whCur);
   if(actual<=0){alert('Warehouse has 0 of "'+item+'". Cannot pick.');return;}
+  if(!confirm('You are about to pick '+actual+' '+item+' from Warehouse for '+truck+'. Confirm?'))return;
   if(!sb){alert('Not connected to database.');return;}
   if(!S.inventory[item])S.inventory[item]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};
   S.inventory[item].Warehouse=whCur-actual;
@@ -935,7 +960,16 @@ async function executePick(truck,item,requestedQty){
 async function executePickAll(truck){
   const pl=calcPickList()[truck];
   if(!pl||!pl.length){return;}
-  if(!confirm('Pick '+pl.length+' items for '+truck+' from Warehouse?'))return;
+  // Build detailed item list for confirmation
+  const itemList=pl.filter(r=>r.whStock>0).map(r=>{
+    const actual=Math.min(r.need,r.whStock);
+    return '  • '+actual+' '+r.item;
+  }).join('\n');
+  const skipped=pl.filter(r=>r.whStock<=0).map(r=>r.item);
+  let msg='You are about to pick the following from Warehouse for '+truck+':\n\n'+itemList;
+  if(skipped.length)msg+='\n\nSkipped (Warehouse has 0): '+skipped.join(', ');
+  msg+='\n\nConfirm?';
+  if(!confirm(msg))return;
   for(const row of pl){
     if(row.whStock<=0)continue;
     const actual=Math.min(row.need,(S.inventory[row.item]||{}).Warehouse||0);
@@ -1006,6 +1040,84 @@ function mobPickListHTML(){
   return h;
 }
 
+
+// ═══════════════════════════════════════════════════════
+// LOG PRODUCTION — add produced items to Warehouse inventory
+// ═══════════════════════════════════════════════════════
+async function logProduction(){
+  const itemSel=document.getElementById('log-prod-item');
+  const qtyInp=document.getElementById('log-prod-qty');
+  const status=document.getElementById('log-prod-status');
+  if(!itemSel||!qtyInp)return;
+  const item=itemSel.value;
+  const qty=parseInt(qtyInp.value)||0;
+  if(!item){if(status){status.textContent='Please select an item.';status.style.color='#A82020';}return;}
+  if(qty<1){if(status){status.textContent='Quantity must be at least 1.';status.style.color='#A82020';}return;}
+  const current=(S.inventory[item]||{}).Warehouse||0;
+  const newTotal=current+qty;
+  if(!confirm('You are about to add '+qty+' '+item+' to Warehouse inventory.\n\nCurrent: '+current+'\nAdding:  +'+qty+'\nNew total: '+newTotal+'\n\nConfirm?'))return;
+  if(!sb){if(status){status.textContent='Not connected to database.';status.style.color='#A82020';}return;}
+  if(!S.inventory[item])S.inventory[item]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};
+  S.inventory[item].Warehouse=newTotal;
+  try{
+    await sb.from('inventory').upsert({item_name:item,location:'Warehouse',quantity:newTotal});
+  }catch(e){
+    if(status){status.textContent='Save failed: '+e.message;status.style.color='#A82020';}
+    S.inventory[item].Warehouse=current; // revert local state
+    return;
+  }
+  if(status){status.textContent='✓ Added '+qty+' '+item+' to Warehouse. New total: '+newTotal;status.style.color='#2A6B3A';}
+  qtyInp.value='';
+  itemSel.value='';
+  checkAlerts();renderAll();
+  setTimeout(()=>{if(status)status.textContent='';},6000);
+}
+
+// Same function for mobile (different DOM ids)
+async function mobLogProduction(){
+  const itemSel=document.getElementById('mob-log-prod-item');
+  const qtyInp=document.getElementById('mob-log-prod-qty');
+  const status=document.getElementById('mob-log-prod-status');
+  if(!itemSel||!qtyInp)return;
+  const item=itemSel.value;
+  const qty=parseInt(qtyInp.value)||0;
+  if(!item){if(status){status.textContent='Please select an item.';status.style.color='#A82020';}return;}
+  if(qty<1){if(status){status.textContent='Quantity must be at least 1.';status.style.color='#A82020';}return;}
+  const current=(S.inventory[item]||{}).Warehouse||0;
+  const newTotal=current+qty;
+  if(!confirm('You are about to add '+qty+' '+item+' to Warehouse inventory.\n\nCurrent: '+current+'\nAdding:  +'+qty+'\nNew total: '+newTotal+'\n\nConfirm?'))return;
+  if(!sb){if(status){status.textContent='Not connected to database.';status.style.color='#A82020';}return;}
+  if(!S.inventory[item])S.inventory[item]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};
+  S.inventory[item].Warehouse=newTotal;
+  try{
+    await sb.from('inventory').upsert({item_name:item,location:'Warehouse',quantity:newTotal});
+  }catch(e){
+    if(status){status.textContent='Save failed: '+e.message;status.style.color='#A82020';}
+    S.inventory[item].Warehouse=current;
+    return;
+  }
+  if(status){status.textContent='✓ Added '+qty+' '+item+' to Warehouse. New total: '+newTotal;status.style.color='#2A6B3A';}
+  qtyInp.value='';
+  itemSel.value='';
+  checkAlerts();renderAll();
+  setTimeout(()=>{if(status)status.textContent='';},6000);
+}
+
+function populateLogProdItems(){
+  // Desktop
+  const sel=document.getElementById('log-prod-item');
+  if(sel){
+    const cur=sel.value;
+    sel.innerHTML='<option value="">-- Select an item --</option>'+S.items.map(i=>'<option value="'+i.replace(/"/g,'&quot;')+'"'+(i===cur?' selected':'')+'>'+i+'</option>').join('');
+  }
+  // Mobile
+  const mSel=document.getElementById('mob-log-prod-item');
+  if(mSel){
+    const cur=mSel.value;
+    mSel.innerHTML='<option value="">-- Select an item --</option>'+S.items.map(i=>'<option value="'+i.replace(/"/g,'&quot;')+'"'+(i===cur?' selected':'')+'>'+i+'</option>').join('');
+  }
+}
+
 function getRev(item, loc, qty, revMap){
   const v=(revMap?.[item]||{})[loc];
   if(typeof v === 'number') return v;
@@ -1041,7 +1153,7 @@ function renderProduction(){
     let result='';if(nd===0)result=`<span class="prod-status-ok">✓ At par (${oh}/${tp||'—'})</span>`;else if(y===0)result=`<span class="prod-status-make">Set yield to calculate</span>`;else result=`<span class="batch-pill">Make ${b} batch${b!==1?'es':''} → ${pr} units</span>${su>0?`<div class="surplus-note">${su} unit${su!==1?'s':''} surplus</div>`:''}`;
     return`<tr><td style="font-weight:700">${item}<br><span class="cat-chip ${cat==='Frozen Foods'?'cc-food':'cc-dessert'}" style="margin-top:4px">${cat==='Frozen Foods'?'Food':'Dessert'}</span></td><td style="text-align:center;font-family:'Abril Fatface',serif;font-size:18px;color:${oh===0?'var(--red)':oh<tp?'var(--amber)':'var(--green)'}">${oh}</td><td style="text-align:center;color:var(--text3);font-weight:700">${tp||'—'}</td><td style="text-align:center;font-weight:700;color:${nd>0?'var(--red)':'var(--green)'}">${nd>0?'+'+nd:'–'}</td><td style="text-align:center"><input type="number" id="yield-${sl(item)}" value="${y||''}" min="1" placeholder="e.g. 15" style="width:80px;text-align:center" ${yh} onchange="S.batchYields['${esc(item)}']=Math.max(0,parseInt(this.value)||0);renderProduction()"></td><td style="text-align:center;font-family:'Abril Fatface',serif;font-size:20px;color:${b>0?'var(--sidebar)':'var(--text3)'}">${b||'–'}</td><td>${result}</td></tr>`;
   }).join('');
-}
+populateLogProdItems();}
 function renderSales(){
   const sd=salesViewDate?salesViewData:S.sales;const lbl=document.getElementById('sales-date-label'),bdg=document.getElementById('sales-date-badge');
   if(salesViewDate){if(lbl)lbl.textContent=new Date(salesViewDate+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});if(bdg){bdg.textContent='Archived';bdg.className='sales-date-badge archive';}}
@@ -1150,11 +1262,14 @@ function applyPermissions(){
   document.querySelectorAll('[data-admin-only]').forEach(el=>{
     el.style.display=admin?'':'none';
   });
-  // Disable par-level inputs for non-admins
+  // Lock par-level inputs for non-admins (use both disabled + readOnly for belt-and-suspenders)
   document.querySelectorAll('.par-input,.m-par-inp').forEach(inp=>{
     inp.disabled=!admin;
+    inp.readOnly=!admin;
     inp.style.opacity=admin?'':'0.55';
     inp.style.cursor=admin?'':'not-allowed';
+    inp.style.background=admin?'':'#f0e6d6';
+    inp.style.pointerEvents=admin?'':'none';
   });
   // Disable item add/remove and color/location id forms for non-admins
   document.querySelectorAll('[data-admin-disable]').forEach(el=>{
@@ -1186,18 +1301,16 @@ function mobShow(sec,btn){
   mobSection=sec;
   document.querySelectorAll('.mob-tab').forEach(t=>t.classList.remove('active'));
   if(btn)btn.classList.add('active');
-  // Scroll active tab into view
   if(btn)btn.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
-  // Update title
   const titles={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',settings:'Settings'};
   document.getElementById('mob-title').textContent=titles[sec]||sec;
   // Render immediately with whatever data we have
   mobRender();
+  applyPermissions();
   // Background refresh from Supabase to catch any changes from desktop/other users
-  // Throttled: only if it's been >3s since the last fetch
   if(sb && currentUser && Date.now()-_lastRefresh>3000){
     _lastRefresh=Date.now();
-    loadAll().then(()=>mobRender()).catch(e=>console.error('Tab refresh:',e));
+    loadAll().then(()=>{mobRender();applyPermissions();}).catch(e=>console.error('Tab refresh:',e));
   }
 }
 
@@ -1304,6 +1417,7 @@ function mobParHTML(){
   return`<div class="m-pills">${pills}</div>${hidden}<div class="m-par-list">${rows}</div><button class="m-btn" onclick="mobSavePar()" style="margin-top:10px" data-admin-only>Save Par Levels</button>`;
 }
 async function mobSavePar(){
+  if(!isAdmin()){alert('Only admins can save par levels.');return;}
   const rows=[];
   S.items.forEach(item=>{LOCS.forEach(loc=>{const id='mpar-'+mobSl(item)+'-'+mobSl(loc);const el=document.getElementById(id);if(el){const q=parseInt(el.value)||0;if(!S.par[item])S.par[item]={};S.par[item][loc]=q;rows.push({item_name:item,location:loc,quantity:q});}});});
   if(sb)await sb.from('par_levels').upsert(rows);
@@ -1332,6 +1446,7 @@ async function mobDoXfr(){
   if(qty<1){alert('Qty must be at least 1.');return;}
   const avail=(S.inventory[item]||{})[from]||0;
   if(qty>avail){alert('Only '+avail+' available at '+from+'.');return;}
+  if(!confirm('You are about to transfer '+qty+' '+item+' from '+from+' to '+to+'. Confirm?'))return;
   S.inventory[item][from]-=qty;S.inventory[item][to]=(S.inventory[item][to]||0)+qty;
   const t={item,from,to,qty,time:new Date().toLocaleString(),by:currentUser?.email||''};
   S.transfers.unshift(t);
@@ -1342,7 +1457,10 @@ async function mobDoXfr(){
 function mobProdHTML(){
   const all=S.items.map(i=>({i,...calcProd(i)}));
   const np=all.filter(c=>c.nd>0),tb=np.reduce((s,c)=>s+c.b,0);
-  let h=`<div class="m-metric-row" style="margin-bottom:8px"><div class="m-metric"><div class="m-metric-lbl">Below Par</div><div class="m-metric-val ${np.length>0?'r':''}">${np.length}</div></div><div class="m-metric"><div class="m-metric-lbl">Batches Needed</div><div class="m-metric-val ${tb>0?'a':''}">${tb}</div></div></div>`;
+  // Log Production panel at top
+  const itemOpts='<option value="">-- Select item --</option>'+S.items.map(it=>'<option value="'+it.replace(/"/g,'&quot;')+'">'+it+'</option>').join('');
+  let h=`<div class="m-card" style="border-left:4px solid #9f7014;margin-bottom:14px"><div style="font-size:15px;font-weight:700;color:#5e3303;margin-bottom:6px"><i class="ti ti-plus"></i> Log Production</div><div style="font-size:11px;color:#9C7A58;line-height:1.5;margin-bottom:12px">Add produced items to Warehouse inventory. The quantity will be added to the existing count.</div><div style="display:flex;flex-direction:column;gap:10px"><div><div style="font-size:10px;font-weight:700;color:#9C7A58;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px">Item</div><select id="mob-log-prod-item" style="width:100%;padding:10px;border:1px solid #844f06;border-radius:6px;background:#fff">${itemOpts}</select></div><div><div style="font-size:10px;font-weight:700;color:#9C7A58;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px">Quantity Produced</div><input type="number" id="mob-log-prod-qty" min="1" placeholder="0" style="width:100%;padding:10px;border:1px solid #844f06;border-radius:6px;background:#fff"></div><button class="m-btn" onclick="mobLogProduction()" style="background:#9f7014;color:#fff">Add to Warehouse</button><div id="mob-log-prod-status" style="font-size:12px;text-align:center;min-height:16px"></div></div></div>`;
+  h+=`<div class="m-metric-row" style="margin-bottom:8px"><div class="m-metric"><div class="m-metric-lbl">Below Par</div><div class="m-metric-val ${np.length>0?'r':''}">${np.length}</div></div><div class="m-metric"><div class="m-metric-lbl">Batches Needed</div><div class="m-metric-val ${tb>0?'a':''}">${tb}</div></div></div>`;
   h+=S.items.map(item=>{
     const{oh,tp,nd,y,b,pr,su}=calcProd(item);
     const cat=S.categories[item]||'';
