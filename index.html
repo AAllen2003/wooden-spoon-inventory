@@ -998,7 +998,14 @@ function mobShow(sec,btn){
   // Update title
   const titles={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production',sales:'Sales',settings:'Settings'};
   document.getElementById('mob-title').textContent=titles[sec]||sec;
+  // Render immediately with whatever data we have
   mobRender();
+  // Background refresh from Supabase to catch any changes from desktop/other users
+  // Throttled: only if it's been >3s since the last fetch
+  if(sb && currentUser && Date.now()-_lastRefresh>3000){
+    _lastRefresh=Date.now();
+    loadAll().then(()=>mobRender()).catch(e=>console.error('Tab refresh:',e));
+  }
 }
 
 function mobRender(){
