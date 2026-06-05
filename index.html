@@ -632,7 +632,7 @@ async function init(){setTimeout(()=>{try{document.getElementById('loading').cla
     await loadAll();
     if(await needsMig()){hideLo();showScreen('migration');return;}
     setupRT();hideLo();showScreen('app');
-    applyAC(S.colors);applyAB(S.badges);syncCI(S.colors);syncBI(S.badges);renderAll();updateUserUI();
+    applyAC(S.colors);applyAB(S.badges);syncCI(S.colors);syncBI(S.badges);await loadAdminEmails();renderAll();applyPermissions();updateUserUI();
   }catch(e){console.error(e);hideLo();showScreen('login');}
 }
 function setLT(t){document.getElementById('loading-txt').textContent=t;document.getElementById('loading').classList.remove('hidden');}
@@ -772,7 +772,7 @@ function showSection(name,btn){
   if(name==='settings'){renderSettings();syncCI(S.colors);syncBI(S.badges);}
   applyPermissions();
 }
-function openLocDetail(loc){currentLoc=loc;document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.getElementById('sec-loc-detail').classList.add('active');document.getElementById('page-title').textContent=loc;document.getElementById('back-btn').style.display='inline-flex';document.getElementById('loc-detail-cat-filter').value='';renderLocDetail();}
+function openLocDetail(loc){currentLoc=loc;document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.getElementById('sec-loc-detail').classList.add('active');document.getElementById('page-title').textContent=loc;document.getElementById('back-btn').style.display='inline-flex';document.getElementById('loc-detail-cat-filter').value='';renderLocDetail();applyPermissions();}
 function goBack(){showSection('locations',null);document.querySelectorAll('.nav-item').forEach(b=>{if(b.textContent.includes('Locations'))b.classList.add('active');});}
 function setStatus(t,ok){const el=document.getElementById('conn-status');el.textContent=t;el.className='conn-status'+(ok?' live':'');}
 
@@ -1136,7 +1136,7 @@ function renderOverview(){
   document.getElementById('loc-summary').innerHTML=LOCS.map((loc,i)=>{let lLow=0,lOut=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)lOut++;else if(p>0&&q<=p)lLow++;});const st=lOut>0?'<span class="stock-out">Action needed</span>':lLow>0?'<span class="stock-low">Low stock</span>':'<span class="stock-ok">All good</span>';return`<tr style="cursor:pointer" onclick="openLocDetail('${loc}')"><td><span class="loc-chip ${LC[i]}">${loc}</span></td><td>${S.items.length}</td><td>${lLow||'—'}</td><td>${lOut||'—'}</td><td>${st}</td><td style="color:var(--text3);font-size:11px;font-weight:700">View &rarr;</td></tr>`;}).join('');
 }
 function renderLocations(){const grid=document.getElementById('loc-grid');if(!grid)return;grid.innerHTML=LOCS.map((loc,i)=>{let total=0,low=0,out=0,value=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});const sc=out>0?'var(--red)':low>0?'var(--amber)':'var(--green)';const st=out>0?out+' out of stock':low>0?low+' below par':'All good';return`<div class="loc-card" onclick="openLocDetail('${loc}')"><div class="loc-card-top"></div><div class="loc-card-name">${loc}</div><div class="loc-card-sub" style="color:${sc}">${st}</div><div class="loc-card-stats"><div><div class="loc-stat-val">${total}</div><div class="loc-stat-label">Units</div></div><div><div class="loc-stat-val">$${value.toFixed(0)}</div><div class="loc-stat-label">Value</div></div></div><div class="loc-card-arrow"><i class="ti ti-arrow-right"></i></div></div>`;}).join('');}
-function renderLocDetail(){if(!currentLoc)return;const li=LOCS.indexOf(currentLoc);const filter=document.getElementById('loc-detail-cat-filter')?.value||'';const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;let total=0,low=0,out=0,value=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[currentLoc]||0,p=(S.par[item]||{})[currentLoc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});document.getElementById('loc-detail-header').innerHTML=`<div class="loc-detail-icon">${LI[li]}</div><div style="flex:1"><div class="loc-detail-name">${currentLoc}</div><div class="loc-detail-stats"><div class="loc-detail-stat"><strong>${total}</strong> units</div><div class="loc-detail-stat"><strong>$${value.toFixed(2)}</strong> value</div><div class="loc-detail-stat"><strong>${out}</strong> out of stock</div><div class="loc-detail-stat"><strong>${low}</strong> below par</div></div></div><button class="btn btn-sm" style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.2);color:#fff" onclick="exportLocCSV()"><i class="ti ti-download"></i> Export</button>`;document.getElementById('loc-detail-title').textContent=currentLoc+' Inventory';document.getElementById('loc-detail-table').innerHTML=items.map(item=>{const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0,cat=S.categories[item]||'',price=S.prices[item]||0;const cls=qty===0?'stock-out':par>0&&qty<=par?'stock-low':'stock-ok';const st=qty===0?'Out of stock':par>0&&qty<=par?`Below par (${qty}/${par})`:'In stock';const pct=par>0?Math.min(100,Math.round((qty/par)*100)):100;const bc=qty===0?'var(--red)':par>0&&qty<=par?'var(--amber)':'var(--green)';return`<tr><td style="font-weight:700">${item}</td><td><span class="cat-chip ${cat==='Frozen Foods'?'cc-food':'cc-dessert'}">${cat==='Frozen Foods'?'Food':'Dessert'}</span></td><td style="font-weight:700;color:var(--green)">${fmt(price)}</td><td style="text-align:center"><input type="number" class="inv-input" value="${qty}" min="0" onchange="updateInventory('${esc(item)}','${currentLoc}',this.value)"></td><td style="text-align:center;color:var(--text3);font-weight:700">${par||'—'}</td><td><span class="${cls}">${st}</span>${par>0?`<div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${bc}"></div></div>`:''}</td></tr>`;}).join('');}
+function renderLocDetail(){if(!currentLoc)return;const li=LOCS.indexOf(currentLoc);const filter=document.getElementById('loc-detail-cat-filter')?.value||'';const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;let total=0,low=0,out=0,value=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[currentLoc]||0,p=(S.par[item]||{})[currentLoc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});document.getElementById('loc-detail-header').innerHTML=`<div class="loc-detail-icon">${LI[li]}</div><div style="flex:1"><div class="loc-detail-name">${currentLoc}</div><div class="loc-detail-stats"><div class="loc-detail-stat"><strong>${total}</strong> units</div><div class="loc-detail-stat"><strong>$${value.toFixed(2)}</strong> value</div><div class="loc-detail-stat"><strong>${out}</strong> out of stock</div><div class="loc-detail-stat"><strong>${low}</strong> below par</div></div></div><button class="btn btn-sm" style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.2);color:#fff" onclick="exportLocCSV()"><i class="ti ti-download"></i> Export</button>`;document.getElementById('loc-detail-title').textContent=currentLoc+' Inventory';document.getElementById('loc-detail-table').innerHTML=items.map(item=>{const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0,cat=S.categories[item]||'',price=S.prices[item]||0;const cls=qty===0?'stock-out':par>0&&qty<=par?'stock-low':'stock-ok';const st=qty===0?'Out of stock':par>0&&qty<=par?`Below par (${qty}/${par})`:'In stock';const pct=par>0?Math.min(100,Math.round((qty/par)*100)):100;const bc=qty===0?'var(--red)':par>0&&qty<=par?'var(--amber)':'var(--green)';return`<tr><td style="font-weight:700">${item}</td><td><span class="cat-chip ${cat==='Frozen Foods'?'cc-food':'cc-dessert'}">${cat==='Frozen Foods'?'Food':'Dessert'}</span></td><td style="font-weight:700;color:var(--green)">${fmt(price)}</td><td style="text-align:center"><input type="number" class="inv-input" value="${qty}" min="0" onchange="updateInventory('${esc(item)}','${currentLoc}',this.value)"></td><td style="text-align:center;color:var(--text3);font-weight:700">${par||'—'}</td><td><span class="${cls}">${st}</span>${par>0?`<div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${bc}"></div></div>`:''}</td></tr>`;}).join('');applyPermissions();}
 function renderInventory(){const filter=document.getElementById('inv-cat-filter')?.value||'';const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;document.getElementById('inv-table').innerHTML=items.map(item=>{const cols=LOCS.map(loc=>{const qty=(S.inventory[item]||{})[loc]||0,par=(S.par[item]||{})[loc]||0;const cls=qty===0?'stock-out':par>0&&qty<=par?'stock-low':'stock-ok';const pn=par>0?`<span class="qty-par">par ${par}</span>`:'';return`<td class="qty-cell"><span class="${cls}">${qty}</span>${pn}</td>`;}).join('');const total=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0),cat=S.categories[item]||'';return`<tr><td style="font-weight:700">${item}</td><td><span class="cat-chip ${cat==='Frozen Foods'?'cc-food':'cc-dessert'}">${cat==='Frozen Foods'?'Food':'Dessert'}</span></td><td style="font-weight:700;color:var(--green)">${fmt(S.prices[item])}</td>${cols}<td class="qty-cell" style="font-weight:700">${total}</td></tr>`;}).join('');}
 function renderPar(){document.getElementById('par-table-body').innerHTML=S.items.map(item=>{const cols=LOCS.map(loc=>`<td class="par-cell"><input type="number" class="par-input" id="par-${sl(item)}-${sl(loc)}" value="${(S.par[item]||{})[loc]||0}" min="0"></td>`).join('');return`<tr><td style="font-weight:700;white-space:nowrap;padding-right:16px">${item}</td>${cols}</tr>`;}).join('');}
 function renderAlerts(){document.getElementById('alerts-list').innerHTML=S.alerts.length?S.alerts.map(a=>{const li=LOCS.indexOf(a.loc),cls=a.type==='out'?'danger':'warn';return`<div class="alert-bar ${cls}"><div class="alert-body"><div class="alert-title">${a.type==='out'?'Out of stock':'Below par'}: ${a.item} @ <span class="loc-chip ${LC[li]}">${a.loc}</span></div><div class="alert-sub">Current: ${a.qty} &middot; Par: ${a.par} &middot; ${a.time}</div></div><button class="alert-dismiss" onclick="dismissAlert('${esc(a.key)}')">&#x00D7;</button></div>`;}).join(''):'<div class="empty-state"><i class="ti ti-circle-check" style="font-size:48px;display:block;margin-bottom:12px;color:var(--green)"></i>All locations are at or above par</div>';}
@@ -1222,12 +1222,17 @@ async function loadAdminEmails(){
   if(!sb)return;
   try{
     const {data}=await sb.from('app_settings').select('value').eq('key','admin_emails').maybeSingle();
-    S.adminEmails=(data?.value||[]).map(e=>String(e).toLowerCase());
-  }catch(e){S.adminEmails=[];}
-  // Bootstrap: if no admins, current user becomes admin
+    let raw=data?.value;
+    // Handle both jsonb (array) and text (JSON-stringified) storage
+    if(typeof raw==='string'){
+      try{raw=JSON.parse(raw);}catch(e){raw=[];}
+    }
+    if(!Array.isArray(raw))raw=[];
+    S.adminEmails=raw.map(e=>String(e).trim().toLowerCase()).filter(Boolean);
+  }catch(e){S.adminEmails=[];console.error('loadAdminEmails error:',e);}
   if(S.adminEmails.length===0 && currentUser?.email){
     S.adminEmails=[currentUser.email.toLowerCase()];
-    try{await sb.from('app_settings').upsert({key:'admin_emails',value:S.adminEmails});}catch(e){}
+    try{await sb.from('app_settings').upsert({key:'admin_emails',value:JSON.stringify(S.adminEmails)});}catch(e){console.error('admin bootstrap save:',e);}
   }
 }
 
@@ -1237,7 +1242,7 @@ async function addAdminEmail(email){
   if(!isAdmin()){alert('Only admins can add admins.');return;}
   if(!S.adminEmails.includes(email)){
     S.adminEmails=[...S.adminEmails,email];
-    try{await sb.from('app_settings').upsert({key:'admin_emails',value:S.adminEmails});}catch(e){alert('Save failed: '+e.message);return;}
+    try{await sb.from('app_settings').upsert({key:'admin_emails',value:JSON.stringify(S.adminEmails)});}catch(e){alert('Save failed: '+e.message);return;}
     renderSettings();applyPermissions();
     if(isMob())mobRender();
   }
@@ -1251,7 +1256,7 @@ async function removeAdminEmail(email){
   }
   if(S.adminEmails.length<=1){alert('Cannot remove the last admin.');return;}
   S.adminEmails=S.adminEmails.filter(e=>e!==email);
-  try{await sb.from('app_settings').upsert({key:'admin_emails',value:S.adminEmails});}catch(e){alert('Save failed: '+e.message);return;}
+  try{await sb.from('app_settings').upsert({key:'admin_emails',value:JSON.stringify(S.adminEmails)});}catch(e){alert('Save failed: '+e.message);return;}
   renderSettings();applyPermissions();
   if(isMob())mobRender();
 }
