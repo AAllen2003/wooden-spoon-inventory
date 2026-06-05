@@ -832,7 +832,7 @@ function checkAlerts(){
 }
 function dismissAlert(key){S.alerts=S.alerts.filter(a=>a.key!==key);renderAll();}
 function dismissAllAlerts(){S.alerts=[];renderAll();}
-async function updateInventory(item,loc,val){const qty=Math.max(0,parseInt(val)||0);if(!S.inventory[item])S.inventory[item]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};S.inventory[item][loc]=qty;await dbInv(item,loc,qty);checkAlerts();renderAll();}
+async function updateInventory(item,loc,val){if(!isAdmin()){alert('Only admins can edit inventory directly. Staff: use the Production tab "Log Production" to add inventory, or the Pick List to restock trucks.');renderInventory();if(currentLoc)renderLocDetail();return;}const qty=Math.max(0,parseInt(val)||0);if(!S.inventory[item])S.inventory[item]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};S.inventory[item][loc]=qty;await dbInv(item,loc,qty);checkAlerts();renderAll();}
 async function doTransfer(){
   const item=document.getElementById('xfr-item').value,from=document.getElementById('xfr-from').value,to=document.getElementById('xfr-to').value,qty=parseInt(document.getElementById('xfr-qty').value)||0;
   if(!item)return;if(from===to){alert('From and To must differ.');return;}if(qty<1){alert('Qty must be at least 1.');return;}
@@ -1262,8 +1262,8 @@ function applyPermissions(){
   document.querySelectorAll('[data-admin-only]').forEach(el=>{
     el.style.display=admin?'':'none';
   });
-  // Lock par-level inputs for non-admins (use both disabled + readOnly for belt-and-suspenders)
-  document.querySelectorAll('.par-input,.m-par-inp').forEach(inp=>{
+  // Lock par-level AND inventory inputs for non-admins
+  document.querySelectorAll('.par-input,.m-par-inp,.inv-input').forEach(inp=>{
     inp.disabled=!admin;
     inp.readOnly=!admin;
     inp.style.opacity=admin?'':'0.55';
@@ -1402,6 +1402,7 @@ function mobLocDetailHTML(loc){
   return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:9px;color:#9C7A58;font-weight:700;text-transform:uppercase">Tap Back to return</div><button class="m-btn" style="width:auto;padding:8px 16px" onclick="mobShow('locations',document.querySelector('.mob-tab[data-sec=locations]'))"><i class="ti ti-arrow-left"></i> Back</button></div><div class="m-par-list">${rows}</div>`;
 }
 async function mobUpdateInv(item,loc,val){
+  if(!isAdmin()){alert('Only admins can edit inventory directly. Staff: use the Production tab "Log Production" to add inventory, or the Pick List to restock trucks.');mobRender();return;}
   const qty=Math.max(0,parseInt(val)||0);
   if(!S.inventory[item])S.inventory[item]={};
   S.inventory[item][loc]=qty;
