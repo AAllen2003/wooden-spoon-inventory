@@ -203,6 +203,20 @@ input[type=text],input[type=password],input[type=number],input[type=url],input[t
   }
 }
 
+
+/* ── Permission-based lockdown — applied via body.staff-mode class ── */
+body.staff-mode .inv-input,
+body.staff-mode .par-input,
+body.staff-mode .m-par-inp{
+  pointer-events:none !important;
+  background:#f0e6d6 !important;
+  opacity:0.55 !important;
+  cursor:not-allowed !important;
+  -webkit-user-select:none !important;
+  user-select:none !important;
+}
+body.staff-mode [data-admin-only]{display:none !important;}
+
 </style>
 </head>
 <body>
@@ -1263,6 +1277,8 @@ async function removeAdminEmail(email){
 
 function applyPermissions(){
   const admin=isAdmin();
+  // Toggle body class for CSS-based lockdown (survives re-renders, can't be bypassed)
+  document.body.classList.toggle('staff-mode',!admin);
   // Hide/show admin-only DOM elements
   document.querySelectorAll('[data-admin-only]').forEach(el=>{
     el.style.display=admin?'':'none';
