@@ -292,7 +292,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
   </nav>
   <div class="sidebar-footer">
     <div class="sidebar-user" id="sidebar-user"></div>
-    <button class="sync-btn" onclick="syncNow()"><span id="sync-spinner" class="spinner"></span><i class="ti ti-refresh"></i> Sync Square</button>
+    <button class="sync-btn" onclick="syncNow()"><span id="sync-spinner" class="spinner"></span><i class="ti ti-refresh"></i> Sync Data</button>
     <div class="conn-status" id="conn-status">Not connected</div>
     <button class="signout-btn" onclick="doSignOut()" style="margin-top:8px"><i class="ti ti-logout"></i> Sign Out</button>
   </div>
@@ -618,7 +618,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
     <button class="more-item" onclick="showSection('alerts',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-bell"></i> Alerts</button>
     <button class="more-item" onclick="showSection('transfers',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-arrows-exchange"></i> Transfers</button>
     <button class="more-item" onclick="showSection('settings',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-settings"></i> Settings</button>
-    <button class="more-item" onclick="syncNow();closeMoreDrawer()"><i class="ti ti-refresh"></i> Sync Square</button>
+    <button class="more-item" onclick="syncNow();closeMoreDrawer()"><i class="ti ti-refresh"></i> Sync Data</button>
     <hr class="more-divider">
     <button class="more-signout" onclick="doSignOut()"><i class="ti ti-logout"></i> Sign Out</button>
   </div>
@@ -850,7 +850,7 @@ async function syncNow(){
   const sp=document.getElementById('sync-spinner'),ts=document.getElementById('top-spinner'),sm=document.getElementById('inv-sync-msg');
   sp.style.display='block';ts.style.display='block';
   if(!S.workerUrl){sp.style.display=ts.style.display='none';if(sm)sm.textContent='No Worker URL configured.';return;}
-  if(sm)sm.textContent='Fetching sales from Square...';
+  if(sm)sm.textContent='Fetching sales data...';
   let deducted=0;
   try{
     const res=await fetch(S.workerUrl+'/sales',{mode:'cors'});
@@ -864,7 +864,7 @@ async function syncNow(){
     await dbSet('last_sync',S.lastSync);await dbSet('sales_baseline',S.salesBaseline);
     if(sm)sm.textContent=deducted>0?`Synced — ${deducted} units deducted`:`Synced — No new sales`;
     setStatus('Live',true);
-  }catch(e){if(sm)sm.textContent='Sales sync failed: '+e.message;setStatus('Sync error',false);sp.style.display=ts.style.display='none';checkAlerts();renderAll();return;}
+  }catch(e){const msg='Sync failed: '+e.message;if(sm)sm.textContent=msg;setStatus('Sync error',false);sp.style.display=ts.style.display='none';alert(msg+'\n\nThe worker may be taking too long, or Toast may be temporarily rate-limited. Try again in a minute. If it persists, check the Cloudflare worker logs.');checkAlerts();renderAll();return;}
   try{
     const pr=await fetch(S.workerUrl+'/prices',{mode:'cors'});
     if(pr.ok){const pd=await pr.json();if(pd.prices&&Object.keys(pd.prices).length){const pu=[];Object.entries(pd.prices).forEach(([item,price])=>{if(S.items.includes(item)){S.prices[item]=price;pu.push({name:item,price,category:S.categories[item]||'',batch_yield:S.batchYields[item]||0,sort_order:S.items.indexOf(item)});}});if(sb&&pu.length)await sb.from('items').upsert(pu);const ind=document.getElementById('sync-ind');if(ind){ind.style.display='block';setTimeout(()=>ind.style.display='none',3000);}}}
@@ -1680,7 +1680,7 @@ init();
       <span class="mob-bar-title" id="mob-title">Overview</span>
       <span id="mob-role-badge" style="display:none;font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;color:#fff;letter-spacing:.04em;text-transform:uppercase"></span>
     </div>
-    <button class="mob-bar-icon" id="mob-sync-btn" onclick="mobSync()" title="Sync Square"><i class="ti ti-refresh"></i></button>
+    <button class="mob-bar-icon" id="mob-sync-btn" onclick="mobSync()" title="Sync Data"><i class="ti ti-refresh"></i></button>
   </div>
 
   <div class="mob-tabs" id="mob-tabs">
