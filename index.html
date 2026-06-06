@@ -773,8 +773,27 @@ function setupRT(){
       // Re-render so UI reflects updated settings
       renderAll();
     })
-    .subscribe();
+    .subscribe((status)=>{
+      console.log('[Realtime] status:',status);
+      if(status==='SUBSCRIBED')_lastRealtimeEvent=Date.now();
+    });
+
+  // Belt-and-suspenders: periodic background refresh every 45 seconds.
+  // If realtime websocket drops silently (common on mobile when backgrounded),
+  // this ensures devices still pick up changes within a minute.
+  if(_periodicRefreshTimer)clearInterval(_periodicRefreshTimer);
+  _periodicRefreshTimer=setInterval(async()=>{
+    if(!sb||!currentUser)return;
+    if(document.visibilityState!=='visible')return; // skip if tab hidden
+    try{
+      console.log('[Periodic refresh] loading data...');
+      await loadAll();
+      renderAll();
+    }catch(e){console.error('[Periodic refresh] failed:',e);}
+  },45000);
 }
+let _periodicRefreshTimer=null;
+let _lastRealtimeEvent=0;
 
 // ── DB OPS ────────────────────────────────────────────────────────
 async function dbInv(item,loc,qty){if(sb)await sb.from('inventory').upsert({item_name:item,location:loc,quantity:qty});}
