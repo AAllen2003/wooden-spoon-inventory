@@ -337,7 +337,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
           </div>
         </div>
         <div class="sync-row"><div class="inv-spinner" id="inv-spinner"></div><span id="inv-sync-msg">Sales deducted on sync. Data shared live across all devices.</span></div>
-        <div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Category</th><th>Price</th><th class="qty-cell">Warehouse</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total</th></tr></thead><tbody id="inv-table"></tbody></table></div>
+        <div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Category</th><th>Price</th><th class="qty-cell">Online</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total</th></tr></thead><tbody id="inv-table"></tbody></table></div>
       </div>
     </div>
 
@@ -468,7 +468,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
           <div class="history-list" id="history-list"></div>
         </div>
         <div class="sync-row"><div class="inv-spinner" id="sales-spinner"></div><span id="sales-msg">Sales reset at midnight. Use the date picker or quick buttons to view past days.</span></div>
-        <div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Price</th><th class="qty-cell">Warehouse</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total</th><th class="qty-cell">Revenue</th></tr></thead><tbody id="sales-table"></tbody><tfoot><tr class="tfoot-row" id="sales-totals-row"></tr></tfoot></table></div>
+        <div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Price</th><th class="qty-cell">Online</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total</th><th class="qty-cell">Revenue</th></tr></thead><tbody id="sales-table"></tbody><tfoot><tr class="tfoot-row" id="sales-totals-row"></tr></tfoot></table></div>
       </div>
       <div id="sales-breakdown-panel"></div>
         <div id="online-sales-panel" style="display:none"></div>
@@ -1249,8 +1249,15 @@ function renderSales(){
   else{if(lbl)lbl.textContent='Today';if(bdg){bdg.textContent='Live';bdg.className='sales-date-badge';}}
   renderHistBar();
   const lt={},lr={};LOCS.forEach(l=>{lt[l]=0;lr[l]=0;});let gu=0,gr=0;
-  const sdRev=salesViewDate?(salesViewDataRevenue||{}):(S.salesRevenue||{});document.getElementById('sales-table').innerHTML=S.items.map(item=>{const d=sd||{},price=S.prices[item]||0;let itemTotalRev=0;const cols=LOCS.map(loc=>{const qty=(d[item]||{})[loc]||0;const rev=getRev(item,loc,qty,sdRev);lt[loc]+=qty;lr[loc]+=rev;gu+=qty;gr+=rev;itemTotalRev+=rev;return`<td class="qty-cell">${qty}</td>`;}).join('');const total=LOCS.reduce((s,l)=>s+((d[item]||{})[l]||0),0);return`<tr><td style="font-weight:700">${item}</td><td style="font-weight:700;color:var(--green)">${fmt(price)}</td>${cols}<td class="qty-cell" style="font-weight:700">${total}</td><td class="qty-cell" style="font-weight:700;color:var(--green)">$${itemTotalRev.toFixed(2)}</td></tr>`;}).join('');
-  const tr=document.getElementById('sales-totals-row');if(tr)tr.innerHTML=`<td>Totals</td><td></td>${LOCS.map(l=>`<td class="qty-cell">${lt[l]}<br><span style="font-size:10px;opacity:.75">$${lr[l].toFixed(0)}</span></td>`).join('')}<td class="qty-cell">${gu}</td><td class="qty-cell">$${gr.toFixed(2)}</td>`;
+  const sdRev=salesViewDate?(salesViewDataRevenue||{}):(S.salesRevenue||{});
+  const sdOnline=salesViewDate?(salesViewDataOnline||{}):(S.salesOnline||{});
+  const sdOnlineRev=salesViewDate?(salesViewDataOnlineRevenue||{}):(S.salesOnlineRevenue||{});
+  // Desktop sales table columns: Online (in place of Warehouse) + Restaurant + Trucks
+  const SALES_COLS=['Online','Restaurant','Truck 1','Truck 2','Truck 3'];
+  // Init totals for the new columns
+  SALES_COLS.forEach(c=>{if(lt[c]===undefined){lt[c]=0;lr[c]=0;}});
+  document.getElementById('sales-table').innerHTML=S.items.map(item=>{const d=sd||{},price=S.prices[item]||0;let itemTotalRev=0;const cols=SALES_COLS.map(col=>{let qty=0,rev=0;if(col==='Online'){qty=Object.values(sdOnline[item]||{}).reduce((s,q)=>s+q,0);rev=Object.entries(sdOnline[item]||{}).reduce((s,[loc,q])=>s+getRev(item,loc,q,sdOnlineRev),0);}else{qty=(d[item]||{})[col]||0;rev=getRev(item,col,qty,sdRev);}lt[col]+=qty;lr[col]+=rev;gu+=qty;gr+=rev;itemTotalRev+=rev;return`<td class="qty-cell">${qty}</td>`;}).join('');const total=SALES_COLS.reduce((s,c)=>{if(c==='Online')return s+Object.values(sdOnline[item]||{}).reduce((a,q)=>a+q,0);return s+((d[item]||{})[c]||0);},0);return`<tr><td style="font-weight:700">${item}</td><td style="font-weight:700;color:var(--green)">${fmt(price)}</td>${cols}<td class="qty-cell" style="font-weight:700">${total}</td><td class="qty-cell" style="font-weight:700;color:var(--green)">$${itemTotalRev.toFixed(2)}</td></tr>`;}).join('');
+  const tr=document.getElementById('sales-totals-row');if(tr)tr.innerHTML=`<td>Totals</td><td></td>${SALES_COLS.map(l=>`<td class="qty-cell">${lt[l]||0}<br><span style="font-size:10px;opacity:.75">$${(lr[l]||0).toFixed(0)}</span></td>`).join('')}<td class="qty-cell">${gu}</td><td class="qty-cell">$${gr.toFixed(2)}</td>`;
   // Render Square-style breakdown
   const bp=document.getElementById('sales-breakdown-panel');
   const tot=salesViewDate?(salesViewDataTotals||null):(S.salesTotals||null);
