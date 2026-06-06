@@ -160,7 +160,7 @@ input[type=text],input[type=password],input[type=number],input[type=url],input[t
 .m-prod-result.mk{background:var(--sidebar);color:#fff;}
 .m-prod-result.ok{background:var(--green-bg);color:var(--green);}
 .m-prod-result.st{background:var(--amber-bg);color:var(--amber);}
-.m-sales-sum{background:var(--sidebar);border-radius:8px;padding:16px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.m-sales-sum{background:var(--sidebar);border-radius:8px;padding:16px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
 .m-ss-i{display:flex;flex-direction:column;gap:2px;}
 .m-ss-v{font-size:22px;font-weight:700;color:#fff;line-height:1;}
 .m-ss-l{font-size:11px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.07em;font-weight:700;}
@@ -854,7 +854,7 @@ async function syncNow(){
   let deducted=0;
   try{
     const res=await fetch(S.workerUrl+'/sales',{mode:'cors'});
-    if(!res.ok)throw new Error('Worker returned '+res.status);
+    if(!res.ok){let errMsg='Worker returned '+res.status;try{const errBody=await res.json();if(errBody.error)errMsg+=': '+errBody.error;}catch(_){try{errMsg+=': '+(await res.text()).slice(0,200);}catch(__){}}throw new Error(errMsg);}
     const data=await res.json();const cs=data.sales||{};const cso=data.salesOnline||{};const csr=data.salesRevenue||{};const csor=data.salesOnlineRevenue||{};S.salesOnline=cso;S.salesRevenue=csr;S.salesOnlineRevenue=csor;S.salesTotals=data.totals||null;
     const iu=[];
     S.items.forEach(item=>{LOCS.forEach(loc=>{const cur=(cs[item]||{})[loc]||0,base=(S.salesBaseline[item]||{})[loc]||0,delta=Math.max(0,cur-base);if(delta>0){S.inventory[item][loc]=Math.max(0,(S.inventory[item][loc]||0)-delta);deducted+=delta;iu.push({item_name:item,location:loc,quantity:S.inventory[item][loc]});}S.sales[item]=S.sales[item]||{};S.sales[item][loc]=cur;});});
@@ -1588,7 +1588,7 @@ function mobSalesHTML(){
   S.items.forEach(item=>{LOCS.forEach(loc=>{const q=(sd?.[item]||{})[loc]||0;const rev=getRev(item,loc,q,sdRev);lT[loc]+=q;gU+=q;gR+=rev;});});
   const dateLabel=salesViewDate?new Date(salesViewDate+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'Today';
   let h=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap"><span style="font-size:12px;font-weight:700;color:var(--sidebar)">${dateLabel}</span><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:${salesViewDate?'#9f7014':'#5e3303'};color:#fff">${salesViewDate?'Archived':'Live'}</span><input type="date" style="font-size:14px;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-family:'Lato',sans-serif;margin-left:auto" onchange="loadArchDate(this.value)"><button style="background:none;border:none;font-size:10px;color:var(--sidebar);font-weight:700;cursor:pointer;font-family:'Lato',sans-serif;text-decoration:underline" onclick="loadTodaySales();document.getElementById('mob-body').innerHTML=mobSalesHTML()">Today</button></div>`;
-  h+=`<div class="m-sales-sum"><div class="m-ss-i"><div class="m-ss-v">${gU}</div><div class="m-ss-l">Units Sold</div></div><div class="m-ss-i"><div class="m-ss-v">$${gR.toFixed(0)}</div><div class="m-ss-l">Revenue</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Truck 1']}</div><div class="m-ss-l">Truck 1</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Truck 2']}</div><div class="m-ss-l">Truck 2</div></div></div>`;
+  h+=`<div class="m-sales-sum"><div class="m-ss-i"><div class="m-ss-v">${gU}</div><div class="m-ss-l">Units Sold</div></div><div class="m-ss-i"><div class="m-ss-v">$${gR.toFixed(0)}</div><div class="m-ss-l">Revenue</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Truck 1']}</div><div class="m-ss-l">Truck 1</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Truck 2']}</div><div class="m-ss-l">Truck 2</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Restaurant']||0}</div><div class="m-ss-l">Restaurant</div></div></div>`;
   const rows=S.items.map(item=>{
     const p=S.prices[item]||0,total=LOCS.reduce((s,l)=>s+((sd?.[item]||{})[l]||0),0);const itemRev=LOCS.reduce((s,l)=>s+getRev(item,l,(sd?.[item]||{})[l]||0,sdRev),0);
     if(!total)return'';
