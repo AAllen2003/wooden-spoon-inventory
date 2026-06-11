@@ -1884,6 +1884,105 @@ window.CRM = (function(){
     });
   }
 
+  // ─── Sales attribution ─────────────────────────────────────────────
+  // Client cache: stop.id → { ts, visit } — 5-minute TTL
+  const salesCache = {};
+  const SALES_CACHE_MS = 5 * 60 * 1000;
+
+  function isStopPast(stop) {
+    // A stop is "past" once its end_datetime + buffer has elapsed
+    const buf = (state.settings.buffer_minutes || 15) * 60000;
+    const endTs = new Date(stop.scheduled_date + 'T' + stop.end_time).getTime();
+    return Date.now() > endTs + buf;
+  }
+
+  /**
+   * Ensures sales are attached to the given stop's visit record.
+   * 1. If a crm_visits row already exists for this stop, return it (no fetch).
+   * 2. If recently fetched (<5min), return cached.
+   * 3. Otherwise, fetch from Worker /sales/window, write a visit row to Supabase, cache, return it.
+   * Does nothing for future stops.
+   */
+  async function ensureSalesForStop(stop) {
+    if (!stop || !isStopPast(stop)) return null;
+
+    // Check Supabase first
+    const existing = state.visits.find(v => v.stop_id === stop.id);
+    if (existing && existing.total_revenue != null) return existing;
+
+    // Client cache
+    const cached = salesCache[stop.id];
+    if (cached && Date.now() - cached.ts < SALES_CACHE_MS) return cached.visit;
+
+    // Need worker URL
+    const workerUrl = (typeof S !== 'undefined' && S.workerUrl) ? S.workerUrl : null;
+    if (!workerUrl) { console.warn('[CRM] no worker URL set — cannot fetch sales'); return null; }
+
+    const device = state.settings.truck_device_map?.[stop.truck];
+    if (!device) { console.warn('[CRM] no device id for truck', stop.truck); return null; }
+
+    // Build time window with buffer
+    const buf = (state.settings.buffer_minutes || 15) * 60000;
+    const startTs = new Date(stop.scheduled_date + 'T' + stop.start_time).getTime();
+    const endTs   = new Date(stop.scheduled_date + 'T' + stop.end_time).getTime();
+    const from = new Date(startTs - buf).toISOString();
+    const to   = new Date(endTs   + buf).toISOString();
+
+    try {
+      const url = `${workerUrl.replace(/\/$/,'')}/sales/window?device=${encodeURIComponent(device)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`Worker returned ${r.status}`);
+      const data = await r.json();
+
+      // Build visit record
+      const visitData = {
+        stop_id: stop.id,
+        location_id: stop.location_id,
+        truck: stop.truck,
+        visit_date: stop.scheduled_date,
+        start_datetime: from,
+        end_datetime: to,
+        total_revenue: data.totalRevenue || 0,
+        transaction_count: data.transactionCount || 0,
+        items_sold: data.items || [],
+        sales_last_synced_at: new Date().toISOString(),
+      };
+
+      // Write to Supabase (upsert in case a row already exists without sales)
+      let visit;
+      if (existing) {
+        const { data: upd, error } = await sb.from('crm_visits').update(visitData).eq('id', existing.id).select().single();
+        if (error) throw error;
+        visit = upd;
+        const i = state.visits.findIndex(v => v.id === existing.id);
+        if (i >= 0) state.visits[i] = visit;
+      } else {
+        const { data: ins, error } = await sb.from('crm_visits').insert(visitData).select().single();
+        if (error) throw error;
+        visit = ins;
+        state.visits.push(visit);
+      }
+
+      salesCache[stop.id] = { ts: Date.now(), visit };
+      return visit;
+    } catch (e) {
+      console.error('[CRM] fetchSalesForStop failed:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Background: pull sales for any past stops belonging to this location that
+   * don't yet have a visit row. Used when opening a customer profile.
+   */
+  async function ensureSalesForLocation(locationId) {
+    const stops = state.stops.filter(s => s.location_id === locationId && isStopPast(s));
+    const promises = stops.map(s => ensureSalesForStop(s));
+    const results = await Promise.allSettled(promises);
+    const newlyFetched = results.filter(r => r.status === 'fulfilled' && r.value).length;
+    if (newlyFetched > 0) renderCurrent();
+  }
+
   function renderCurrent() {
     const active = document.querySelector('.section.active');
     if (!active) return;
@@ -1960,6 +2059,8 @@ window.CRM = (function(){
       showSection('crm-customers', navBtn);
     };
     renderProfile();
+    // Fire-and-forget background fetch of sales for any past stops at this location
+    ensureSalesForLocation(id);
   }
 
   function setProfileTab(tab) {
@@ -2150,8 +2251,7 @@ window.CRM = (function(){
         <div style="font-style:italic;margin-bottom:6px">No live visits recorded yet.</div>
         <div style="font-size:11px">Historical seed totals: ${l.seed_visit_count||0} visits, ${fmtMoney(l.seed_total_sales)} total. Live sales attribution will begin once stops are scheduled and visited.</div>
       </div>`;
-    }
-    return `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    }    return `<table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="border-bottom:1px solid var(--border)">
         <th style="text-align:left;padding:8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Date</th>
         <th style="text-align:left;padding:8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Truck</th>
@@ -2278,6 +2378,8 @@ window.CRM = (function(){
 
     root.innerHTML = truckTabs + body;
     applyPermissions();
+    // Auto-fetch sales for any past stops in this view that don't have visits yet
+    truckStops.filter(s => isStopPast(s)).forEach(s => ensureSalesForStop(s));
   }
 
   function renderStopRow(s) {
@@ -2293,6 +2395,17 @@ window.CRM = (function(){
       'biweekly':'Bi-weekly'
     })[s.recurrence_rule] || s.recurrence_rule || '—';
     const isLocked = loc && loc.truck_lock;
+    // Look up attached visit (if past)
+    const visit = state.visits.find(v => v.stop_id === s.id);
+    const past = isStopPast(s);
+    let salesBadge = '';
+    if (past) {
+      if (visit && visit.total_revenue != null) {
+        salesBadge = `<span style="font-size:11px;padding:3px 8px;border-radius:4px;background:var(--green-bg);color:var(--green);font-weight:700;white-space:nowrap"><i class="ti ti-currency-dollar" style="font-size:11px"></i> ${fmtMoney(visit.total_revenue)} · ${visit.transaction_count||0} sales</span>`;
+      } else {
+        salesBadge = `<span style="font-size:11px;padding:3px 8px;border-radius:4px;background:var(--bg2);color:var(--text3);font-weight:700;white-space:nowrap">Loading sales...</span>`;
+      }
+    }
     return `<div style="display:flex;gap:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;align-items:center" onclick="CRM.openProfile(${s.location_id})" data-cursor="pointer">
       <div style="width:8px;height:40px;background:${s.truck===1?'var(--sidebar)':'var(--green)'};border-radius:2px;flex-shrink:0"></div>
       <div style="flex:1;min-width:0;cursor:pointer">
@@ -2300,6 +2413,7 @@ window.CRM = (function(){
         <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)} · <i class="ti ti-repeat" style="font-size:11px"></i> ${ruleLabel}</div>
         ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
       </div>
+      ${salesBadge}
       ${isLocked?'<span class="tier-tag" style="background:var(--amber-bg);color:var(--amber)" title="Truck-locked"><i class="ti ti-lock"></i></span>':''}
       <select onchange="CRM.reassignStopTruck(${s.id}, this.value)" onclick="event.stopPropagation()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;font-family:var(--font-body)" data-admin-only>
         <option value="1" ${s.truck===1?'selected':''}>Truck 1</option>
@@ -2573,6 +2687,7 @@ window.CRM = (function(){
     state.profileTab = 'overview';
     state.profileEditing = false;
     mobShow('crm-profile', null);
+    ensureSalesForLocation(id);
   }
   function renderMobProfile(){
     const root = document.getElementById('crm-profile-mob');
