@@ -217,6 +217,19 @@ body.staff-mode .m-par-inp{
 }
 body.staff-mode [data-admin-only]{display:none !important;}
 
+/* CRM Customer Tile Grid */
+.crm-tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;}
+.crm-tile{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 14px;min-height:78px;font-family:var(--font-display);font-size:14px;color:var(--sidebar);text-align:center;cursor:pointer;box-shadow:var(--shadow);transition:all .15s ease;display:flex;align-items:center;justify-content:center;line-height:1.25;overflow:hidden;}
+.crm-tile:hover{background:var(--bg2);border-color:var(--border2);transform:translateY(-1px);box-shadow:0 3px 8px rgba(0,0,0,.1);}
+.crm-tile:active{transform:translateY(0);}
+.crm-tile-name{word-break:break-word;hyphens:auto;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+.crm-tile-dot{position:absolute;top:8px;width:8px;height:8px;border-radius:50%;}
+.crm-tile-dot-flag{right:8px;background:var(--amber);}
+.crm-tile-dot-high{left:8px;background:var(--amber);}
+.crm-tile-dot-medium{left:8px;background:var(--green);}
+.crm-tile-dot-low{left:8px;background:var(--text3);}
+@media (max-width:768px){.crm-tile-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;}.crm-tile{padding:14px 10px;min-height:64px;font-size:13px;}}
+
 </style>
 </head>
 <body>
@@ -684,6 +697,11 @@ body.staff-mode [data-admin-only]{display:none !important;}
     <button class="more-item" onclick="showSection('par',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-target"></i> Par Levels</button>
     <button class="more-item" onclick="showSection('alerts',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-bell"></i> Alerts</button>
     <button class="more-item" onclick="showSection('transfers',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-arrows-exchange"></i> Transfers</button>
+    <hr class="more-divider">
+    <button class="more-item" onclick="showSection('crm-customers',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-building-store"></i> Customers</button>
+    <button class="more-item" onclick="showSection('crm-schedule',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-calendar"></i> Schedule</button>
+    <button class="more-item" onclick="showSection('crm-forecast',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
+    <hr class="more-divider">
     <button class="more-item" onclick="showSection('settings',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-settings"></i> Settings</button>
     <button class="more-item" onclick="syncNow();closeMoreDrawer()"><i class="ti ti-refresh"></i> Sync Data</button>
     <hr class="more-divider">
@@ -726,6 +744,8 @@ async function init(){setTimeout(()=>{try{document.getElementById('loading').cla
     if(await needsMig()){hideLo();showScreen('migration');return;}
     setupRT();hideLo();showScreen('app');
     applyAC(S.colors);applyAB(S.badges);syncCI(S.colors);syncBI(S.badges);await loadAdminEmails();renderAll();applyPermissions();updateUserUI();
+    // Initialize CRM module now that sb is ready and user is authenticated
+    try{ await CRM.init(); }catch(e){console.error('CRM init failed',e);}
   }catch(e){console.error(e);hideLo();showScreen('login');}
 }
 function setLT(t){document.getElementById('loading-txt').textContent=t;document.getElementById('loading').classList.remove('hidden');}
@@ -1520,6 +1540,10 @@ function mobRender(){
   else if(mobSection==='production')el.innerHTML=mobProdHTML();
   else if(mobSection==='sales')el.innerHTML=mobSalesHTML();
   else if(mobSection==='settings')el.innerHTML=mobSettingsHTML();
+  else if(mobSection==='crm-customers'){el.innerHTML='<div id="crm-customers-mob"></div>';CRM.renderMobCustomers();}
+  else if(mobSection==='crm-profile'){el.innerHTML='<div id="crm-profile-mob"></div>';CRM.renderMobProfile();}
+  else if(mobSection==='crm-schedule'){el.innerHTML='<div id="crm-schedule-mob"></div>';CRM.renderMobSchedule();}
+  else if(mobSection==='crm-forecast'){el.innerHTML='<div id="crm-forecast-mob"></div>';CRM.renderMobForecast();}
   el.scrollTop=0;
   // Update alert badge
   const b=document.getElementById('mob-alert-badge');
@@ -1913,18 +1937,14 @@ window.CRM = (function(){
       return;
     }
 
-    list.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">${rows.map(l => `
-      <div class="loc-row" onclick="CRM.openProfile(${l.id})">
-        <div class="av" style="background:var(--bg2);color:var(--sidebar)">${esc(initials(l.location_name))}</div>
-        <div class="loc-info">
-          <div class="loc-name">${esc(l.location_name)}</div>
-          <div class="loc-meta">${esc(l.point_of_contact||'No contact')}${l.city?' · '+esc(l.city):''}</div>
-          ${l.scheduling_preference?`<div class="loc-sched"><i class="ti ti-calendar" style="font-size:11px"></i> ${esc(l.scheduling_preference)}</div>`:''}
-        </div>
-        ${l.internal_flags?`<span class="tier-tag" style="background:var(--amber-bg);color:var(--amber)" title="${esc(l.internal_flags)}"><i class="ti ti-flag"></i> Review</span>`:''}
-        ${l.seed_avg_per_visit?`<div class="rev-col"><div class="rev-num">${fmtMoney(l.seed_avg_per_visit)}</div><div class="rev-sub">avg / visit</div></div>`:''}
-        <span class="tier-tag ${tierClass(l.tier)}">${tierLabel(l.tier)}</span>
-      </div>`).join('')}</div>`;
+    list.innerHTML = `<div class="crm-tile-grid">${rows.map(l => {
+      const flagDot = l.internal_flags ? '<span class="crm-tile-dot crm-tile-dot-flag" title="Needs review"></span>' : '';
+      const tierDot = l.tier && l.tier !== 'pending' ? `<span class="crm-tile-dot crm-tile-dot-${l.tier}" title="${tierLabel(l.tier)} tier"></span>` : '';
+      return `<button class="crm-tile" onclick="CRM.openProfile(${l.id})">
+        ${flagDot}${tierDot}
+        <span class="crm-tile-name">${esc(l.location_name)}</span>
+      </button>`;
+    }).join('')}</div>`;
   }
 
   // ─── Customer profile ──────────────────────────────────────────────
@@ -2502,6 +2522,154 @@ window.CRM = (function(){
   }
 
   // ─── Public API ────────────────────────────────────────────────────
+  // ─── Mobile renderers (compact versions of the same data) ──────────
+  function renderMobCustomers(){
+    const root = document.getElementById('crm-customers-mob');
+    if(!root) return;
+    const rows = state.locations.slice().sort((a,b)=>(b.seed_avg_per_visit||0)-(a.seed_avg_per_visit||0));
+    const total = state.locations.length;
+    const flagged = state.locations.filter(l=>l.internal_flags).length;
+    root.innerHTML = `
+      <div style="margin-bottom:12px">
+        <input type="text" id="crm-mob-search" placeholder="Search..." oninput="CRM.filterMobCustomers()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box">
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.05em">
+        <span>${total} locations</span><span>·</span><span>${flagged} need review</span>
+      </div>
+      <div class="crm-tile-grid" id="crm-mob-list"></div>`;
+    renderMobCustomerList(rows);
+  }
+  function renderMobCustomerList(rows){
+    const list = document.getElementById('crm-mob-list');
+    if(!list) return;
+    if(!rows.length){ list.innerHTML='<div style="grid-column:1/-1;padding:20px;text-align:center;color:var(--text3);font-style:italic">No matches.</div>'; return; }
+    list.innerHTML = rows.map(l=>{
+      const flagDot = l.internal_flags ? '<span class="crm-tile-dot crm-tile-dot-flag"></span>' : '';
+      const tierDot = l.tier && l.tier !== 'pending' ? `<span class="crm-tile-dot crm-tile-dot-${l.tier}"></span>` : '';
+      return `<button class="crm-tile" onclick="CRM.openMobProfile(${l.id})">${flagDot}${tierDot}<span class="crm-tile-name">${esc(l.location_name)}</span></button>`;
+    }).join('');
+  }
+  function filterMobCustomers(){
+    const q = (document.getElementById('crm-mob-search')?.value || '').toLowerCase();
+    let rows = state.locations.slice();
+    if(q) rows = rows.filter(l =>
+      (l.location_name||'').toLowerCase().includes(q) ||
+      (l.point_of_contact||'').toLowerCase().includes(q) ||
+      (l.city||'').toLowerCase().includes(q));
+    rows.sort((a,b)=>(b.seed_avg_per_visit||0)-(a.seed_avg_per_visit||0));
+    renderMobCustomerList(rows);
+  }
+  function openMobProfile(id){
+    state.currentLocId = id;
+    state.profileTab = 'overview';
+    state.profileEditing = false;
+    window.mobSection = 'crm-profile';
+    mobRender();
+  }
+  function renderMobProfile(){
+    const root = document.getElementById('crm-profile-mob');
+    if(!root) return;
+    const l = state.locations.find(x=>x.id===state.currentLocId);
+    if(!l){ root.innerHTML='<div>Not found.</div>'; return; }
+    root.innerHTML = `
+      <button class="btn btn-sm" onclick="window.mobSection='crm-customers';mobRender();document.querySelectorAll('.mob-tab').forEach(t=>t.classList.toggle('active',t.dataset.sec==='crm-customers'))" style="margin-bottom:12px"><i class="ti ti-arrow-left"></i> Back</button>
+      <div class="card">
+        <div style="font-family:var(--font-display);font-size:20px;color:var(--sidebar);margin-bottom:14px">${esc(l.location_name)}</div>
+        ${l.internal_flags ? `<div style="background:var(--amber-bg);color:var(--amber);border-left:3px solid var(--amber);padding:10px;border-radius:var(--radius);margin-bottom:14px;font-size:12px"><i class="ti ti-flag"></i> ${esc(l.internal_flags)}</div>` : ''}
+        <div style="font-size:13px;line-height:1.8">
+          <div><strong>${esc(l.point_of_contact||'—')}</strong></div>
+          <div style="color:var(--text3)">${esc(l.phone||'')}</div>
+          <div style="color:var(--accent);font-size:12px">${esc(l.email||'')}</div>
+          <div style="color:var(--text3);font-size:12px;margin-top:6px">${esc(l.full_address||'')}${l.city?', '+esc(l.city):''}${l.state?', '+esc(l.state):''}</div>
+        </div>
+        <div style="margin-top:14px;background:var(--amber-bg);border-left:3px solid var(--accent);border-radius:var(--radius);padding:10px;font-size:13px">
+          <div style="font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Scheduling</div>
+          <div style="margin-top:3px;font-weight:700">${esc(l.scheduling_preference||'No preference set')}</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:4px">Truck: ${l.preferred_truck?'Truck '+l.preferred_truck+(l.truck_lock?' (locked)':''):'Any'}</div>
+        </div>
+        ${l.notes ? `<div style="margin-top:10px;font-size:12px;color:var(--text2);font-style:italic">"${esc(l.notes)}"</div>` : ''}
+        <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="metric"><div class="metric-label">Avg Visit</div><div class="metric-value" style="font-size:20px">${l.seed_avg_per_visit?fmtMoney(l.seed_avg_per_visit):'—'}</div></div>
+          <div class="metric"><div class="metric-label">Total</div><div class="metric-value" style="font-size:20px">${l.seed_total_sales?fmtMoney(l.seed_total_sales):'—'}</div></div>
+          <div class="metric"><div class="metric-label">Visits</div><div class="metric-value" style="font-size:20px">${l.seed_visit_count||'—'}</div></div>
+          <div class="metric"><div class="metric-label">Last</div><div class="metric-value" style="font-size:13px;margin-top:6px">${l.seed_last_visit?fmtDate(l.seed_last_visit):'—'}</div></div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:8px" data-admin-only>
+          <button class="btn btn-sm btn-primary" onclick="alert('Use desktop to edit for now')" style="flex:1"><i class="ti ti-edit"></i> Edit</button>
+        </div>
+      </div>`;
+    applyPermissions();
+  }
+  function renderMobSchedule(){
+    const root = document.getElementById('crm-schedule-mob');
+    if(!root) return;
+    if(!state.weekStart) state.weekStart = mondayOf(new Date());
+    const weekEnd = addDays(state.weekStart, 6);
+    const fromISO = isoDate(state.weekStart), toISO = isoDate(weekEnd);
+    const stops = state.stops.filter(s => s.scheduled_date >= fromISO && s.scheduled_date <= toISO);
+    const tabsHtml = `<div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--border)">
+      ${[1,2].map(t=>`<div onclick="CRM.setMobScheduleTruck(${t})" style="padding:8px 14px;cursor:pointer;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid ${state.currentTruck===t?'var(--accent)':'transparent'};color:${state.currentTruck===t?'var(--accent)':'var(--text3)'}">Truck ${t} <span style="font-weight:400;color:var(--text3)">(${stops.filter(s=>s.truck===t).length})</span></div>`).join('')}
+    </div>`;
+    const headerHtml = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <button class="btn btn-sm" onclick="CRM.shiftWeek(-1)"><i class="ti ti-chevron-left"></i></button>
+        <span style="font-size:13px;font-weight:700;color:var(--sidebar)">${fmtDateShort(state.weekStart)} – ${fmtDateShort(weekEnd)}</span>
+        <button class="btn btn-sm" onclick="CRM.shiftWeek(1)"><i class="ti ti-chevron-right"></i></button>
+      </div>`;
+    const truckStops = stops.filter(s => s.truck === state.currentTruck).sort((a,b)=>{if(a.scheduled_date!==b.scheduled_date) return a.scheduled_date<b.scheduled_date?-1:1; return a.start_time<b.start_time?-1:1;});
+    let body;
+    if(!truckStops.length){
+      body = `<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">No stops scheduled for Truck ${state.currentTruck} this week.</div>`;
+    } else {
+      const byDay = {};
+      truckStops.forEach(s=>{(byDay[s.scheduled_date]=byDay[s.scheduled_date]||[]).push(s);});
+      body = Object.keys(byDay).sort().map(d=>{
+        const dt = new Date(d+'T00:00:00');
+        return `<div style="margin-bottom:16px">
+          <div style="font-family:var(--font-display);font-size:13px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">${dt.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}</div>
+          ${byDay[d].map(s=>{
+            const loc = state.locations.find(l=>l.id===s.location_id);
+            return `<div onclick="CRM.openMobProfile(${s.location_id})" style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;cursor:pointer">
+              <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.02em">${loc?esc(loc.location_name):'Unknown'}</div>
+              <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)}</div>
+              ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
+            </div>`;
+          }).join('')}
+        </div>`;
+      }).join('');
+    }
+    root.innerHTML = `<div class="card">${headerHtml}${tabsHtml}${body}</div>`;
+  }
+  function setMobScheduleTruck(t){ state.currentTruck=t; renderMobSchedule(); }
+  function renderMobForecast(){
+    const root = document.getElementById('crm-forecast-mob');
+    if(!root) return;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const end = addDays(today, 7);
+    const upcoming = state.stops.filter(s=>s.scheduled_date >= isoDate(today) && s.scheduled_date <= isoDate(end));
+    const totals = {};
+    upcoming.forEach(s=>{
+      const visits = state.visits.filter(v=>v.location_id===s.location_id);
+      if(!visits.length) return;
+      const tally = {};
+      visits.forEach(v=>(v.items_sold||[]).forEach(it=>{tally[it.name]=(tally[it.name]||0)+(it.qty||0);}));
+      Object.entries(tally).forEach(([n,q])=>{ totals[n] = (totals[n]||0) + q/visits.length; });
+    });
+    const arr = Object.entries(totals).map(([n,q])=>({name:n,qty:Math.ceil(q)})).sort((a,b)=>b.qty-a.qty);
+    const stopsWithoutData = upcoming.filter(s=>!state.visits.some(v=>v.location_id===s.location_id)).length;
+    let body = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      <div class="metric"><div class="metric-label">Stops</div><div class="metric-value">${upcoming.length}</div></div>
+      <div class="metric"><div class="metric-label">Units</div><div class="metric-value">${arr.reduce((a,b)=>a+b.qty,0)}</div></div>
+    </div>`;
+    if(stopsWithoutData>0) body += `<div style="background:var(--amber-bg);color:var(--amber);border-left:3px solid var(--amber);padding:10px;border-radius:var(--radius);margin-bottom:14px;font-size:12px"><i class="ti ti-info-circle"></i> ${stopsWithoutData} of ${upcoming.length} stops lack item history yet.</div>`;
+    if(!arr.length){
+      body += `<div style="padding:24px;text-align:center;color:var(--text3);font-style:italic">No item-level data yet. Forecast will populate as live visits accumulate.</div>`;
+    } else {
+      body += arr.map(it=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px"><span style="font-size:13px;font-weight:700">${esc(it.name)}</span><span style="font-family:var(--font-display);font-size:18px;color:var(--sidebar)">${it.qty}</span></div>`).join('');
+    }
+    root.innerHTML = `<div class="card"><div style="font-family:var(--font-display);font-size:16px;color:var(--sidebar);margin-bottom:14px">Next 7 Days</div>${body}</div>`;
+  }
+
   return {
     init: loadAll,
     renderCustomers, filterCustomers,
@@ -2510,13 +2678,14 @@ window.CRM = (function(){
     openAddStop, saveNewStop, scheduleStopFor,
     openAddCustomer, saveNewCustomer,
     renderForecast,
-    _state: state  // for debugging
+    // Mobile
+    renderMobCustomers, filterMobCustomers, renderMobCustomerList,
+    openMobProfile, renderMobProfile,
+    renderMobSchedule, setMobScheduleTruck,
+    renderMobForecast,
+    _state: state
   };
 })();
-
-
-// Initialize CRM module after main init
-(async function(){ await new Promise(r=>setTimeout(r,500)); try{ await CRM.init(); }catch(e){console.error('CRM init failed',e);} })();
 
 init();
 </script>
@@ -2546,6 +2715,9 @@ init();
     <button class="mob-tab" data-sec="production" onclick="mobShow('production',this)"><i class="ti ti-tool"></i>Production</button>
     <button class="mob-tab" data-sec="sales" onclick="mobShow('sales',this)"><i class="ti ti-currency-dollar"></i>Sales</button>
     <button class="mob-tab" data-sec="settings" onclick="mobShow('settings',this)"><i class="ti ti-settings"></i>Settings</button>
+    <button class="mob-tab" data-sec="crm-customers" onclick="mobShow('crm-customers',this)"><i class="ti ti-building-store"></i>Customers</button>
+    <button class="mob-tab" data-sec="crm-schedule" onclick="mobShow('crm-schedule',this)"><i class="ti ti-calendar"></i>Schedule</button>
+    <button class="mob-tab" data-sec="crm-forecast" onclick="mobShow('crm-forecast',this)"><i class="ti ti-trending-up"></i>Mfg Forecast</button>
   </div>
 
   <div class="mob-body" id="mob-body"></div>
