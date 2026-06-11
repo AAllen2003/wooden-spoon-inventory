@@ -652,6 +652,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
             <button class="btn btn-sm" onclick="CRM.shiftWeek(-1)"><i class="ti ti-chevron-left"></i></button>
             <span id="crm-week-label" style="font-size:13px;font-weight:700;color:var(--sidebar);min-width:160px;text-align:center"></span>
             <button class="btn btn-sm" onclick="CRM.shiftWeek(1)"><i class="ti ti-chevron-right"></i></button>
+            <button class="btn btn-sm btn-primary" onclick="CRM.startAutoSchedule()" data-admin-only><i class="ti ti-sparkles"></i> Auto-Schedule</button>
             <button class="btn btn-sm btn-accent" onclick="CRM.openAddStop()" data-admin-only><i class="ti ti-plus"></i> Add Stop</button>
           </div>
         </div>
@@ -2627,7 +2628,546 @@ window.CRM = (function(){
     } catch (e) { alert('Failed: '+e.message); }
   }
 
-  // ─── Manufacturing Forecast (one total row per item) ───────────────
+  // ─── Auto-Scheduler ────────────────────────────────────────────────
+  // Proposes a week of stops based on:
+  //   - location.scheduling_preference (parsed loosely)
+  //   - historical visit pattern (recency-weighted)
+  //   - tier-based fallback (high=14d, medium=28d, low=56d cadence)
+  //   - truck preference & lock
+  //   - conflict resolution (tier-prioritized)
+
+  function dayOfWeek(d) { return new Date(d + 'T12:00:00').getDay(); } // 0=Sun..6=Sat
+  function daysBetween(a, b) { return Math.round((new Date(b) - new Date(a)) / 86400000); }
+  const DOW_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  /**
+   * Compute a visit-pattern summary for a single location from its history.
+   * Returns { count, byDow[7], typicalStart, typicalEnd, cadenceDays, lastVisit, byTruck, recencyWeight }
+   */
+  function computePattern(locationId) {
+    const stops = state.stops
+      .filter(s => s.location_id === locationId && s.scheduled_date)
+      .map(s => ({
+        date: s.scheduled_date,
+        start: s.start_time,
+        end: s.end_time,
+        truck: s.truck,
+        ts: new Date(s.scheduled_date + 'T' + (s.start_time || '12:00:00')).getTime(),
+      }))
+      .sort((a,b) => a.ts - b.ts);
+
+    if (!stops.length) return { count: 0 };
+
+    // Recency weight: exp decay, half-life ~6 months (180 days)
+    const now = Date.now();
+    const weight = s => Math.exp(-Math.log(2) * (now - s.ts) / (180 * 86400000));
+
+    // Day-of-week distribution (weighted)
+    const byDow = [0,0,0,0,0,0,0];
+    let totalWeight = 0;
+    stops.forEach(s => {
+      const w = weight(s);
+      byDow[dayOfWeek(s.date)] += w;
+      totalWeight += w;
+    });
+    const byDowNormalized = byDow.map(v => totalWeight ? v / totalWeight : 0);
+
+    // Typical times: weighted median of start/end times (in minutes from midnight)
+    const toMinutes = t => { const [h,m] = (t||'00:00:00').split(':'); return parseInt(h,10)*60 + parseInt(m,10); };
+    const fromMinutes = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}:00`;
+    const weightedSorted = (key) => {
+      const arr = stops.map(s => ({ v: toMinutes(s[key]), w: weight(s) })).sort((a,b)=>a.v-b.v);
+      const total = arr.reduce((s,x)=>s+x.w, 0);
+      let cum = 0;
+      for (const x of arr) {
+        cum += x.w;
+        if (cum >= total / 2) return x.v;
+      }
+      return arr[arr.length-1]?.v || 540; // fallback 9am
+    };
+    const typicalStartMin = weightedSorted('start');
+    const typicalEndMin = weightedSorted('end');
+
+    // Cadence: weighted mean of gaps between consecutive stops
+    let cadenceDays = null;
+    if (stops.length >= 2) {
+      let sumW = 0, sumWG = 0;
+      for (let i = 1; i < stops.length; i++) {
+        const gap = daysBetween(stops[i-1].date, stops[i].date);
+        if (gap <= 0 || gap > 365) continue; // ignore same-day or huge gaps
+        const w = weight(stops[i]);
+        sumW += w;
+        sumWG += w * gap;
+      }
+      if (sumW > 0) cadenceDays = sumWG / sumW;
+    }
+
+    // Truck distribution (weighted)
+    const byTruck = { 1: 0, 2: 0 };
+    stops.forEach(s => { byTruck[s.truck] = (byTruck[s.truck] || 0) + weight(s); });
+
+    return {
+      count: stops.length,
+      byDow: byDowNormalized,
+      typicalStart: fromMinutes(typicalStartMin),
+      typicalEnd: fromMinutes(Math.max(typicalEndMin, typicalStartMin + 30)),
+      cadenceDays,
+      lastVisit: stops[stops.length - 1].date,
+      byTruck,
+    };
+  }
+
+  /**
+   * Parse scheduling_preference text into a structured rule, when possible.
+   * Returns null if no clear rule found.
+   */
+  function parsePreference(text) {
+    if (!text) return null;
+    const s = text.toLowerCase();
+    // Patterns we try to recognize:
+    //   "Every Monday" / "Every Tue & Thu"
+    //   "1st Tuesday" / "3rd Wednesday" / "2nd & 4th Friday"
+    //   "Every 2 weeks", "Every 6 weeks", "Bi-weekly", "Monthly"
+    //   Time range: "2-3pm", "9am-11am", "9:30-11:00"
+    const out = { dows: [], nthOfMonth: null, intervalDays: null, startTime: null, endTime: null, raw: text };
+
+    // Day names
+    const dowMatches = {
+      sunday: 0, sun: 0, monday: 1, mon: 1, tuesday: 2, tues: 2, tue: 2,
+      wednesday: 3, wed: 3, thursday: 4, thu: 4, thurs: 4,
+      friday: 5, fri: 5, saturday: 6, sat: 6,
+    };
+    for (const [name, n] of Object.entries(dowMatches)) {
+      if (new RegExp('\\b' + name + '\\b').test(s)) out.dows.push(n);
+    }
+    out.dows = [...new Set(out.dows)];
+
+    // nth-of-month: "3rd Wednesday", "1st & 3rd Tuesday"
+    const ord = s.match(/\b(1st|2nd|3rd|4th|first|second|third|fourth)\b/g);
+    if (ord) {
+      const map = { '1st':1,'first':1,'2nd':2,'second':2,'3rd':3,'third':3,'4th':4,'fourth':4 };
+      out.nthOfMonth = ord.map(o => map[o]).filter(Boolean);
+    }
+
+    // Interval
+    if (/\bweekly\b/.test(s) && !/bi-?weekly/.test(s)) out.intervalDays = 7;
+    if (/bi-?weekly|every 2 weeks|every other week/.test(s)) out.intervalDays = 14;
+    if (/every 3 weeks/.test(s)) out.intervalDays = 21;
+    if (/every 4 weeks|monthly/.test(s)) out.intervalDays = 28;
+    if (/every 6 weeks/.test(s)) out.intervalDays = 42;
+    if (/every 8 weeks/.test(s)) out.intervalDays = 56;
+    const m = s.match(/every (\d+) weeks?/);
+    if (m) out.intervalDays = parseInt(m[1],10) * 7;
+    if (/quarterly/.test(s)) out.intervalDays = 90;
+
+    // Time range — try common formats
+    const timeMatch = s.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*[-\u2013]\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+    if (timeMatch) {
+      const [, h1, m1, ap1, h2, m2, ap2] = timeMatch;
+      const to24 = (h, m, ap, refAp) => {
+        let hh = parseInt(h, 10);
+        const mm = m ? parseInt(m, 10) : 0;
+        const apFinal = ap || refAp;
+        if (apFinal === 'pm' && hh < 12) hh += 12;
+        if (apFinal === 'am' && hh === 12) hh = 0;
+        // If no am/pm anywhere and hour < 8, assume PM
+        if (!ap && !refAp && hh < 8) hh += 12;
+        return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}:00`;
+      };
+      out.startTime = to24(h1, m1, ap1, ap2);
+      out.endTime   = to24(h2, m2, ap2, ap1);
+    }
+
+    if (!out.dows.length && !out.intervalDays && !out.nthOfMonth) return null;
+    return out;
+  }
+
+  function tierCadenceDays(tier) {
+    return ({ high: 14, medium: 28, low: 56, pending: 56 })[tier] || 56;
+  }
+
+  function isoOfDate(d) { return new Date(d).toISOString().slice(0,10); }
+
+  /**
+   * Generate proposals for the given week.
+   * Returns { proposals: [], skippedAlreadyScheduled: [], skippedConflict: [] }
+   */
+  function generateWeekProposals(weekStartDate) {
+    const weekStart = mondayOf(weekStartDate);
+    const weekEnd = addDays(weekStart, 6);
+    const weekStartISO = isoOfDate(weekStart);
+    const weekEndISO = isoOfDate(weekEnd);
+
+    // Existing stops in the target week (any source)
+    const existingInWeek = state.stops.filter(s =>
+      s.scheduled_date >= weekStartISO && s.scheduled_date <= weekEndISO
+    );
+
+    // Build set of already-scheduled location_ids
+    const alreadyScheduled = new Map(); // location_id → existing stop record
+    existingInWeek.forEach(s => { alreadyScheduled.set(s.location_id, s); });
+
+    const proposals = [];
+    const alreadyOnSchedule = [];
+
+    for (const loc of state.locations) {
+      if (loc.status !== 'active') continue;
+      if (loc.location_name && loc.location_name.startsWith('[Personal')) continue;
+
+      // Already scheduled? Skip and add to display list
+      if (alreadyScheduled.has(loc.id)) {
+        alreadyOnSchedule.push({ location: loc, stop: alreadyScheduled.get(loc.id) });
+        continue;
+      }
+
+      const pattern = computePattern(loc.id);
+      const pref = parsePreference(loc.scheduling_preference);
+
+      // Determine cadence
+      let cadenceDays = null;
+      let cadenceSource = null;
+      if (pref?.intervalDays) {
+        cadenceDays = pref.intervalDays;
+        cadenceSource = 'preference';
+      } else if (pattern.cadenceDays) {
+        cadenceDays = Math.round(pattern.cadenceDays);
+        cadenceSource = 'history';
+      } else {
+        cadenceDays = tierCadenceDays(loc.tier);
+        cadenceSource = 'tier';
+      }
+
+      // Is this location due in the target week?
+      const lastVisit = pattern.lastVisit;
+      let dueDate = null;
+      if (lastVisit) {
+        const due = addDays(new Date(lastVisit + 'T12:00:00'), cadenceDays);
+        if (due > weekEnd) continue; // not yet due
+        dueDate = due;
+      } else {
+        // No history — propose mid-week
+        dueDate = addDays(weekStart, 2);
+      }
+
+      // Pick day-of-week within the target week
+      let chosenDow = null;
+      let dowSource = null;
+      if (pref?.dows?.length) {
+        chosenDow = pref.dows[0];
+        dowSource = 'preference';
+      } else if (pattern.byDow) {
+        // Find DOW with highest weight; if tied, prefer mid-week
+        let maxW = 0, maxDow = -1;
+        for (let i = 1; i <= 5; i++) { // Mon-Fri only
+          if (pattern.byDow[i] > maxW) { maxW = pattern.byDow[i]; maxDow = i; }
+        }
+        if (maxDow >= 0 && maxW > 0) {
+          chosenDow = maxDow;
+          dowSource = 'history';
+        }
+      }
+      if (chosenDow == null) {
+        chosenDow = loc.tier === 'high' ? 1 : 3; // Mon for high, Wed otherwise
+        dowSource = 'fallback';
+      }
+
+      const offset = (chosenDow === 0 ? 7 : chosenDow) - 1; // Mon=0..Sun=6
+      const proposedDate = addDays(weekStart, offset);
+
+      // Pick time window
+      let startTime, endTime, timeSource;
+      if (pref?.startTime && pref?.endTime) {
+        startTime = pref.startTime; endTime = pref.endTime; timeSource = 'preference';
+      } else if (pattern.count > 0) {
+        startTime = pattern.typicalStart; endTime = pattern.typicalEnd; timeSource = 'history';
+      } else {
+        startTime = '09:00:00'; endTime = '11:00:00'; timeSource = 'fallback';
+      }
+
+      // Pick truck
+      let truck;
+      if (loc.truck_lock && loc.preferred_truck) {
+        truck = loc.preferred_truck;
+      } else if (loc.preferred_truck) {
+        truck = loc.preferred_truck;
+      } else if (pattern.byTruck) {
+        truck = (pattern.byTruck[1] || 0) >= (pattern.byTruck[2] || 0) ? 1 : 2;
+      } else {
+        truck = 1;
+      }
+
+      // Confidence score
+      const confidence =
+        pref ? 'high' :
+        pattern.count >= 6 ? 'high' :
+        pattern.count >= 2 ? 'medium' : 'low';
+
+      // Reason
+      const reasons = [];
+      if (cadenceSource === 'preference') reasons.push('Matches stated preference');
+      else if (cadenceSource === 'history') reasons.push(`Cadence ~${cadenceDays}d from ${pattern.count} past visits`);
+      else reasons.push(`Tier-based (${loc.tier || 'pending'}, ${cadenceDays}d cadence)`);
+      if (dowSource === 'history') reasons.push(`${DOW_NAMES[chosenDow]} typical from history`);
+
+      proposals.push({
+        id: `prop-${loc.id}-${isoOfDate(proposedDate)}`,
+        location_id: loc.id,
+        location_name: loc.location_name,
+        location_tier: loc.tier || 'pending',
+        scheduled_date: isoOfDate(proposedDate),
+        start_time: startTime,
+        end_time: endTime,
+        truck,
+        cadenceSource,
+        dowSource,
+        timeSource,
+        confidence,
+        pattern,
+        reasons,
+        truck_lock: !!loc.truck_lock,
+        enabled: true,
+      });
+    }
+
+    // ── Conflict resolution ──
+    const tierRank = { high: 1, medium: 2, low: 3, pending: 4 };
+    proposals.sort((a, b) => tierRank[a.location_tier] - tierRank[b.location_tier]);
+
+    const placed = []; // accepted proposals
+    const skippedConflict = [];
+
+    const timesOverlap = (a, b) => {
+      if (a.truck !== b.truck) return false;
+      if (a.scheduled_date !== b.scheduled_date) return false;
+      return !(a.end_time <= b.start_time || b.end_time <= a.start_time);
+    };
+    const conflictsWith = (cand, list) => list.find(s => timesOverlap(cand, s));
+
+    // Existing stops (already in DB) form the immovable baseline
+    const baseline = existingInWeek.map(s => ({
+      truck: s.truck,
+      scheduled_date: s.scheduled_date,
+      start_time: s.start_time,
+      end_time: s.end_time,
+      location_name: state.locations.find(l => l.id === s.location_id)?.location_name || '?',
+    }));
+
+    for (const p of proposals) {
+      // Try original slot first
+      let conflict = conflictsWith(p, [...placed, ...baseline]);
+
+      // If conflict, try shifting +/- 30, 60 min within the day (only if truck not locked)
+      if (conflict && !p.truck_lock) {
+        const tryShifts = [30, -30, 60, -60, 90, -90];
+        const startMin = parseInt(p.start_time.slice(0,2),10)*60 + parseInt(p.start_time.slice(3,5),10);
+        const endMin = parseInt(p.end_time.slice(0,2),10)*60 + parseInt(p.end_time.slice(3,5),10);
+        for (const shift of tryShifts) {
+          const newStart = startMin + shift;
+          const newEnd = endMin + shift;
+          if (newStart < 480 || newEnd > 1080) continue; // 8am-6pm working window
+          const cand = {
+            ...p,
+            start_time: `${String(Math.floor(newStart/60)).padStart(2,'0')}:${String(newStart%60).padStart(2,'0')}:00`,
+            end_time:   `${String(Math.floor(newEnd/60)).padStart(2,'0')}:${String(newEnd%60).padStart(2,'0')}:00`,
+          };
+          if (!conflictsWith(cand, [...placed, ...baseline])) {
+            p.start_time = cand.start_time;
+            p.end_time = cand.end_time;
+            p.reasons.push(`Time shifted ${shift>0?'+':''}${shift}min to avoid conflict`);
+            conflict = null;
+            break;
+          }
+        }
+      }
+
+      // If still conflicting, try the OTHER truck (unless locked)
+      if (conflict && !p.truck_lock) {
+        const altTruck = p.truck === 1 ? 2 : 1;
+        const cand = { ...p, truck: altTruck };
+        if (!conflictsWith(cand, [...placed, ...baseline])) {
+          p.truck = altTruck;
+          p.reasons.push(`Reassigned to Truck ${altTruck} (Truck ${altTruck === 2 ? 1 : 2} conflict)`);
+          conflict = null;
+        }
+      }
+
+      if (conflict) {
+        p.conflict = `Conflicts with ${conflict.location_name || 'another stop'} on Truck ${p.truck}`;
+        skippedConflict.push(p);
+      } else {
+        placed.push(p);
+      }
+    }
+
+    // Sort placed by date+time for display
+    placed.sort((a,b) => a.scheduled_date < b.scheduled_date ? -1 : a.scheduled_date > b.scheduled_date ? 1 : a.start_time.localeCompare(b.start_time));
+
+    return { proposals: placed, skippedConflict, alreadyOnSchedule };
+  }
+
+  // State for the active proposal session
+  state.proposalSession = null;
+
+  function startAutoSchedule() {
+    if (!state.weekStart) state.weekStart = mondayOf(new Date());
+    const result = generateWeekProposals(state.weekStart);
+    state.proposalSession = result;
+    renderProposalReview();
+  }
+
+  function renderProposalReview() {
+    const root = document.getElementById('crm-schedule-content');
+    if (!root || !state.proposalSession) return;
+    const { proposals, skippedConflict, alreadyOnSchedule } = state.proposalSession;
+    const weekStart = state.weekStart;
+    const weekEnd = addDays(weekStart, 6);
+
+    const enabledCount = proposals.filter(p => p.enabled).length;
+
+    // Header
+    let html = `<div style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-family:var(--font-display);font-size:18px;color:var(--sidebar)">Proposed Schedule</div>
+        <div style="font-size:12px;color:var(--text3)">Week of ${fmtDateShort(weekStart)} – ${fmtDateShort(weekEnd)}</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="CRM.cancelProposals()"><i class="ti ti-x"></i> Cancel</button>
+        <button class="btn btn-sm" onclick="CRM.toggleAllProposals()"><i class="ti ti-checks"></i> Toggle All</button>
+        <button class="btn btn-sm btn-primary" onclick="CRM.approveProposals()" data-admin-only><i class="ti ti-check"></i> Approve ${enabledCount}</button>
+      </div>
+    </div>`;
+
+    // Summary metrics
+    html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px">
+      <div class="metric"><div class="metric-label">Proposals</div><div class="metric-value">${proposals.length}</div></div>
+      <div class="metric"><div class="metric-label">Already Scheduled</div><div class="metric-value">${alreadyOnSchedule.length}</div></div>
+      <div class="metric"><div class="metric-label">Conflicts</div><div class="metric-value">${skippedConflict.length}</div></div>
+    </div>`;
+
+    // Conflicts section
+    if (skippedConflict.length) {
+      html += `<div class="card" style="background:var(--red-bg);border-color:var(--red);margin-bottom:14px">
+        <div style="font-family:var(--font-display);font-size:14px;color:var(--red);margin-bottom:8px"><i class="ti ti-alert-triangle"></i> Couldn't Fit</div>
+        ${skippedConflict.map(p => `<div style="font-size:12px;padding:4px 0">
+          <strong>${esc(p.location_name)}</strong> — ${esc(p.conflict || 'No available slot')}
+        </div>`).join('')}
+      </div>`;
+    }
+
+    // Already-scheduled note
+    if (alreadyOnSchedule.length) {
+      html += `<div class="card" style="background:var(--amber-bg);border-color:var(--amber);margin-bottom:14px">
+        <div style="font-family:var(--font-display);font-size:14px;color:var(--amber);margin-bottom:8px"><i class="ti ti-info-circle"></i> Already on Schedule</div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:6px">These locations already have a stop this week (from Google Calendar or manual entry) — skipped to avoid duplicates.</div>
+        ${alreadyOnSchedule.slice(0,15).map(x => `<div style="font-size:12px;padding:3px 0">
+          <strong>${esc(x.location.location_name)}</strong> — ${fmtDate(x.stop.scheduled_date)} at ${fmtTime(x.stop.start_time)}, Truck ${x.stop.truck}
+        </div>`).join('')}
+        ${alreadyOnSchedule.length > 15 ? `<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:4px">+ ${alreadyOnSchedule.length - 15} more</div>`:''}
+      </div>`;
+    }
+
+    // Group proposals by day
+    if (!proposals.length) {
+      html += `<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">No new proposals — every active location either has a stop this week or isn't due yet.</div>`;
+    } else {
+      const byDay = {};
+      proposals.forEach(p => { (byDay[p.scheduled_date] = byDay[p.scheduled_date] || []).push(p); });
+      for (const d of Object.keys(byDay).sort()) {
+        const dt = new Date(d + 'T00:00:00');
+        html += `<div style="margin-bottom:16px">
+          <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">
+            ${dt.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}
+          </div>
+          ${byDay[d].map(p => renderProposalRow(p)).join('')}
+        </div>`;
+      }
+    }
+
+    root.innerHTML = html;
+    applyPermissions();
+  }
+
+  function renderProposalRow(p) {
+    const confColor = p.confidence === 'high' ? 'var(--green)' : p.confidence === 'medium' ? 'var(--amber)' : 'var(--text3)';
+    const confBg = p.confidence === 'high' ? 'var(--green-bg)' : p.confidence === 'medium' ? 'var(--amber-bg)' : 'var(--bg2)';
+    const truckColor = p.truck === 1 ? 'var(--sidebar)' : 'var(--green)';
+    const dim = p.enabled ? '' : 'opacity:.45';
+    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;${dim}">
+      <input type="checkbox" ${p.enabled?'checked':''} onchange="CRM.toggleProposal('${p.id}')" style="width:18px;height:18px;cursor:pointer">
+      <div style="width:8px;height:40px;background:${truckColor};border-radius:2px;flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.02em">${esc(p.location_name)}
+          <span style="font-size:10px;padding:2px 6px;border-radius:3px;background:${confBg};color:${confColor};font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-left:8px">${p.confidence}</span>
+          ${p.truck_lock?'<span style="font-size:10px;color:var(--amber);margin-left:6px"><i class="ti ti-lock"></i> locked</span>':''}
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">
+          <input type="time" value="${p.start_time.slice(0,5)}" onchange="CRM.editProposal('${p.id}','start_time',this.value+':00')" style="border:1px solid var(--border);border-radius:3px;padding:1px 4px;font-size:11px;font-family:inherit">
+          – <input type="time" value="${p.end_time.slice(0,5)}" onchange="CRM.editProposal('${p.id}','end_time',this.value+':00')" style="border:1px solid var(--border);border-radius:3px;padding:1px 4px;font-size:11px;font-family:inherit">
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-top:3px;font-style:italic">${p.reasons.map(esc).join(' · ')}</div>
+      </div>
+      <select ${p.truck_lock?'disabled':''} onchange="CRM.editProposal('${p.id}','truck',parseInt(this.value,10))" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;font-family:var(--font-body)">
+        <option value="1" ${p.truck===1?'selected':''}>Truck 1</option>
+        <option value="2" ${p.truck===2?'selected':''}>Truck 2</option>
+      </select>
+    </div>`;
+  }
+
+  function toggleProposal(id) {
+    if (!state.proposalSession) return;
+    const p = state.proposalSession.proposals.find(x => x.id === id);
+    if (p) { p.enabled = !p.enabled; renderProposalReview(); }
+  }
+
+  function toggleAllProposals() {
+    if (!state.proposalSession) return;
+    const someEnabled = state.proposalSession.proposals.some(p => p.enabled);
+    state.proposalSession.proposals.forEach(p => p.enabled = !someEnabled);
+    renderProposalReview();
+  }
+
+  function editProposal(id, field, value) {
+    if (!state.proposalSession) return;
+    const p = state.proposalSession.proposals.find(x => x.id === id);
+    if (p) { p[field] = value; }
+  }
+
+  function cancelProposals() {
+    state.proposalSession = null;
+    renderSchedule();
+  }
+
+  async function approveProposals() {
+    if (!state.proposalSession) return;
+    const enabled = state.proposalSession.proposals.filter(p => p.enabled);
+    if (!enabled.length) { alert('Nothing to save.'); return; }
+    if (!confirm(`Save ${enabled.length} new stops to the schedule?`)) return;
+
+    const rows = enabled.map(p => ({
+      location_id: p.location_id,
+      truck: p.truck,
+      scheduled_date: p.scheduled_date,
+      start_time: p.start_time,
+      end_time: p.end_time,
+      recurrence_rule: 'one-time',
+      status: 'scheduled',
+      source: 'auto-scheduled',
+      notes: 'Auto-proposed: ' + p.reasons.join('; '),
+    }));
+
+    try {
+      const { data: ins, error } = await sb.from('crm_stops').insert(rows).select();
+      if (error) throw error;
+      ins.forEach(s => { if (!state.stops.some(x => x.id === s.id)) state.stops.push(s); });
+      state.proposalSession = null;
+      renderSchedule();
+    } catch (e) {
+      alert('Failed to save: ' + e.message);
+      console.error('[CRM] approveProposals', e);
+    }
+  }
+
+
   function renderForecast() {
     const root = document.getElementById('crm-forecast-content');
     if (!root) return;
@@ -2854,6 +3394,8 @@ window.CRM = (function(){
     openAddStop, saveNewStop, scheduleStopFor,
     openAddCustomer, saveNewCustomer,
     renderForecast,
+    // Auto-scheduler
+    startAutoSchedule, toggleProposal, toggleAllProposals, editProposal, cancelProposals, approveProposals,
     // Mobile
     renderMobCustomers, filterMobCustomers, renderMobCustomerList,
     openMobProfile, renderMobProfile,
