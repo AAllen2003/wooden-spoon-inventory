@@ -2012,12 +2012,21 @@ window.CRM = (function(){
   /**
    * Background: pull sales for any past stops belonging to this location that
    * don't yet have a visit row. Used when opening a customer profile.
+   * Throttled to most recent N stops to avoid overloading the Worker.
    */
   async function ensureSalesForLocation(locationId) {
-    const stops = state.stops.filter(s => s.location_id === locationId && isStopPast(s));
-    const promises = stops.map(s => ensureSalesForStop(s));
-    const results = await Promise.allSettled(promises);
-    const newlyFetched = results.filter(r => r.status === 'fulfilled' && r.value).length;
+    const MAX_STOPS_PER_PROFILE_OPEN = 5;
+    // Most recent first
+    const stops = state.stops
+      .filter(s => s.location_id === locationId && isStopPast(s))
+      .sort((a,b) => (a.scheduled_date < b.scheduled_date ? 1 : -1))
+      .slice(0, MAX_STOPS_PER_PROFILE_OPEN);
+    let newlyFetched = 0;
+    // Sequential, not parallel — each call hits the Worker individually
+    for (const s of stops) {
+      const r = await ensureSalesForStop(s);
+      if (r) newlyFetched++;
+    }
     if (newlyFetched > 0) renderCurrent();
   }
 
@@ -2416,8 +2425,14 @@ window.CRM = (function(){
 
     root.innerHTML = truckTabs + body;
     applyPermissions();
-    // Auto-fetch sales for any past stops in this view that don't have visits yet
-    truckStops.filter(s => isStopPast(s)).forEach(s => ensureSalesForStop(s));
+    // Auto-fetch sales for past stops, throttled: sequentially, cap at 10 per view render
+    // to avoid overwhelming the Worker subrequest budget.
+    const pastStops = truckStops.filter(s => isStopPast(s)).slice(0, 10);
+    (async () => {
+      for (const s of pastStops) {
+        await ensureSalesForStop(s);
+      }
+    })();
   }
 
   function renderStopRow(s) {
