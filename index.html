@@ -287,6 +287,10 @@ body.staff-mode [data-admin-only]{display:none !important;}
     <button class="nav-item" onclick="showSection('transfers',this)"><i class="ti ti-arrows-exchange"></i> Transfers</button>
     <button class="nav-item" onclick="showSection('production',this)"><i class="ti ti-tool"></i> Production</button>
     <button class="nav-item" onclick="showSection('sales',this)"><i class="ti ti-currency-dollar"></i> Sales</button>
+    <div class="nav-section">CRM</div>
+    <button class="nav-item" onclick="showSection('crm-customers',this)"><i class="ti ti-building-store"></i> Customers</button>
+    <button class="nav-item" onclick="showSection('crm-schedule',this)"><i class="ti ti-calendar"></i> Schedule</button>
+    <button class="nav-item" onclick="showSection('crm-forecast',this)"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
     <div class="nav-section">System</div>
     <button class="nav-item" onclick="showSection('settings',this)"><i class="ti ti-settings"></i> Settings</button>
   </nav>
@@ -597,6 +601,69 @@ body.staff-mode [data-admin-only]{display:none !important;}
         </div>
     </div>
 
+    <div class="section" id="sec-crm-customers">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Customers</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input type="text" id="crm-search" placeholder="Search name, contact, city..." oninput="CRM.filterCustomers()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;min-width:220px">
+            <select id="crm-tier-filter" onchange="CRM.filterCustomers()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+              <option value="">All tiers</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+              <option value="pending">Pending</option>
+            </select>
+            <select id="crm-flag-filter" onchange="CRM.filterCustomers()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+              <option value="">All locations</option>
+              <option value="flagged">Needs review</option>
+            </select>
+            <button class="btn btn-sm btn-accent" onclick="CRM.openAddCustomer()" data-admin-only><i class="ti ti-plus"></i> Add</button>
+          </div>
+        </div>
+        <p class="section-intro">Master customer database. Click a row to view full profile, edit info, view sales history, and manage scheduling preferences.</p>
+        <div id="crm-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px"></div>
+        <div id="crm-customer-list"></div>
+      </div>
+    </div>
+
+    <div class="section" id="sec-crm-profile">
+      <div id="crm-profile-content"></div>
+    </div>
+
+    <div class="section" id="sec-crm-schedule">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Schedule</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-sm" onclick="CRM.shiftWeek(-1)"><i class="ti ti-chevron-left"></i></button>
+            <span id="crm-week-label" style="font-size:13px;font-weight:700;color:var(--sidebar);min-width:160px;text-align:center"></span>
+            <button class="btn btn-sm" onclick="CRM.shiftWeek(1)"><i class="ti ti-chevron-right"></i></button>
+            <button class="btn btn-sm btn-accent" onclick="CRM.openAddStop()" data-admin-only><i class="ti ti-plus"></i> Add Stop</button>
+          </div>
+        </div>
+        <p class="section-intro">Confirmed stops from Google Calendar and recurring rules. Each stop shows live inventory readiness and sales attribution once visited.</p>
+        <div id="crm-schedule-content"></div>
+      </div>
+    </div>
+
+    <div class="section" id="sec-crm-forecast">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Manufacturing Forecast</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="crm-forecast-range" onchange="CRM.renderForecast()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+              <option value="7">Next 7 days</option>
+              <option value="14">Next 14 days</option>
+              <option value="30">Next 30 days</option>
+            </select>
+          </div>
+        </div>
+        <p class="section-intro">Projected production needs based on scheduled stops and each location's item hierarchy. Feeds directly into Production.</p>
+        <div id="crm-forecast-content"></div>
+      </div>
+    </div>
+
   </div>
 </main>
 
@@ -843,7 +910,7 @@ function openMoreDrawer(){document.getElementById('more-overlay').classList.add(
 function closeMoreDrawer(){document.getElementById('more-overlay').classList.remove('open');document.getElementById('more-drawer').classList.remove('open');}
 
 // ── NAV ───────────────────────────────────────────────────────────
-const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',settings:'Settings'};
+const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer Profile','crm-schedule':'Schedule','crm-forecast':'Manufacturing Forecast'};
 function showSection(name,btn){
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
@@ -858,6 +925,10 @@ function showSection(name,btn){
   if(name==='sales'){renderSales();loadAvailDates();}
   if(name==='transfers')renderTransfers();
   if(name==='settings'){renderSettings();syncCI(S.colors);syncBI(S.badges);}
+  if(name==='crm-customers')CRM.renderCustomers();
+  if(name==='crm-profile'){/* rendered via openProfile */}
+  if(name==='crm-schedule')CRM.renderSchedule();
+  if(name==='crm-forecast')CRM.renderForecast();
   applyPermissions();
 }
 function openLocDetail(loc){currentLoc=loc;document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.getElementById('sec-loc-detail').classList.add('active');document.getElementById('page-title').textContent=loc;document.getElementById('back-btn').style.display='inline-flex';document.getElementById('loc-detail-cat-filter').value='';renderLocDetail();applyPermissions();}
@@ -1693,6 +1764,759 @@ function mobEsc(s){return String(s).replace(/'/g,"\\'");}
 
 // renderAll mobile hook removed — mobRender called directly after init
 
+
+// ════════════════════════════════════════════════════════════════════
+// CRM MODULE — namespaced under window.CRM. Self-contained.
+// Depends on: sb (Supabase client), applyPermissions(), showSection()
+// ════════════════════════════════════════════════════════════════════
+window.CRM = (function(){
+  const state = {
+    locations: [],
+    stops: [],
+    visits: [],
+    settings: { buffer_minutes: 15, truck_device_map: {} },
+    currentLocId: null,
+    profileTab: 'overview',
+    profileEditing: false,
+    weekStart: null,  // Monday of week being viewed
+    currentTruck: 1,  // schedule view: which truck tab is active
+    loaded: false,
+    subscribed: false
+  };
+
+  // ─── Utilities ─────────────────────────────────────────────────────
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fmtMoney = n => n == null ? '—' : '$' + Number(n).toLocaleString(undefined,{maximumFractionDigits:0});
+  const fmtDate = d => { if(!d) return '—'; const dt = (d instanceof Date)?d:new Date(d); return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); };
+  const fmtDateShort = d => { if(!d) return '—'; const dt = (d instanceof Date)?d:new Date(d); return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'}); };
+  const fmtDOW = d => { const dt = (d instanceof Date)?d:new Date(d); return dt.toLocaleDateString('en-US',{weekday:'short'}); };
+  const fmtTime = t => { if(!t) return '—'; const [h,m] = t.split(':'); const hh=parseInt(h,10); const ap=hh>=12?'PM':'AM'; const h12=((hh%12)||12); return `${h12}:${m} ${ap}`; };
+  const tierLabel = t => ({high:'High',medium:'Medium',low:'Low',pending:'Pending'})[t]||'—';
+  const tierClass = t => ({high:'tier-hi',medium:'tier-med',low:'tier-low',pending:'tier-pend'})[t]||'tier-pend';
+  const initials = name => (name||'').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase()||'?';
+
+  function mondayOf(d) {
+    const dt = new Date(d);
+    const day = dt.getDay() || 7;
+    if (day !== 1) dt.setDate(dt.getDate() - (day - 1));
+    dt.setHours(0,0,0,0);
+    return dt;
+  }
+  function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate()+n); return x; }
+  function isoDate(d) { const x = new Date(d); return x.toISOString().slice(0,10); }
+
+  // ─── Data loading ──────────────────────────────────────────────────
+  async function loadAll() {
+    if (!sb) { console.warn('[CRM] no supabase client'); return; }
+    try {
+      const [locsR, stopsR, visitsR, setR] = await Promise.all([
+        sb.from('crm_locations').select('*').order('location_name'),
+        sb.from('crm_stops').select('*').order('scheduled_date'),
+        sb.from('crm_visits').select('*').order('visit_date',{ascending:false}),
+        sb.from('app_settings').select('*').in('key', ['crm_buffer_minutes','crm_truck_device_map'])
+      ]);
+      if (locsR.error) throw locsR.error;
+      if (stopsR.error) throw stopsR.error;
+      if (visitsR.error) throw visitsR.error;
+      state.locations = locsR.data || [];
+      state.stops = stopsR.data || [];
+      state.visits = visitsR.data || [];
+      (setR.data || []).forEach(r => {
+        if (r.key === 'crm_buffer_minutes') state.settings.buffer_minutes = parseInt(r.value, 10) || 15;
+        if (r.key === 'crm_truck_device_map') {
+          try { state.settings.truck_device_map = typeof r.value === 'string' ? JSON.parse(r.value) : r.value; }
+          catch(e){ state.settings.truck_device_map = r.value || {}; }
+        }
+      });
+      state.loaded = true;
+      if (!state.weekStart) state.weekStart = mondayOf(new Date());
+      subscribeRealtime();
+    } catch (e) {
+      console.error('[CRM] load error', e);
+    }
+  }
+
+  function subscribeRealtime() {
+    if (state.subscribed || !sb) return;
+    state.subscribed = true;
+    ['crm_locations','crm_stops','crm_visits'].forEach(table => {
+      sb.channel(`crm-${table}`)
+        .on('postgres_changes', { event:'*', schema:'public', table }, payload => {
+          const arr = table === 'crm_locations' ? state.locations
+                    : table === 'crm_stops'     ? state.stops
+                    : state.visits;
+          if (payload.eventType === 'INSERT') arr.push(payload.new);
+          else if (payload.eventType === 'UPDATE') {
+            const i = arr.findIndex(r => r.id === payload.new.id);
+            if (i >= 0) arr[i] = payload.new;
+          }
+          else if (payload.eventType === 'DELETE') {
+            const i = arr.findIndex(r => r.id === payload.old.id);
+            if (i >= 0) arr.splice(i,1);
+          }
+          renderCurrent();
+        })
+        .subscribe();
+    });
+  }
+
+  function renderCurrent() {
+    const active = document.querySelector('.section.active');
+    if (!active) return;
+    const id = active.id;
+    if (id === 'sec-crm-customers') renderCustomers();
+    else if (id === 'sec-crm-profile') renderProfile();
+    else if (id === 'sec-crm-schedule') renderSchedule();
+    else if (id === 'sec-crm-forecast') renderForecast();
+  }
+
+  // ─── Customers list ────────────────────────────────────────────────
+  function renderCustomers() {
+    const stats = document.getElementById('crm-stats');
+    const list = document.getElementById('crm-customer-list');
+    if (!stats || !list) return;
+
+    const total = state.locations.length;
+    const active = state.locations.filter(l => l.status === 'active').length;
+    const flagged = state.locations.filter(l => l.internal_flags).length;
+    const tierH = state.locations.filter(l => l.tier === 'high').length;
+
+    stats.innerHTML = `
+      <div class="metric"><div class="metric-label">Total Locations</div><div class="metric-value">${total}</div></div>
+      <div class="metric"><div class="metric-label">Active</div><div class="metric-value">${active}</div></div>
+      <div class="metric"><div class="metric-label">High Tier</div><div class="metric-value">${tierH}</div></div>
+      <div class="metric clickable" onclick="document.getElementById('crm-flag-filter').value='flagged';CRM.filterCustomers()" style="cursor:pointer"><div class="metric-label">Needs Review</div><div class="metric-value">${flagged}</div></div>
+    `;
+    filterCustomers();
+  }
+
+  function filterCustomers() {
+    const q = (document.getElementById('crm-search')?.value || '').toLowerCase().trim();
+    const tier = document.getElementById('crm-tier-filter')?.value || '';
+    const flag = document.getElementById('crm-flag-filter')?.value || '';
+    const list = document.getElementById('crm-customer-list');
+    if (!list) return;
+
+    let rows = state.locations.slice();
+    if (q) rows = rows.filter(l =>
+      (l.location_name||'').toLowerCase().includes(q) ||
+      (l.point_of_contact||'').toLowerCase().includes(q) ||
+      (l.city||'').toLowerCase().includes(q) ||
+      (l.full_address||'').toLowerCase().includes(q));
+    if (tier) rows = rows.filter(l => l.tier === tier);
+    if (flag === 'flagged') rows = rows.filter(l => l.internal_flags);
+
+    rows.sort((a,b) => (b.seed_avg_per_visit||0) - (a.seed_avg_per_visit||0));
+
+    if (!rows.length) {
+      list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-style:italic">No locations match.</div>';
+      return;
+    }
+
+    list.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">${rows.map(l => `
+      <div class="loc-row" onclick="CRM.openProfile(${l.id})">
+        <div class="av" style="background:var(--bg2);color:var(--sidebar)">${esc(initials(l.location_name))}</div>
+        <div class="loc-info">
+          <div class="loc-name">${esc(l.location_name)}</div>
+          <div class="loc-meta">${esc(l.point_of_contact||'No contact')}${l.city?' · '+esc(l.city):''}</div>
+          ${l.scheduling_preference?`<div class="loc-sched"><i class="ti ti-calendar" style="font-size:11px"></i> ${esc(l.scheduling_preference)}</div>`:''}
+        </div>
+        ${l.internal_flags?`<span class="tier-tag" style="background:var(--amber-bg);color:var(--amber)" title="${esc(l.internal_flags)}"><i class="ti ti-flag"></i> Review</span>`:''}
+        ${l.seed_avg_per_visit?`<div class="rev-col"><div class="rev-num">${fmtMoney(l.seed_avg_per_visit)}</div><div class="rev-sub">avg / visit</div></div>`:''}
+        <span class="tier-tag ${tierClass(l.tier)}">${tierLabel(l.tier)}</span>
+      </div>`).join('')}</div>`;
+  }
+
+  // ─── Customer profile ──────────────────────────────────────────────
+  function openProfile(id) {
+    state.currentLocId = id;
+    state.profileTab = 'overview';
+    state.profileEditing = false;
+    showSection('crm-profile');
+    document.getElementById('page-title').textContent = state.locations.find(l => l.id === id)?.location_name || 'Customer';
+    document.getElementById('back-btn').style.display = '';
+    document.getElementById('back-btn').onclick = () => {
+      const navBtn = document.querySelector('.nav-item[onclick*="crm-customers"]');
+      showSection('crm-customers', navBtn);
+    };
+    renderProfile();
+  }
+
+  function setProfileTab(tab) {
+    state.profileTab = tab;
+    state.profileEditing = false;
+    renderProfile();
+  }
+
+  function renderProfile() {
+    const root = document.getElementById('crm-profile-content');
+    if (!root) return;
+    const l = state.locations.find(x => x.id === state.currentLocId);
+    if (!l) { root.innerHTML = '<div class="card">Location not found.</div>'; return; }
+
+    const tabs = ['overview','sales','items','stock'];
+    const labels = { overview:'Overview', sales:'Sales History', items:'Item Hierarchy', stock:'Inventory Impact' };
+    const tabBar = `<div class="tab-bar" style="display:flex;border-bottom:1px solid var(--border);margin-bottom:16px">
+      ${tabs.map(t => `<div onclick="CRM.setProfileTab('${t}')" style="padding:8px 14px;font-size:12px;cursor:pointer;border-bottom:2px solid ${state.profileTab===t?'var(--accent)':'transparent'};margin-bottom:-1px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${state.profileTab===t?'var(--accent)':'var(--text3)'}">${labels[t]}</div>`).join('')}
+    </div>`;
+
+    let body = '';
+    if (state.profileTab === 'overview')   body = renderOverview(l);
+    else if (state.profileTab === 'sales') body = renderSalesHistory(l);
+    else if (state.profileTab === 'items') body = renderItemHierarchy(l);
+    else if (state.profileTab === 'stock') body = renderInventoryImpact(l);
+
+    root.innerHTML = `<div class="card">${tabBar}${body}</div>`;
+    applyPermissions();
+  }
+
+  function renderOverview(l) {
+    if (state.profileEditing) return renderOverviewEdit(l);
+    const flagBox = l.internal_flags ? `
+      <div class="alert-bar alert-info" style="background:var(--amber-bg);color:var(--amber);border-left:3px solid var(--amber);padding:10px 14px;border-radius:var(--radius);margin-bottom:14px;font-size:12px">
+        <i class="ti ti-flag"></i> <strong>Needs review:</strong> ${esc(l.internal_flags)}
+      </div>` : '';
+
+    return `${flagBox}
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;gap:8px">
+      <button class="btn btn-sm" onclick="CRM.startEdit()" data-admin-only><i class="ti ti-edit"></i> Edit</button>
+      <button class="btn btn-sm btn-accent" onclick="CRM.scheduleStopFor(${l.id})" data-admin-only><i class="ti ti-calendar-plus"></i> Schedule Stop</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:10px">Contact</div>
+        <div style="font-size:13px;line-height:1.9">
+          <div><strong>${esc(l.point_of_contact||'—')}</strong></div>
+          <div style="color:var(--text3)">${esc(l.phone||'—')}</div>
+          <div style="color:var(--accent);font-size:12px">${esc(l.email||'')}</div>
+          <div style="color:var(--text3);font-size:12px;margin-top:6px">${esc(l.full_address||'')}</div>
+          <div style="color:var(--text3);font-size:12px">${esc([l.city,l.state,l.zip].filter(Boolean).join(', '))}</div>
+          ${l.region?`<div style="color:var(--text3);font-size:11px;margin-top:4px">Region: ${esc(l.region)}</div>`:''}
+        </div>
+      </div>
+      <div>
+        <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:10px">Scheduling</div>
+        <div style="background:var(--amber-bg);border-radius:var(--radius);padding:11px 13px;border-left:3px solid var(--accent);margin-bottom:10px">
+          <div style="font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Preference</div>
+          <div style="font-size:13px;font-weight:700;margin-top:3px">${esc(l.scheduling_preference||'No preference set')}</div>
+        </div>
+        <div style="font-size:12px;color:var(--text3);line-height:1.6">
+          <div><strong style="color:var(--text)">Preferred truck:</strong> ${l.preferred_truck?'Truck '+l.preferred_truck:'Either'}</div>
+          <div><strong style="color:var(--text)">Truck lock:</strong> ${l.truck_lock?'Yes — only preferred truck':'No — any truck'}</div>
+          <div><strong style="color:var(--text)">Status:</strong> ${esc(l.status||'active')}</div>
+          <div><strong style="color:var(--text)">Tier:</strong> ${tierLabel(l.tier)}</div>
+        </div>
+        ${l.notes?`<div style="margin-top:10px;font-size:12px;color:var(--text2);font-style:italic;line-height:1.5">"${esc(l.notes)}"</div>`:''}
+      </div>
+    </div>
+    <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:10px">Historical Sales (pre-CRM seed data)</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+        <div class="metric"><div class="metric-label">Avg / Visit</div><div class="metric-value">${l.seed_avg_per_visit?fmtMoney(l.seed_avg_per_visit):'—'}</div></div>
+        <div class="metric"><div class="metric-label">Total Sales</div><div class="metric-value">${l.seed_total_sales?fmtMoney(l.seed_total_sales):'—'}</div></div>
+        <div class="metric"><div class="metric-label">Visit Count</div><div class="metric-value">${l.seed_visit_count||'—'}</div></div>
+        <div class="metric"><div class="metric-label">Last Visit</div><div class="metric-value" style="font-size:14px;margin-top:6px">${l.seed_last_visit?fmtDate(l.seed_last_visit):'—'}</div></div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px;font-style:italic">These values are imported from the spreadsheet and will be superseded by live visit data as it accumulates.</div>
+    </div>`;
+  }
+
+  function renderOverviewEdit(l) {
+    return `<div style="display:flex;justify-content:flex-end;margin-bottom:12px;gap:8px">
+      <button class="btn btn-sm" onclick="CRM.cancelEdit()">Cancel</button>
+      <button class="btn btn-sm btn-primary" onclick="CRM.saveEdit()"><i class="ti ti-check"></i> Save</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:10px">Location</div>
+        ${editField('Name','f-name', l.location_name)}
+        ${editField('Address','f-addr', l.full_address)}
+        ${editField('City','f-city', l.city)}
+        ${editField('State','f-state', l.state)}
+        ${editField('ZIP','f-zip', l.zip)}
+        ${editField('Region','f-region', l.region)}
+        <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin:14px 0 10px">Contact</div>
+        ${editField('Point of Contact','f-poc', l.point_of_contact)}
+        ${editField('Phone','f-phone', l.phone)}
+        ${editField('Email','f-email', l.email)}
+      </div>
+      <div>
+        <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:10px">Scheduling</div>
+        ${editField('Preference','f-sched', l.scheduling_preference)}
+        ${editField('Notes','f-notes', l.notes, true)}
+        ${editField('Internal Flags','f-flags', l.internal_flags, true)}
+        <div style="margin-bottom:10px">
+          <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Preferred Truck</label>
+          <select id="f-truck" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+            <option value="">Either</option>
+            <option value="1" ${l.preferred_truck==1?'selected':''}>Truck 1</option>
+            <option value="2" ${l.preferred_truck==2?'selected':''}>Truck 2</option>
+          </select>
+        </div>
+        <div style="margin-bottom:10px">
+          <label style="font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="f-lock" ${l.truck_lock?'checked':''}>
+            <span>Lock to preferred truck (only that truck unless overridden manually)</span>
+          </label>
+        </div>
+        <div style="margin-bottom:10px">
+          <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Tier</label>
+          <select id="f-tier" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+            ${['high','medium','low','pending'].map(t => `<option value="${t}" ${l.tier===t?'selected':''}>${tierLabel(t)}</option>`).join('')}
+          </select>
+        </div>
+        <div style="margin-bottom:10px">
+          <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Status</label>
+          <select id="f-status" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+            ${['active','pending','archived'].map(s => `<option value="${s}" ${l.status===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function editField(label, id, val, textarea) {
+    const v = val == null ? '' : esc(val);
+    const ctrl = textarea
+      ? `<textarea id="${id}" rows="2" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;resize:vertical">${v}</textarea>`
+      : `<input type="text" id="${id}" value="${v}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">`;
+    return `<div style="margin-bottom:10px">
+      <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">${label}</label>
+      ${ctrl}
+    </div>`;
+  }
+
+  function startEdit() { state.profileEditing = true; renderProfile(); }
+  function cancelEdit() { state.profileEditing = false; renderProfile(); }
+  async function saveEdit() {
+    const id = state.currentLocId;
+    const get = el => document.getElementById(el)?.value?.trim() || null;
+    const updates = {
+      location_name: get('f-name'),
+      full_address: get('f-addr'),
+      city: get('f-city'),
+      state: get('f-state'),
+      zip: get('f-zip'),
+      region: get('f-region'),
+      point_of_contact: get('f-poc'),
+      phone: get('f-phone'),
+      email: get('f-email'),
+      scheduling_preference: get('f-sched'),
+      notes: get('f-notes'),
+      internal_flags: get('f-flags'),
+      preferred_truck: document.getElementById('f-truck')?.value ? parseInt(document.getElementById('f-truck').value,10) : null,
+      truck_lock: document.getElementById('f-lock')?.checked || false,
+      tier: get('f-tier'),
+      status: get('f-status')
+    };
+    try {
+      const { error } = await sb.from('crm_locations').update(updates).eq('id', id);
+      if (error) throw error;
+      const i = state.locations.findIndex(x => x.id === id);
+      if (i >= 0) state.locations[i] = { ...state.locations[i], ...updates };
+      state.profileEditing = false;
+      renderProfile();
+    } catch (e) {
+      alert('Failed to save: ' + e.message);
+      console.error('[CRM] save', e);
+    }
+  }
+
+  function renderSalesHistory(l) {
+    const visits = state.visits.filter(v => v.location_id === l.id).slice(0, 24);
+    if (!visits.length) {
+      return `<div style="padding:30px;text-align:center;color:var(--text3)">
+        <i class="ti ti-chart-line" style="font-size:32px;display:block;margin-bottom:8px;color:var(--bg2)"></i>
+        <div style="font-style:italic;margin-bottom:6px">No live visits recorded yet.</div>
+        <div style="font-size:11px">Historical seed totals: ${l.seed_visit_count||0} visits, ${fmtMoney(l.seed_total_sales)} total. Live sales attribution will begin once stops are scheduled and visited.</div>
+      </div>`;
+    }
+    return `<table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="border-bottom:1px solid var(--border)">
+        <th style="text-align:left;padding:8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Date</th>
+        <th style="text-align:left;padding:8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Truck</th>
+        <th style="text-align:right;padding:8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Transactions</th>
+        <th style="text-align:right;padding:8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Revenue</th>
+      </tr></thead>
+      <tbody>${visits.map(v => `<tr style="border-bottom:1px solid rgba(132,79,6,.1)">
+        <td style="padding:8px">${fmtDate(v.visit_date)}</td>
+        <td style="padding:8px">Truck ${v.truck}</td>
+        <td style="padding:8px;text-align:right">${v.transaction_count||0}</td>
+        <td style="padding:8px;text-align:right;font-weight:700;color:var(--accent)">${fmtMoney(v.total_revenue)}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  }
+
+  function renderItemHierarchy(l) {
+    const visits = state.visits.filter(v => v.location_id === l.id);
+    const tally = {};
+    visits.forEach(v => {
+      (v.items_sold || []).forEach(it => {
+        if (!tally[it.name]) tally[it.name] = { qty:0, revenue:0 };
+        tally[it.name].qty += it.qty || 0;
+        tally[it.name].revenue += it.revenue || 0;
+      });
+    });
+    const arr = Object.entries(tally).map(([n,v]) => ({name:n,...v})).sort((a,b) => b.qty - a.qty);
+    if (!arr.length) {
+      return `<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">No item-level data yet. Once live visits are recorded, top items will appear here ranked by units sold.</div>`;
+    }
+    const max = arr[0].qty;
+    return `<p class="section-intro">Items ranked by units sold across all recorded visits. Drives the Manufacturing Forecast.</p>
+      ${arr.slice(0,12).map((it,i) => `<div style="display:flex;align-items:center;padding:10px 0;border-bottom:1px solid rgba(132,79,6,.1)">
+        <div style="width:24px;height:24px;border-radius:50%;background:${i<3?'var(--amber-bg)':'var(--bg2)'};color:${i<3?'var(--amber)':'var(--text3)'};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${i+1}</div>
+        <div style="flex:1;padding:0 14px">
+          <div style="font-size:13px;font-weight:700">${esc(it.name)}</div>
+          <div style="height:5px;background:var(--bg2);border-radius:4px;margin-top:5px"><div style="height:5px;border-radius:4px;background:${i===0?'var(--accent)':'var(--border)'};width:${Math.round((it.qty/max)*100)}%"></div></div>
+        </div>
+        <div style="text-align:right;min-width:80px"><div style="font-family:var(--font-display);font-size:16px;color:var(--sidebar)">${it.qty}</div><div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase">units</div></div>
+        <div style="text-align:right;min-width:80px;margin-left:8px"><div style="font-size:13px;font-weight:700;color:var(--accent)">${fmtMoney(it.revenue)}</div></div>
+      </div>`).join('')}`;
+  }
+
+  function renderInventoryImpact(l) {
+    const upcoming = state.stops.filter(s => s.location_id === l.id && new Date(s.scheduled_date) >= new Date()).slice(0,3);
+    if (!upcoming.length) return `<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">No upcoming stops scheduled. Schedule a stop to see inventory impact projections.</div>`;
+    const visits = state.visits.filter(v => v.location_id === l.id);
+    const tally = {};
+    visits.forEach(v => (v.items_sold||[]).forEach(it => { tally[it.name] = (tally[it.name]||0) + (it.qty||0); }));
+    const avgPerVisit = {};
+    Object.entries(tally).forEach(([k,v]) => avgPerVisit[k] = visits.length ? v/visits.length : 0);
+    const topItems = Object.entries(avgPerVisit).sort((a,b) => b[1]-a[1]).slice(0,8);
+    if (!topItems.length) {
+      return `<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">No item history for this location yet. Inventory projections will appear once visit data accumulates.</div>`;
+    }
+    return `<p class="section-intro">Projected units needed for the next ${upcoming.length} scheduled stop${upcoming.length>1?'s':''} based on this location's item hierarchy.</p>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Item</th>
+          <th style="text-align:right;padding:8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Avg / Visit</th>
+          <th style="text-align:right;padding:8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Projected (${upcoming.length} stops)</th>
+        </tr></thead>
+        <tbody>${topItems.map(([n,avg]) => `<tr style="border-bottom:1px solid rgba(132,79,6,.1)">
+          <td style="padding:8px;font-weight:700">${esc(n)}</td>
+          <td style="padding:8px;text-align:right">${avg.toFixed(1)}</td>
+          <td style="padding:8px;text-align:right;font-weight:700;color:var(--accent)">${Math.ceil(avg*upcoming.length)}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+  }
+
+  function scheduleStopFor(locId) {
+    state.weekStart = mondayOf(new Date());
+    showSection('crm-schedule');
+    openAddStop(locId);
+  }
+
+  // ─── Schedule (truck by truck) ─────────────────────────────────────
+  function shiftWeek(delta) {
+    state.weekStart = addDays(state.weekStart || mondayOf(new Date()), delta * 7);
+    renderSchedule();
+  }
+
+  function setScheduleTruck(t) {
+    state.currentTruck = t;
+    renderSchedule();
+  }
+
+  function renderSchedule() {
+    const root = document.getElementById('crm-schedule-content');
+    const label = document.getElementById('crm-week-label');
+    if (!root) return;
+    if (!state.weekStart) state.weekStart = mondayOf(new Date());
+    const weekEnd = addDays(state.weekStart, 6);
+    if (label) label.textContent = `${fmtDateShort(state.weekStart)} – ${fmtDateShort(weekEnd)}`;
+
+    const fromISO = isoDate(state.weekStart);
+    const toISO = isoDate(weekEnd);
+    const stops = state.stops.filter(s => s.scheduled_date >= fromISO && s.scheduled_date <= toISO);
+
+    const truckTabs = `<div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--border)">
+      ${[1,2].map(t => `<div onclick="CRM.setScheduleTruck(${t})" style="padding:8px 16px;cursor:pointer;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid ${state.currentTruck===t?'var(--accent)':'transparent'};margin-bottom:-1px;color:${state.currentTruck===t?'var(--accent)':'var(--text3)'}">Truck ${t} <span style="font-weight:400;font-size:11px;color:var(--text3)">(${stops.filter(s=>s.truck===t).length})</span></div>`).join('')}
+    </div>`;
+
+    const truckStops = stops.filter(s => s.truck === state.currentTruck).sort((a,b) => {
+      if (a.scheduled_date !== b.scheduled_date) return a.scheduled_date < b.scheduled_date ? -1 : 1;
+      return a.start_time < b.start_time ? -1 : 1;
+    });
+
+    let body;
+    if (!truckStops.length) {
+      body = `<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">No stops scheduled for Truck ${state.currentTruck} this week.</div>`;
+    } else {
+      const byDay = {};
+      truckStops.forEach(s => { (byDay[s.scheduled_date] = byDay[s.scheduled_date] || []).push(s); });
+      body = Object.keys(byDay).sort().map(d => {
+        const dt = new Date(d + 'T00:00:00');
+        return `<div style="margin-bottom:18px">
+          <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">
+            ${dt.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}
+          </div>
+          ${byDay[d].map(s => renderStopRow(s)).join('')}
+        </div>`;
+      }).join('');
+    }
+
+    root.innerHTML = truckTabs + body;
+    applyPermissions();
+  }
+
+  function renderStopRow(s) {
+    const loc = state.locations.find(l => l.id === s.location_id);
+    const name = loc ? loc.location_name : 'Unknown location';
+    const ruleLabel = ({
+      'every_6_weeks':'Every 6 weeks',
+      'locked':'Locked stop',
+      'quarterly':'Quarterly',
+      'manual_only':'Manual only',
+      'one-time':'One-time',
+      'weekly':'Weekly',
+      'biweekly':'Bi-weekly'
+    })[s.recurrence_rule] || s.recurrence_rule || '—';
+    const isLocked = loc && loc.truck_lock;
+    return `<div style="display:flex;gap:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;align-items:center" onclick="CRM.openProfile(${s.location_id})" data-cursor="pointer">
+      <div style="width:8px;height:40px;background:${s.truck===1?'var(--sidebar)':'var(--green)'};border-radius:2px;flex-shrink:0"></div>
+      <div style="flex:1;min-width:0;cursor:pointer">
+        <div style="font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.02em">${esc(name)}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)} · <i class="ti ti-repeat" style="font-size:11px"></i> ${ruleLabel}</div>
+        ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
+      </div>
+      ${isLocked?'<span class="tier-tag" style="background:var(--amber-bg);color:var(--amber)" title="Truck-locked"><i class="ti ti-lock"></i></span>':''}
+      <select onchange="CRM.reassignStopTruck(${s.id}, this.value)" onclick="event.stopPropagation()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;font-family:var(--font-body)" data-admin-only>
+        <option value="1" ${s.truck===1?'selected':''}>Truck 1</option>
+        <option value="2" ${s.truck===2?'selected':''}>Truck 2</option>
+      </select>
+      <button class="btn btn-sm" onclick="event.stopPropagation();CRM.deleteStop(${s.id})" data-admin-only title="Delete stop"><i class="ti ti-trash"></i></button>
+    </div>`;
+  }
+
+  async function reassignStopTruck(stopId, newTruck) {
+    const t = parseInt(newTruck, 10);
+    const stop = state.stops.find(s => s.id === stopId);
+    if (!stop) return;
+    const loc = state.locations.find(l => l.id === stop.location_id);
+    if (loc && loc.truck_lock && loc.preferred_truck && loc.preferred_truck !== t) {
+      if (!confirm(`${loc.location_name} is locked to Truck ${loc.preferred_truck}. Reassign anyway?`)) {
+        renderSchedule();
+        return;
+      }
+    }
+    try {
+      const { error } = await sb.from('crm_stops').update({ truck: t }).eq('id', stopId);
+      if (error) throw error;
+      stop.truck = t;
+      renderSchedule();
+    } catch (e) { alert('Failed: '+e.message); }
+  }
+
+  async function deleteStop(stopId) {
+    if (!confirm('Delete this stop?')) return;
+    try {
+      const { error } = await sb.from('crm_stops').delete().eq('id', stopId);
+      if (error) throw error;
+      state.stops = state.stops.filter(s => s.id !== stopId);
+      renderSchedule();
+    } catch (e) { alert('Failed: '+e.message); }
+  }
+
+  function openAddStop(locIdPreset) {
+    const root = document.getElementById('crm-schedule-content');
+    if (!root) return;
+    const today = isoDate(new Date());
+    const locOptions = state.locations
+      .filter(l => l.status === 'active')
+      .sort((a,b) => a.location_name.localeCompare(b.location_name))
+      .map(l => `<option value="${l.id}" ${locIdPreset===l.id?'selected':''}>${esc(l.location_name)}</option>`)
+      .join('');
+    root.innerHTML = `<div class="card" style="background:var(--bg)">
+      <div class="card-header"><span class="card-title">New Stop</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div>
+          ${selField('Location','add-loc',locOptions)}
+          ${editField('Date','add-date',today)}
+          ${editField('Notes','add-notes','',true)}
+        </div>
+        <div>
+          ${editField('Start time (HH:MM)','add-start','09:00')}
+          ${editField('End time (HH:MM)','add-end','10:00')}
+          ${selField('Truck','add-truck','<option value="1">Truck 1</option><option value="2">Truck 2</option>')}
+          ${selField('Recurrence','add-rule',['one-time','weekly','biweekly','every_6_weeks','quarterly','manual_only','locked'].map(r=>`<option value="${r}">${r}</option>`).join(''))}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button class="btn btn-sm" onclick="CRM.renderSchedule()">Cancel</button>
+        <button class="btn btn-sm btn-primary" onclick="CRM.saveNewStop()"><i class="ti ti-check"></i> Save</button>
+      </div>
+    </div>`;
+    document.getElementById('add-date').type = 'date';
+    if (locIdPreset) document.getElementById('add-loc').value = locIdPreset;
+  }
+
+  function selField(label, id, optsHtml) {
+    return `<div style="margin-bottom:10px">
+      <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">${label}</label>
+      <select id="${id}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">${optsHtml}</select>
+    </div>`;
+  }
+
+  async function saveNewStop() {
+    const get = id => document.getElementById(id)?.value;
+    const data = {
+      location_id: parseInt(get('add-loc'),10),
+      truck: parseInt(get('add-truck'),10),
+      scheduled_date: get('add-date'),
+      start_time: get('add-start'),
+      end_time: get('add-end'),
+      recurrence_rule: get('add-rule') || 'one-time',
+      notes: get('add-notes') || null,
+      source: 'manual',
+      status: 'scheduled'
+    };
+    if (!data.location_id || !data.scheduled_date) { alert('Pick a location and date.'); return; }
+    const loc = state.locations.find(l => l.id === data.location_id);
+    if (loc && loc.truck_lock && loc.preferred_truck && loc.preferred_truck !== data.truck) {
+      if (!confirm(`${loc.location_name} is locked to Truck ${loc.preferred_truck}. Override?`)) return;
+    }
+    try {
+      const { data: ins, error } = await sb.from('crm_stops').insert(data).select().single();
+      if (error) throw error;
+      state.stops.push(ins);
+      renderSchedule();
+    } catch (e) { alert('Failed: '+e.message); }
+  }
+
+  function openAddCustomer() {
+    state.currentLocId = null;
+    showSection('crm-profile');
+    document.getElementById('page-title').textContent = 'New Customer';
+    const root = document.getElementById('crm-profile-content');
+    root.innerHTML = `<div class="card">
+      <div class="card-header"><span class="card-title">New Customer</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          ${editField('Name *','new-name','')}
+          ${editField('Address','new-addr','')}
+          ${editField('City','new-city','')}
+          ${editField('State','new-state','AR')}
+          ${editField('ZIP','new-zip','')}
+        </div>
+        <div>
+          ${editField('Contact','new-poc','')}
+          ${editField('Phone','new-phone','')}
+          ${editField('Email','new-email','')}
+          ${editField('Scheduling Preference','new-sched','')}
+          ${editField('Notes','new-notes','',true)}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button class="btn btn-sm" onclick="showSection('crm-customers',document.querySelector('.nav-item[onclick*=customers]'))">Cancel</button>
+        <button class="btn btn-sm btn-primary" onclick="CRM.saveNewCustomer()"><i class="ti ti-check"></i> Save</button>
+      </div>
+    </div>`;
+  }
+
+  async function saveNewCustomer() {
+    const get = id => document.getElementById(id)?.value?.trim() || null;
+    const name = get('new-name');
+    if (!name) { alert('Name is required.'); return; }
+    const data = {
+      location_name: name,
+      full_address: get('new-addr'),
+      city: get('new-city'),
+      state: get('new-state') || 'AR',
+      zip: get('new-zip'),
+      point_of_contact: get('new-poc'),
+      phone: get('new-phone'),
+      email: get('new-email'),
+      scheduling_preference: get('new-sched'),
+      notes: get('new-notes'),
+      status: 'active',
+      tier: 'pending'
+    };
+    try {
+      const { data: ins, error } = await sb.from('crm_locations').insert(data).select().single();
+      if (error) throw error;
+      state.locations.push(ins);
+      openProfile(ins.id);
+    } catch (e) { alert('Failed: '+e.message); }
+  }
+
+  // ─── Manufacturing Forecast (one total row per item) ───────────────
+  function renderForecast() {
+    const root = document.getElementById('crm-forecast-content');
+    if (!root) return;
+    const days = parseInt(document.getElementById('crm-forecast-range')?.value || '7', 10);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const end = addDays(today, days);
+    const fromISO = isoDate(today), toISO = isoDate(end);
+
+    const upcoming = state.stops.filter(s => s.scheduled_date >= fromISO && s.scheduled_date <= toISO);
+    if (!upcoming.length) {
+      root.innerHTML = `<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">No stops scheduled in the next ${days} days.</div>`;
+      return;
+    }
+
+    // For each stop, compute projected items from that location's history
+    const totals = {};
+    upcoming.forEach(s => {
+      const visits = state.visits.filter(v => v.location_id === s.location_id);
+      if (!visits.length) return;
+      const tally = {};
+      visits.forEach(v => (v.items_sold||[]).forEach(it => { tally[it.name] = (tally[it.name]||0) + (it.qty||0); }));
+      Object.entries(tally).forEach(([n,q]) => {
+        const avg = q / visits.length;
+        totals[n] = (totals[n] || 0) + avg;
+      });
+    });
+
+    const arr = Object.entries(totals).map(([n,q])=>({name:n, qty:Math.ceil(q)})).sort((a,b)=>b.qty-a.qty);
+
+    const stopsWithoutData = upcoming.filter(s => !state.visits.some(v => v.location_id === s.location_id)).length;
+
+    let header = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">
+      <div class="metric"><div class="metric-label">Stops in Range</div><div class="metric-value">${upcoming.length}</div></div>
+      <div class="metric"><div class="metric-label">Distinct Locations</div><div class="metric-value">${new Set(upcoming.map(s=>s.location_id)).size}</div></div>
+      <div class="metric"><div class="metric-label">Total Units (Projected)</div><div class="metric-value">${arr.reduce((a,b)=>a+b.qty,0)}</div></div>
+    </div>`;
+
+    if (stopsWithoutData > 0) {
+      header += `<div class="alert-bar alert-info" style="background:var(--amber-bg);color:var(--amber);border-left:3px solid var(--amber);padding:10px 14px;border-radius:var(--radius);margin-bottom:14px;font-size:12px">
+        <i class="ti ti-info-circle"></i> ${stopsWithoutData} of ${upcoming.length} stops have no item history yet — forecast will improve as live visits accumulate.
+      </div>`;
+    }
+
+    if (!arr.length) {
+      root.innerHTML = header + `<div style="padding:24px;text-align:center;color:var(--text3);font-style:italic">No item-level history yet across these stops. Forecast will populate once visits with sales data are recorded.</div>`;
+      return;
+    }
+
+    root.innerHTML = header + `<table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="border-bottom:1px solid var(--border)">
+        <th style="text-align:left;padding:10px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Item</th>
+        <th style="text-align:right;padding:10px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Projected Units</th>
+      </tr></thead>
+      <tbody>${arr.map(it => `<tr style="border-bottom:1px solid rgba(132,79,6,.1)">
+        <td style="padding:10px;font-weight:700">${esc(it.name)}</td>
+        <td style="padding:10px;text-align:right"><span style="font-family:var(--font-display);font-size:18px;color:var(--sidebar)">${it.qty}</span></td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  }
+
+  // ─── Public API ────────────────────────────────────────────────────
+  return {
+    init: loadAll,
+    renderCustomers, filterCustomers,
+    openProfile, setProfileTab, startEdit, cancelEdit, saveEdit,
+    renderSchedule, shiftWeek, setScheduleTruck, reassignStopTruck, deleteStop,
+    openAddStop, saveNewStop, scheduleStopFor,
+    openAddCustomer, saveNewCustomer,
+    renderForecast,
+    _state: state  // for debugging
+  };
+})();
+
+
+// Initialize CRM module after main init
+(async function(){ await new Promise(r=>setTimeout(r,500)); try{ await CRM.init(); }catch(e){console.error('CRM init failed',e);} })();
 
 init();
 </script>
