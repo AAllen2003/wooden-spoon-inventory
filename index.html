@@ -1833,18 +1833,31 @@ window.CRM = (function(){
   async function loadAll() {
     if (!sb) { console.warn('[CRM] no supabase client'); return; }
     try {
+      // Use explicit large limits to override Supabase's default 1000-row cap
       const [locsR, stopsR, visitsR, setR] = await Promise.all([
-        sb.from('crm_locations').select('*').order('location_name'),
-        sb.from('crm_stops').select('*').order('scheduled_date'),
-        sb.from('crm_visits').select('*').order('visit_date',{ascending:false}),
+        sb.from('crm_locations').select('*').order('location_name').limit(5000),
+        sb.from('crm_stops').select('*').order('scheduled_date').limit(10000),
+        sb.from('crm_visits').select('*').order('visit_date',{ascending:false}).limit(10000),
         sb.from('app_settings').select('*').in('key', ['crm_buffer_minutes','crm_truck_device_map'])
       ]);
       if (locsR.error) throw locsR.error;
       if (stopsR.error) throw stopsR.error;
       if (visitsR.error) throw visitsR.error;
-      state.locations = locsR.data || [];
-      state.stops = stopsR.data || [];
-      state.visits = visitsR.data || [];
+
+      // Dedupe defensively by id (in case realtime has been firing in parallel)
+      const dedupe = arr => {
+        const seen = new Set();
+        return (arr || []).filter(r => {
+          if (seen.has(r.id)) return false;
+          seen.add(r.id);
+          return true;
+        });
+      };
+
+      state.locations = dedupe(locsR.data);
+      state.stops     = dedupe(stopsR.data);
+      state.visits    = dedupe(visitsR.data);
+
       (setR.data || []).forEach(r => {
         if (r.key === 'crm_buffer_minutes') state.settings.buffer_minutes = parseInt(r.value, 10) || 15;
         if (r.key === 'crm_truck_device_map') {
@@ -1854,6 +1867,7 @@ window.CRM = (function(){
       });
       state.loaded = true;
       if (!state.weekStart) state.weekStart = mondayOf(new Date());
+      console.log(`[CRM] loaded: ${state.locations.length} locations, ${state.stops.length} stops, ${state.visits.length} visits`);
       subscribeRealtime();
     } catch (e) {
       console.error('[CRM] load error', e);
@@ -1866,13 +1880,18 @@ window.CRM = (function(){
     ['crm_locations','crm_stops','crm_visits'].forEach(table => {
       sb.channel(`crm-${table}`)
         .on('postgres_changes', { event:'*', schema:'public', table }, payload => {
+          // Always read live array references from `state`, not captured at subscribe-time
           const arr = table === 'crm_locations' ? state.locations
                     : table === 'crm_stops'     ? state.stops
                     : state.visits;
-          if (payload.eventType === 'INSERT') arr.push(payload.new);
+          if (payload.eventType === 'INSERT') {
+            // Dedupe: skip if we already have this id (manual push beat the event)
+            if (!arr.some(r => r.id === payload.new.id)) arr.push(payload.new);
+          }
           else if (payload.eventType === 'UPDATE') {
             const i = arr.findIndex(r => r.id === payload.new.id);
             if (i >= 0) arr[i] = payload.new;
+            else arr.push(payload.new);
           }
           else if (payload.eventType === 'DELETE') {
             const i = arr.findIndex(r => r.id === payload.old.id);
@@ -1956,11 +1975,13 @@ window.CRM = (function(){
         visit = upd;
         const i = state.visits.findIndex(v => v.id === existing.id);
         if (i >= 0) state.visits[i] = visit;
+        else state.visits.push(visit);
       } else {
         const { data: ins, error } = await sb.from('crm_visits').insert(visitData).select().single();
         if (error) throw error;
         visit = ins;
-        state.visits.push(visit);
+        // Only add if not already present (realtime INSERT may have raced us)
+        if (!state.visits.some(v => v.id === visit.id)) state.visits.push(visit);
       }
 
       salesCache[stop.id] = { ts: Date.now(), visit };
@@ -2513,7 +2534,7 @@ window.CRM = (function(){
     try {
       const { data: ins, error } = await sb.from('crm_stops').insert(data).select().single();
       if (error) throw error;
-      state.stops.push(ins);
+      if (!state.stops.some(s => s.id === ins.id)) state.stops.push(ins);
       renderSchedule();
     } catch (e) { alert('Failed: '+e.message); }
   }
@@ -2569,7 +2590,7 @@ window.CRM = (function(){
     try {
       const { data: ins, error } = await sb.from('crm_locations').insert(data).select().single();
       if (error) throw error;
-      state.locations.push(ins);
+      if (!state.locations.some(l => l.id === ins.id)) state.locations.push(ins);
       openProfile(ins.id);
     } catch (e) { alert('Failed: '+e.message); }
   }
