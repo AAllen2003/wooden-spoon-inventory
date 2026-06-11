@@ -2525,7 +2525,16 @@ window.CRM = (function(){
   // ─── Mobile renderers (compact versions of the same data) ──────────
   function renderMobCustomers(){
     const root = document.getElementById('crm-customers-mob');
-    if(!root) return;
+    if(!root) { console.warn('[CRM] mob root #crm-customers-mob not in DOM'); return; }
+    if(!state.loaded){
+      root.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">Loading customers...</div>';
+      console.log('[CRM] mob customers waiting on state.loaded');
+      return;
+    }
+    if(!state.locations.length){
+      root.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">No customer data found. Pull to refresh or check Settings.</div>';
+      return;
+    }
     const rows = state.locations.slice().sort((a,b)=>(b.seed_avg_per_visit||0)-(a.seed_avg_per_visit||0));
     const total = state.locations.length;
     const flagged = state.locations.filter(l=>l.internal_flags).length;
