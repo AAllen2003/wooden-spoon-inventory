@@ -1515,7 +1515,7 @@ function mobShow(sec,btn){
   document.querySelectorAll('.mob-tab').forEach(t=>t.classList.remove('active'));
   if(btn)btn.classList.add('active');
   if(btn)btn.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
-  const titles={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',settings:'Settings'};
+  const titles={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer','crm-schedule':'Schedule','crm-forecast':'Mfg Forecast'};
   document.getElementById('mob-title').textContent=titles[sec]||sec;
   // Render immediately with whatever data we have
   mobRender();
@@ -2572,8 +2572,7 @@ window.CRM = (function(){
     state.currentLocId = id;
     state.profileTab = 'overview';
     state.profileEditing = false;
-    window.mobSection = 'crm-profile';
-    mobRender();
+    mobShow('crm-profile', null);
   }
   function renderMobProfile(){
     const root = document.getElementById('crm-profile-mob');
@@ -2581,7 +2580,7 @@ window.CRM = (function(){
     const l = state.locations.find(x=>x.id===state.currentLocId);
     if(!l){ root.innerHTML='<div>Not found.</div>'; return; }
     root.innerHTML = `
-      <button class="btn btn-sm" onclick="window.mobSection='crm-customers';mobRender();document.querySelectorAll('.mob-tab').forEach(t=>t.classList.toggle('active',t.dataset.sec==='crm-customers'))" style="margin-bottom:12px"><i class="ti ti-arrow-left"></i> Back</button>
+      <button class="btn btn-sm" onclick="mobShow('crm-customers',document.querySelector('.mob-tab[data-sec=\\'crm-customers\\']'))" style="margin-bottom:12px"><i class="ti ti-arrow-left"></i> Back</button>
       <div class="card">
         <div style="font-family:var(--font-display);font-size:20px;color:var(--sidebar);margin-bottom:14px">${esc(l.location_name)}</div>
         ${l.internal_flags ? `<div style="background:var(--amber-bg);color:var(--amber);border-left:3px solid var(--amber);padding:10px;border-radius:var(--radius);margin-bottom:14px;font-size:12px"><i class="ti ti-flag"></i> ${esc(l.internal_flags)}</div>` : ''}
