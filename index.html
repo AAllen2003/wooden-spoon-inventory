@@ -2278,6 +2278,16 @@ window.CRM = (function(){
       tier: get('f-tier'),
       status: get('f-status')
     };
+
+    // Detect if any address-relevant field changed
+    const prev = state.locations.find(x => x.id === id);
+    const addrChanged = prev && (
+      (prev.full_address || null) !== updates.full_address ||
+      (prev.city || null) !== updates.city ||
+      (prev.state || null) !== updates.state ||
+      (prev.zip || null) !== updates.zip
+    );
+
     try {
       const { error } = await sb.from('crm_locations').update(updates).eq('id', id);
       if (error) throw error;
@@ -2285,6 +2295,33 @@ window.CRM = (function(){
       if (i >= 0) state.locations[i] = { ...state.locations[i], ...updates };
       state.profileEditing = false;
       renderProfile();
+
+      // Fire-and-forget: re-geocode the location if its address changed
+      if (addrChanged) {
+        const workerUrl = (typeof S !== 'undefined' && S.workerUrl) ? S.workerUrl : null;
+        if (workerUrl) {
+          fetch(`${workerUrl.replace(/\/$/,'')}/geocode/one?id=${id}`, { method: 'POST' })
+            .then(r => r.json())
+            .then(d => {
+              if (d.ok && d.status === 'success') {
+                const idx = state.locations.findIndex(x => x.id === id);
+                if (idx >= 0) {
+                  state.locations[idx] = {
+                    ...state.locations[idx],
+                    lat: d.lat,
+                    lng: d.lng,
+                    geocode_status: 'success',
+                  };
+                  console.log(`[CRM] geocoded ${state.locations[idx].location_name}: ${d.formatted}`);
+                  renderCurrent();
+                }
+              } else {
+                console.warn('[CRM] geocode after edit:', d.status, d.reason || '');
+              }
+            })
+            .catch(e => console.error('[CRM] geocode after edit failed', e));
+        }
+      }
     } catch (e) {
       alert('Failed to save: ' + e.message);
       console.error('[CRM] save', e);
@@ -2638,6 +2675,24 @@ window.CRM = (function(){
       if (error) throw error;
       if (!state.locations.some(l => l.id === ins.id)) state.locations.push(ins);
       openProfile(ins.id);
+      // If address was provided, kick off geocode in background
+      if (data.full_address) {
+        const workerUrl = (typeof S !== 'undefined' && S.workerUrl) ? S.workerUrl : null;
+        if (workerUrl) {
+          fetch(`${workerUrl.replace(/\/$/,'')}/geocode/one?id=${ins.id}`, { method: 'POST' })
+            .then(r => r.json())
+            .then(d => {
+              if (d.ok && d.status === 'success') {
+                const idx = state.locations.findIndex(l => l.id === ins.id);
+                if (idx >= 0) {
+                  state.locations[idx] = { ...state.locations[idx], lat: d.lat, lng: d.lng, geocode_status: 'success' };
+                  renderCurrent();
+                }
+              }
+            })
+            .catch(e => console.error('[CRM] geocode new customer failed', e));
+        }
+      }
     } catch (e) { alert('Failed: '+e.message); }
   }
 
