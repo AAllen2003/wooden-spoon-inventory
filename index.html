@@ -3220,7 +3220,9 @@ window.CRM = (function(){
       // Reassign start/end times following the optimized order
       // First stop keeps its original start (which is the earliest from the user's history pattern).
       // Each subsequent stop starts at: previous end + drive_time + 5min padding.
+      // Constraints: (a) round to quarter-hour, (b) hard stop at 6 PM, (c) skip over any existing stops on this truck this day.
       const PADDING_SEC = 300;
+      const END_OF_DAY_MIN = 18 * 60; // 18:00 = 6 PM
       const ordered = tour.map(i => enrich[i]);
       const firstStartMin = parseInt(ordered[0].start_time.slice(0,2),10)*60 + parseInt(ordered[0].start_time.slice(3,5),10);
       const durationMin = (s) => {
@@ -3228,26 +3230,73 @@ window.CRM = (function(){
         const em = parseInt(s.end_time.slice(0,2),10)*60 + parseInt(s.end_time.slice(3,5),10);
         return Math.max(30, em - sm); // min 30 min stop
       };
+      // Compute existing-stop blocks on this truck this day (sorted by start time)
+      const [truckStr, dateStr] = k.split('|');
+      const truckNum = parseInt(truckStr, 10);
+      const existingBlocks = base.proposals.length // we use existingInWeek (closure), not proposals
+        ? null : null; // placeholder so eslint doesn't complain — we read from closure below
+      const blocks = []; // [{startMin, endMin}]
+      for (const ex of existingInWeek) {
+        if (ex.truck !== truckNum || ex.scheduled_date !== dateStr) continue;
+        const xs = parseInt(ex.start_time.slice(0,2),10)*60 + parseInt(ex.start_time.slice(3,5),10);
+        const xe = parseInt(ex.end_time.slice(0,2),10)*60 + parseInt(ex.end_time.slice(3,5),10);
+        blocks.push({ startMin: xs, endMin: xe });
+      }
+      blocks.sort((a,b) => a.startMin - b.startMin);
+
+      // If a proposed time slot [startMin, endMin] overlaps any existing block,
+      // push the cursor PAST the last overlapping block (rounded to quarter).
+      const advancePastConflicts = (startMin, dur) => {
+        let s = startMin;
+        let e = s + dur;
+        // Repeat: as long as we overlap any block, jump past it.
+        let safety = 0;
+        while (safety++ < 20) {
+          const hit = blocks.find(b => !(e <= b.startMin || s >= b.endMin));
+          if (!hit) break;
+          s = roundUpToQuarter(hit.endMin);
+          e = s + dur;
+        }
+        return s;
+      };
+
       let cursorMin = roundUpToQuarter(firstStartMin);
+      const droppedTooLate = [];
+      const placedThisDay = []; // for "Couldn't Fit" reporting
       for (let i = 0; i < ordered.length; i++) {
         const p = ordered[i];
-        // Quantize the stop's duration to a quarter-hour increment too (at least 30 min)
         const dur = Math.max(30, Math.ceil(durationMin(p) / 15) * 15);
         if (i === 0) {
-          // keep first stop's start time at the rounded cursor
+          // First stop: still must not overlap any existing baseline stop
+          cursorMin = advancePastConflicts(cursorMin, dur);
         } else {
           const prevIdx = tour[i-1];
           const driveSec = matrix[prevIdx][tour[i]];
-          // Add drive time + 5min padding, then round UP to next quarter hour
           cursorMin = roundUpToQuarter(cursorMin + Math.ceil((driveSec + PADDING_SEC) / 60));
+          cursorMin = advancePastConflicts(cursorMin, dur);
           p.reasons.push(`Drive ${Math.round(driveSec/60)}min from previous stop`);
         }
         const startMin = cursorMin;
         const endMin = cursorMin + dur;
+        if (endMin > END_OF_DAY_MIN) {
+          // Doesn't fit in the working day — drop from proposals, list under "Couldn't Fit"
+          p.conflict = `Would end after 6 PM (proposed ${String(Math.floor(startMin/60)).padStart(2,'0')}:${String(startMin%60).padStart(2,'0')}\u2013${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')})`;
+          droppedTooLate.push(p);
+          // Don't advance cursor; just skip this proposal
+          continue;
+        }
         const fmt = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}:00`;
         p.start_time = fmt(startMin);
         p.end_time = fmt(endMin);
         cursorMin = endMin;
+        placedThisDay.push(p);
+      }
+
+      // Remove dropped proposals from base.proposals; add them to skippedConflict
+      for (const p of droppedTooLate) {
+        const idx = base.proposals.findIndex(x => x.id === p.id);
+        if (idx >= 0) base.proposals.splice(idx, 1);
+        base.skippedConflict.push(p);
       }
 
       // Replace the bucket's proposals with the reordered list
