@@ -2708,6 +2708,11 @@ window.CRM = (function(){
   function daysBetween(a, b) { return Math.round((new Date(b) - new Date(a)) / 86400000); }
   const DOW_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
+  // Round minutes-from-midnight UP to the next quarter hour (0, 15, 30, 45)
+  function roundUpToQuarter(min) { return Math.ceil(min / 15) * 15; }
+  // Round minutes DOWN to the nearest quarter hour (for end times, so duration is preserved naturally)
+  function roundToQuarter(min) { return Math.round(min / 15) * 15; }
+
   /**
    * Compute a visit-pattern summary for a single location from its history.
    * Returns { count, byDow[7], typicalStart, typicalEnd, cadenceDays, lastVisit, byTruck, recencyWeight }
@@ -2951,6 +2956,13 @@ window.CRM = (function(){
       } else {
         startTime = '09:00:00'; endTime = '11:00:00'; timeSource = 'fallback';
       }
+      // Round to quarter-hour increments
+      const toMin = t => parseInt(t.slice(0,2),10)*60 + parseInt(t.slice(3,5),10);
+      const fromMin = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}:00`;
+      const sm = roundToQuarter(toMin(startTime));
+      const em = roundToQuarter(toMin(endTime));
+      startTime = fromMin(sm);
+      endTime = fromMin(em >= sm + 15 ? em : sm + 30); // ensure ≥30min stop, all on quarter
 
       // Pick truck
       let truck;
@@ -3216,16 +3228,18 @@ window.CRM = (function(){
         const em = parseInt(s.end_time.slice(0,2),10)*60 + parseInt(s.end_time.slice(3,5),10);
         return Math.max(30, em - sm); // min 30 min stop
       };
-      let cursorMin = firstStartMin;
+      let cursorMin = roundUpToQuarter(firstStartMin);
       for (let i = 0; i < ordered.length; i++) {
         const p = ordered[i];
-        const dur = durationMin(p);
+        // Quantize the stop's duration to a quarter-hour increment too (at least 30 min)
+        const dur = Math.max(30, Math.ceil(durationMin(p) / 15) * 15);
         if (i === 0) {
-          // keep original start
+          // keep first stop's start time at the rounded cursor
         } else {
           const prevIdx = tour[i-1];
           const driveSec = matrix[prevIdx][tour[i]];
-          cursorMin += Math.ceil((driveSec + PADDING_SEC) / 60);
+          // Add drive time + 5min padding, then round UP to next quarter hour
+          cursorMin = roundUpToQuarter(cursorMin + Math.ceil((driveSec + PADDING_SEC) / 60));
           p.reasons.push(`Drive ${Math.round(driveSec/60)}min from previous stop`);
         }
         const startMin = cursorMin;
