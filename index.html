@@ -2460,13 +2460,17 @@ window.CRM = (function(){
         salesBadge = `<span style="font-size:11px;padding:3px 8px;border-radius:4px;background:var(--bg2);color:var(--text3);font-weight:700;white-space:nowrap">Loading sales...</span>`;
       }
     }
-    // Navigation link — only for stops with geocoded coordinates AND not past
+    // Navigation link — only for stops whose location has been successfully geocoded AND not past
     let navBtn = '';
-    if (loc && loc.lat != null && loc.lng != null && !past) {
-      const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}&travelmode=driving`;
-      navBtn = `<a href="${navUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open directions in Google Maps" style="text-decoration:none">
-        <button class="btn btn-sm" style="background:var(--green);color:#fff;border-color:var(--green)"><i class="ti ti-navigation"></i></button>
-      </a>`;
+    if (loc && loc.geocode_status === 'success' && !past) {
+      // Use the full address (with city/state) rather than pins so Google Maps routes to the actual entrance
+      const addrParts = [loc.full_address, loc.city, loc.state, loc.zip].filter(Boolean);
+      if (addrParts.length) {
+        const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addrParts.join(', '))}&travelmode=driving`;
+        navBtn = `<a href="${navUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open directions in Google Maps" style="text-decoration:none">
+          <button class="btn btn-sm" style="background:var(--green);color:#fff;border-color:var(--green)"><i class="ti ti-navigation"></i></button>
+        </a>`;
+      }
     }
     return `<div style="display:flex;gap:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;align-items:center" onclick="CRM.openProfile(${s.location_id})" data-cursor="pointer">
       <div style="width:8px;height:40px;background:${s.truck===1?'var(--sidebar)':'var(--green)'};border-radius:2px;flex-shrink:0"></div>
@@ -3554,9 +3558,13 @@ window.CRM = (function(){
           ${byDay[d].map(s=>{
             const loc = state.locations.find(l=>l.id===s.location_id);
             const past = isStopPast(s);
-            const navUrl = (loc && loc.lat != null && loc.lng != null && !past)
-              ? `https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}&travelmode=driving`
-              : null;
+            let navUrl = null;
+            if (loc && loc.geocode_status === 'success' && !past) {
+              const addrParts = [loc.full_address, loc.city, loc.state, loc.zip].filter(Boolean);
+              if (addrParts.length) {
+                navUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addrParts.join(', '))}&travelmode=driving`;
+              }
+            }
             return `<div style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;display:flex;gap:10px;align-items:center">
               <div onclick="CRM.openMobProfile(${s.location_id})" style="flex:1;cursor:pointer;min-width:0">
                 <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.02em">${loc?esc(loc.location_name):'Unknown'}</div>
