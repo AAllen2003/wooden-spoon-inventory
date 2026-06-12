@@ -2460,6 +2460,14 @@ window.CRM = (function(){
         salesBadge = `<span style="font-size:11px;padding:3px 8px;border-radius:4px;background:var(--bg2);color:var(--text3);font-weight:700;white-space:nowrap">Loading sales...</span>`;
       }
     }
+    // Navigation link — only for stops with geocoded coordinates AND not past
+    let navBtn = '';
+    if (loc && loc.lat != null && loc.lng != null && !past) {
+      const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}&travelmode=driving`;
+      navBtn = `<a href="${navUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open directions in Google Maps" style="text-decoration:none">
+        <button class="btn btn-sm" style="background:var(--green);color:#fff;border-color:var(--green)"><i class="ti ti-navigation"></i></button>
+      </a>`;
+    }
     return `<div style="display:flex;gap:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;align-items:center" onclick="CRM.openProfile(${s.location_id})" data-cursor="pointer">
       <div style="width:8px;height:40px;background:${s.truck===1?'var(--sidebar)':'var(--green)'};border-radius:2px;flex-shrink:0"></div>
       <div style="flex:1;min-width:0;cursor:pointer">
@@ -2468,6 +2476,7 @@ window.CRM = (function(){
         ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
       </div>
       ${salesBadge}
+      ${navBtn}
       ${isLocked?'<span class="tier-tag" style="background:var(--amber-bg);color:var(--amber)" title="Truck-locked"><i class="ti ti-lock"></i></span>':''}
       <select onchange="CRM.reassignStopTruck(${s.id}, this.value)" onclick="event.stopPropagation()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;font-family:var(--font-body)" data-admin-only>
         <option value="1" ${s.truck===1?'selected':''}>Truck 1</option>
@@ -3010,9 +3019,208 @@ window.CRM = (function(){
 
   function startAutoSchedule() {
     if (!state.weekStart) state.weekStart = mondayOf(new Date());
-    const result = generateWeekProposals(state.weekStart);
-    state.proposalSession = result;
-    renderProposalReview();
+    // Show loading state while drive times are fetched
+    const root = document.getElementById('crm-schedule-content');
+    if (root) {
+      root.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text3)">
+        <div style="font-family:var(--font-display);font-size:18px;color:var(--sidebar);margin-bottom:8px">Building proposed schedule…</div>
+        <div style="font-size:12px">Computing driving distances and optimizing routes</div>
+      </div>`;
+    }
+    (async () => {
+      try {
+        const result = await generateOptimizedWeekProposals(state.weekStart);
+        state.proposalSession = result;
+        renderProposalReview();
+      } catch (e) {
+        console.error('[CRM] auto-schedule failed', e);
+        if (root) {
+          root.innerHTML = `<div class="card" style="background:var(--red-bg);border-color:var(--red)">
+            <div style="font-family:var(--font-display);font-size:14px;color:var(--red);margin-bottom:6px"><i class="ti ti-alert-triangle"></i> Auto-Schedule Failed</div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:10px">${esc(e.message)}</div>
+            <button class="btn btn-sm" onclick="CRM.renderSchedule()">Back to Schedule</button>
+          </div>`;
+        }
+      }
+    })();
+  }
+
+  /**
+   * Generate proposals, then for each day reorder stops to minimize driving time
+   * and recompute start/end times to follow each previous stop's end + drive time.
+   * Requires location lat/lng (set by /geocode/seed).
+   */
+  async function generateOptimizedWeekProposals(weekStartDate) {
+    const base = generateWeekProposals(weekStartDate);
+
+    // Group by (truck, date)
+    const byBucket = new Map();
+    for (const p of base.proposals) {
+      const k = `${p.truck}|${p.scheduled_date}`;
+      if (!byBucket.has(k)) byBucket.set(k, []);
+      byBucket.get(k).push(p);
+    }
+
+    // For each bucket, optimize order + compute drive times
+    for (const [k, group] of byBucket.entries()) {
+      if (group.length < 2) continue; // nothing to optimize
+
+      // Verify every stop has coordinates
+      const enrich = group.map(p => {
+        const loc = state.locations.find(l => l.id === p.location_id);
+        return { ...p, _lat: loc?.lat, _lng: loc?.lng, _locName: loc?.location_name };
+      });
+      const missingCoords = enrich.filter(p => p._lat == null || p._lng == null);
+      if (missingCoords.length) {
+        // Mark proposals that can't be optimized — keep original ordering
+        for (const p of group) p.reasons.push('Skipped route optimization (location missing geocode)');
+        continue;
+      }
+
+      // Fetch drive times between all pairs (n×n matrix) via worker /drive-time/batch
+      const pairs = [];
+      for (let i = 0; i < enrich.length; i++) {
+        for (let j = 0; j < enrich.length; j++) {
+          if (i === j) continue;
+          pairs.push({
+            from: { lat: enrich[i]._lat, lng: enrich[i]._lng },
+            to:   { lat: enrich[j]._lat, lng: enrich[j]._lng },
+          });
+        }
+      }
+
+      let driveTimes;
+      try {
+        driveTimes = await fetchDriveTimesBatch(pairs);
+      } catch (e) {
+        throw new Error('Drive time lookup failed: ' + e.message);
+      }
+
+      // Build distance matrix
+      const n = enrich.length;
+      const matrix = Array.from({ length: n }, () => new Array(n).fill(0));
+      let pi = 0;
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          if (i === j) continue;
+          const d = driveTimes[pi++];
+          if (d.error) throw new Error('Drive time error between stops: ' + d.error);
+          matrix[i][j] = d.duration_seconds;
+        }
+      }
+
+      // Nearest-neighbor TSP starting from the FIRST proposal (preserves "first stop of day" intent)
+      // Find the proposal with earliest original start_time as starting point
+      enrich.sort((a, b) => a.start_time.localeCompare(b.start_time));
+      const visited = new Set([0]);
+      const order = [0];
+      while (order.length < n) {
+        const last = order[order.length - 1];
+        let bestNext = -1, bestDist = Infinity;
+        for (let j = 0; j < n; j++) {
+          if (visited.has(j)) continue;
+          if (matrix[last][j] < bestDist) { bestDist = matrix[last][j]; bestNext = j; }
+        }
+        if (bestNext === -1) break;
+        visited.add(bestNext);
+        order.push(bestNext);
+      }
+
+      // 2-opt improvement pass
+      const tour = order.slice();
+      let improved = true;
+      let iters = 0;
+      while (improved && iters < 50) {
+        improved = false;
+        iters++;
+        for (let i = 1; i < tour.length - 1; i++) {
+          for (let k = i + 1; k < tour.length; k++) {
+            const a = tour[i-1], b = tour[i], c = tour[k], d = tour[k+1] ?? null;
+            const before = matrix[a][b] + (d != null ? matrix[c][d] : 0);
+            const after  = matrix[a][c] + (d != null ? matrix[b][d] : 0);
+            if (after < before - 5) {
+              tour.splice(i, k - i + 1, ...tour.slice(i, k+1).reverse());
+              improved = true;
+            }
+          }
+        }
+      }
+
+      // Reassign start/end times following the optimized order
+      // First stop keeps its original start (which is the earliest from the user's history pattern).
+      // Each subsequent stop starts at: previous end + drive_time + 5min padding.
+      const PADDING_SEC = 300;
+      const ordered = tour.map(i => enrich[i]);
+      const firstStartMin = parseInt(ordered[0].start_time.slice(0,2),10)*60 + parseInt(ordered[0].start_time.slice(3,5),10);
+      const durationMin = (s) => {
+        const sm = parseInt(s.start_time.slice(0,2),10)*60 + parseInt(s.start_time.slice(3,5),10);
+        const em = parseInt(s.end_time.slice(0,2),10)*60 + parseInt(s.end_time.slice(3,5),10);
+        return Math.max(30, em - sm); // min 30 min stop
+      };
+      let cursorMin = firstStartMin;
+      for (let i = 0; i < ordered.length; i++) {
+        const p = ordered[i];
+        const dur = durationMin(p);
+        if (i === 0) {
+          // keep original start
+        } else {
+          const prevIdx = tour[i-1];
+          const driveSec = matrix[prevIdx][tour[i]];
+          cursorMin += Math.ceil((driveSec + PADDING_SEC) / 60);
+          p.reasons.push(`Drive ${Math.round(driveSec/60)}min from previous stop`);
+        }
+        const startMin = cursorMin;
+        const endMin = cursorMin + dur;
+        const fmt = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}:00`;
+        p.start_time = fmt(startMin);
+        p.end_time = fmt(endMin);
+        cursorMin = endMin;
+      }
+
+      // Replace the bucket's proposals with the reordered list
+      // Find their indices in base.proposals and update them in place
+      for (const p of ordered) {
+        const idx = base.proposals.findIndex(x => x.id === p.id);
+        if (idx >= 0) {
+          base.proposals[idx] = { ...p };
+          // Strip internal _ fields
+          delete base.proposals[idx]._lat;
+          delete base.proposals[idx]._lng;
+          delete base.proposals[idx]._locName;
+        }
+      }
+    }
+
+    // Re-sort proposals by date+time for display
+    base.proposals.sort((a,b) =>
+      a.scheduled_date < b.scheduled_date ? -1 :
+      a.scheduled_date > b.scheduled_date ? 1 :
+      a.truck !== b.truck ? a.truck - b.truck :
+      a.start_time.localeCompare(b.start_time));
+
+    return base;
+  }
+
+  /**
+   * Call the Worker's /drive-time/batch endpoint.
+   * Returns an array of {duration_seconds, distance_meters, ...} in the same order as input pairs.
+   * Throws on any error per user's choice ("yes — throw an error so I know something's broken").
+   */
+  async function fetchDriveTimesBatch(pairs) {
+    const workerUrl = (typeof S !== 'undefined' && S.workerUrl) ? S.workerUrl : null;
+    if (!workerUrl) throw new Error('Worker URL not set — configure in Settings');
+    const r = await fetch(`${workerUrl.replace(/\/$/,'')}/drive-time/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pairs }),
+    });
+    if (!r.ok) {
+      const text = await r.text();
+      throw new Error(`Worker /drive-time/batch returned ${r.status}: ${text.slice(0, 200)}`);
+    }
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    return data.results || [];
   }
 
   function renderProposalReview() {
@@ -3345,10 +3553,17 @@ window.CRM = (function(){
           <div style="font-family:var(--font-display);font-size:13px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">${dt.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}</div>
           ${byDay[d].map(s=>{
             const loc = state.locations.find(l=>l.id===s.location_id);
-            return `<div onclick="CRM.openMobProfile(${s.location_id})" style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;cursor:pointer">
-              <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.02em">${loc?esc(loc.location_name):'Unknown'}</div>
-              <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)}</div>
-              ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
+            const past = isStopPast(s);
+            const navUrl = (loc && loc.lat != null && loc.lng != null && !past)
+              ? `https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}&travelmode=driving`
+              : null;
+            return `<div style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;display:flex;gap:10px;align-items:center">
+              <div onclick="CRM.openMobProfile(${s.location_id})" style="flex:1;cursor:pointer;min-width:0">
+                <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.02em">${loc?esc(loc.location_name):'Unknown'}</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)}</div>
+                ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
+              </div>
+              ${navUrl ? `<a href="${navUrl}" target="_blank" rel="noopener" style="text-decoration:none;flex-shrink:0"><button class="btn btn-sm" style="background:var(--green);color:#fff;border-color:var(--green)"><i class="ti ti-navigation"></i></button></a>` : ''}
             </div>`;
           }).join('')}
         </div>`;
