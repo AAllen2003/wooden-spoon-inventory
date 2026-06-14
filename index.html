@@ -3124,6 +3124,15 @@ window.CRM = (function(){
   async function generateOptimizedWeekProposals(weekStartDate) {
     const base = generateWeekProposals(weekStartDate);
 
+    // Recompute the in-week existing stops at this level — generateWeekProposals' copy was local
+    const weekStart = mondayOf(weekStartDate);
+    const weekEnd = addDays(weekStart, 6);
+    const weekStartISO = isoOfDate(weekStart);
+    const weekEndISO = isoOfDate(weekEnd);
+    const existingInWeek = state.stops.filter(s =>
+      s.scheduled_date >= weekStartISO && s.scheduled_date <= weekEndISO
+    );
+
     // Group by (truck, date)
     const byBucket = new Map();
     for (const p of base.proposals) {
@@ -3233,8 +3242,6 @@ window.CRM = (function(){
       // Compute existing-stop blocks on this truck this day (sorted by start time)
       const [truckStr, dateStr] = k.split('|');
       const truckNum = parseInt(truckStr, 10);
-      const existingBlocks = base.proposals.length // we use existingInWeek (closure), not proposals
-        ? null : null; // placeholder so eslint doesn't complain — we read from closure below
       const blocks = []; // [{startMin, endMin}]
       for (const ex of existingInWeek) {
         if (ex.truck !== truckNum || ex.scheduled_date !== dateStr) continue;
