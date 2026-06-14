@@ -4247,12 +4247,18 @@ window.CRM = (function(){
   async function saveVisitLog(id) {
     const get = el => document.getElementById(el)?.value?.trim() || null;
     const locId = document.getElementById('vl-loc')?.value;
+    // Mobile uses #vl-loc-search as the type-ahead; desktop uses #vl-loc-freeform.
+    // If a location is picked, freeform is ignored. If not, take whichever text field exists.
+    let freeform = null;
+    if (!locId) {
+      freeform = get('vl-loc-freeform') || get('vl-loc-search');
+    }
     const data = {
       visit_date: get('vl-date'),
       time_arrived: get('vl-arrived') || null,
       time_departed: get('vl-departed') || null,
       location_id: locId ? parseInt(locId, 10) : null,
-      location_name_freeform: locId ? null : get('vl-loc-freeform'),
+      location_name_freeform: locId ? null : freeform,
       contact_person: get('vl-contact'),
       contact_role: get('vl-role'),
       outcome: get('vl-outcome'),
@@ -4267,14 +4273,12 @@ window.CRM = (function(){
     }
     try {
       if (id) {
-        // Update existing
         const { data: upd, error } = await sb.from('crm_sales_visits').update(data).eq('id', id).select().single();
         if (error) throw error;
         const i = state.salesVisits.findIndex(v => v.id === id);
         if (i >= 0) state.salesVisits[i] = upd;
         else state.salesVisits.push(upd);
       } else {
-        // Insert new
         const { data: ins, error } = await sb.from('crm_sales_visits').insert(data).select().single();
         if (error) throw error;
         if (!state.salesVisits.some(v => v.id === ins.id)) state.salesVisits.push(ins);
@@ -4381,11 +4385,9 @@ window.CRM = (function(){
       notes: '',
     };
 
-    const locOptions = state.locations
-      .filter(l => l.status === 'active' && !(l.location_name||'').startsWith('[Personal'))
-      .sort((a,b) => a.location_name.localeCompare(b.location_name))
-      .map(l => `<option value="${l.id}" ${data.location_id===l.id?'selected':''}>${esc(l.location_name)}</option>`)
-      .join('');
+    // Find the picked location's display name (if any), to show in the search field initially
+    const pickedLoc = data.location_id ? state.locations.find(l => l.id === data.location_id) : null;
+    const initialLocText = pickedLoc ? pickedLoc.location_name : data.location_name_freeform;
 
     const inputStyle = 'width:100%;padding:10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box';
     const labelStyle = 'font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px';
@@ -4409,11 +4411,12 @@ window.CRM = (function(){
       </div>
 
       <label style="${labelStyle}">Location</label>
-      <select id="vl-loc" onchange="CRM._updateVisitLogFreeform()" style="${inputStyle};margin-bottom:6px">
-        <option value="">— Not in CRM —</option>
-        ${locOptions}
-      </select>
-      <input type="text" id="vl-loc-freeform" placeholder="Location name (only if not in CRM)" value="${esc(data.location_name_freeform)}" style="${inputStyle};margin-bottom:12px;${data.location_id?'opacity:.5':''}">
+      <div style="position:relative;margin-bottom:12px">
+        <input type="text" id="vl-loc-search" value="${esc(initialLocText)}" placeholder="Type to search customers, or enter new..." oninput="CRM._filterLocPicker()" onfocus="CRM._filterLocPicker()" style="${inputStyle}" autocomplete="off">
+        <input type="hidden" id="vl-loc" value="${data.location_id || ''}">
+        <div id="vl-loc-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);max-height:220px;overflow-y:auto;z-index:30;box-shadow:0 4px 12px rgba(0,0,0,.15)"></div>
+        <div style="font-size:10px;color:var(--text3);margin-top:4px">Pick from the list or type a name that's not yet in your CRM</div>
+      </div>
 
       <label style="${labelStyle}">Contact Person</label>
       <input type="text" id="vl-contact" value="${esc(data.contact_person)}" placeholder="Name" style="${inputStyle};margin-bottom:12px">
@@ -4435,6 +4438,53 @@ window.CRM = (function(){
     </div>`;
   }
 
+  /**
+   * Filter the location-picker suggestions based on the search input.
+   * Cap at 25 visible results to keep the dropdown fast even with 200+ locations.
+   */
+  function _filterLocPicker() {
+    const input = document.getElementById('vl-loc-search');
+    const sug = document.getElementById('vl-loc-suggestions');
+    const hidden = document.getElementById('vl-loc');
+    if (!input || !sug || !hidden) return;
+    const q = input.value.toLowerCase().trim();
+    // When user types, clear any previously-picked location id so a freeform entry takes over
+    hidden.value = '';
+    if (!q) { sug.style.display = 'none'; return; }
+    const matches = state.locations
+      .filter(l => l.status === 'active'
+                && !(l.location_name||'').startsWith('[Personal')
+                && l.location_name.toLowerCase().includes(q))
+      .sort((a,b) => {
+        // Prefer prefix matches first
+        const ap = a.location_name.toLowerCase().startsWith(q) ? 0 : 1;
+        const bp = b.location_name.toLowerCase().startsWith(q) ? 0 : 1;
+        if (ap !== bp) return ap - bp;
+        return a.location_name.localeCompare(b.location_name);
+      })
+      .slice(0, 25);
+    if (!matches.length) {
+      sug.innerHTML = `<div style="padding:10px 12px;font-size:12px;color:var(--text3);font-style:italic">No matches — will save as new location name</div>`;
+      sug.style.display = 'block';
+      return;
+    }
+    sug.innerHTML = matches.map(l =>
+      `<div onclick="CRM._pickLoc(${l.id})" style="padding:10px 12px;font-size:13px;border-bottom:1px solid var(--bg2);cursor:pointer">${esc(l.location_name)}</div>`
+    ).join('');
+    sug.style.display = 'block';
+  }
+
+  function _pickLoc(id) {
+    const loc = state.locations.find(l => l.id === id);
+    if (!loc) return;
+    const input = document.getElementById('vl-loc-search');
+    const hidden = document.getElementById('vl-loc');
+    const sug = document.getElementById('vl-loc-suggestions');
+    if (input) input.value = loc.location_name;
+    if (hidden) hidden.value = id;
+    if (sug) sug.style.display = 'none';
+  }
+
   return {
     init: loadAll,
     renderCustomers, filterCustomers,
@@ -4448,6 +4498,7 @@ window.CRM = (function(){
     // Visit Log
     renderVisitLog, filterVisitLog, openNewVisitLog, editVisitLog, deleteVisitLog,
     cancelVisitLogEdit, saveVisitLog, _updateVisitLogFreeform,
+    _filterLocPicker, _pickLoc,
     // Mobile
     renderMobCustomers, filterMobCustomers, renderMobCustomerList,
     openMobProfile, renderMobProfile,
