@@ -304,7 +304,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
     <button class="nav-item" onclick="showSection('crm-customers',this)"><i class="ti ti-building-store"></i> Customers</button>
     <button class="nav-item" onclick="showSection('crm-schedule',this)"><i class="ti ti-calendar"></i> Schedule</button>
     <button class="nav-item" onclick="showSection('crm-forecast',this)"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
-    <button class="nav-item" onclick="showSection('crm-visitlog',this)"><i class="ti ti-clipboard-text"></i> Visit Log</button>
+    <button class="nav-item" onclick="showSection('crm-relog',this)"><i class="ti ti-clipboard-text"></i> Relations Log</button>
     <div class="nav-section">System</div>
     <button class="nav-item" onclick="showSection('settings',this)"><i class="ti ti-settings"></i> Settings</button>
   </nav>
@@ -679,23 +679,13 @@ body.staff-mode [data-admin-only]{display:none !important;}
       </div>
     </div>
 
-    <div class="section" id="sec-crm-visitlog">
+    <div class="section" id="sec-crm-relog">
       <div class="card">
         <div class="card-header">
-          <span class="card-title">Visit Log</span>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input type="text" id="crm-vl-search" placeholder="Search location, contact, notes..." oninput="CRM.filterVisitLog()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;min-width:220px">
-            <select id="crm-vl-range" onchange="CRM.filterVisitLog()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
-              <option value="7">Last 7 days</option>
-              <option value="30" selected>Last 30 days</option>
-              <option value="90">Last 90 days</option>
-              <option value="all">All time</option>
-            </select>
-            <button class="btn btn-sm btn-accent" onclick="CRM.openNewVisitLog()"><i class="ti ti-plus"></i> Log Visit</button>
-          </div>
+          <span class="card-title">Customer Relations Log</span>
         </div>
-        <p class="section-intro">Salesperson activity log: where you went, who you spoke with, time spent, and what happened. Separate from POS sales attribution.</p>
-        <div id="crm-vl-content"></div>
+        <p class="section-intro">Open a session at the start of your day. Log each event as it happens — the app auto-timestamps and records your location. Close the session when done; the log becomes a permanent record.</p>
+        <div id="crm-relog-content"></div>
       </div>
     </div>
 
@@ -723,7 +713,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
     <button class="more-item" onclick="showSection('crm-customers',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-building-store"></i> Customers</button>
     <button class="more-item" onclick="showSection('crm-schedule',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-calendar"></i> Schedule</button>
     <button class="more-item" onclick="showSection('crm-forecast',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
-    <button class="more-item" onclick="showSection('crm-visitlog',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-clipboard-text"></i> Visit Log</button>
+    <button class="more-item" onclick="showSection('crm-relog',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-clipboard-text"></i> Relations Log</button>
     <hr class="more-divider">
     <button class="more-item" onclick="showSection('settings',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-settings"></i> Settings</button>
     <button class="more-item" onclick="syncNow();closeMoreDrawer()"><i class="ti ti-refresh"></i> Sync Data</button>
@@ -953,7 +943,7 @@ function openMoreDrawer(){document.getElementById('more-overlay').classList.add(
 function closeMoreDrawer(){document.getElementById('more-overlay').classList.remove('open');document.getElementById('more-drawer').classList.remove('open');}
 
 // ── NAV ───────────────────────────────────────────────────────────
-const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer Profile','crm-schedule':'Schedule','crm-forecast':'Manufacturing Forecast','crm-visitlog':'Visit Log'};
+const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer Profile','crm-schedule':'Schedule','crm-forecast':'Manufacturing Forecast','crm-relog':'Customer Relations Log'};
 function showSection(name,btn){
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
@@ -972,7 +962,7 @@ function showSection(name,btn){
   if(name==='crm-profile'){/* rendered via openProfile */}
   if(name==='crm-schedule')CRM.renderSchedule();
   if(name==='crm-forecast')CRM.renderForecast();
-  if(name==='crm-visitlog')CRM.renderVisitLog();
+  if(name==='crm-relog')CRM.renderRelog();
   applyPermissions();
 }
 function openLocDetail(loc){currentLoc=loc;document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.getElementById('sec-loc-detail').classList.add('active');document.getElementById('page-title').textContent=loc;document.getElementById('back-btn').style.display='inline-flex';document.getElementById('loc-detail-cat-filter').value='';renderLocDetail();applyPermissions();}
@@ -1539,7 +1529,7 @@ function mobShow(sec,btn){
   document.querySelectorAll('.mob-tab').forEach(t=>t.classList.remove('active'));
   if(btn)btn.classList.add('active');
   if(btn)btn.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
-  const titles={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer','crm-schedule':'Schedule','crm-forecast':'Mfg Forecast','crm-visitlog':'Visit Log'};
+  const titles={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer','crm-schedule':'Schedule','crm-forecast':'Mfg Forecast','crm-relog':'Relations Log'};
   document.getElementById('mob-title').textContent=titles[sec]||sec;
   // Render immediately with whatever data we have
   mobRender();
@@ -1568,7 +1558,7 @@ function mobRender(){
   else if(mobSection==='crm-profile'){el.innerHTML='<div id="crm-profile-mob"></div>';CRM.renderMobProfile();}
   else if(mobSection==='crm-schedule'){el.innerHTML='<div id="crm-schedule-mob"></div>';CRM.renderMobSchedule();}
   else if(mobSection==='crm-forecast'){el.innerHTML='<div id="crm-forecast-mob"></div>';CRM.renderMobForecast();}
-  else if(mobSection==='crm-visitlog'){el.innerHTML='<div id="crm-vl-mob"></div>';CRM.renderMobVisitLog();}
+  else if(mobSection==='crm-relog'){el.innerHTML='<div id="crm-relog-mob"></div>';CRM.renderRelog().then(()=>CRM.renderMobRelog());}
   el.scrollTop=0;
   // Update alert badge
   const b=document.getElementById('mob-alert-badge');
@@ -2067,7 +2057,7 @@ window.CRM = (function(){
     else if (id === 'sec-crm-profile') renderProfile();
     else if (id === 'sec-crm-schedule') renderSchedule();
     else if (id === 'sec-crm-forecast') renderForecast();
-    else if (id === 'sec-crm-visitlog') renderVisitLog();
+    else if (id === 'sec-crm-relog') renderRelog();
   }
 
   // ─── Customers list ────────────────────────────────────────────────
@@ -3988,12 +3978,27 @@ window.CRM = (function(){
     root.innerHTML = `<div class="card"><div style="font-family:var(--font-display);font-size:16px;color:var(--sidebar);margin-bottom:14px">Next 7 Days</div>${body}</div>`;
   }
 
-  // ─── Sales Visit Log ──────────────────────────────────────────────
-  // Salesperson activity log: distinct from crm_visits (POS attribution).
-  // Stored in crm_sales_visits table.
+  // ─── Customer Relations Log (Session-Based) ─────────────────────────
+  // - Salesman starts a session at start of day → row in crm_session_logs
+  // - Every event auto-timestamped, GPS captured at moment of logging
+  // - GPS pings every 2 minutes while session is open
+  // - On close, log becomes permanently read-only (DB enforces this)
 
-  state.visitLogFilter = { q: '', range: '30' };
-  state.visitLogEditing = null; // id of visit being edited, or 'new', or null
+  state.relog = {
+    currentSession: null,      // active open session record (or null)
+    sessionEvents: [],          // events for currentSession
+    sessionPings: [],           // pings for currentSession
+    history: [],                // closed session list (recent)
+    viewing: null,              // id of closed session being viewed, or null
+    viewingEvents: [],
+    viewingPings: [],
+    pingTimer: null,            // setInterval handle for GPS pings
+    lastGpsError: null,
+    lastPingAt: null,
+    geoPermission: 'unknown',   // 'granted' | 'denied' | 'prompt' | 'unknown'
+  };
+
+  const PING_INTERVAL_MS = 2 * 60 * 1000;  // 2 minutes
 
   function getCurrentUserEmail() {
     if (typeof currentUser !== 'undefined' && currentUser?.email) return currentUser.email;
@@ -4004,485 +4009,521 @@ window.CRM = (function(){
     return null;
   }
 
-  function filterVisitLog() {
-    state.visitLogFilter.q = document.getElementById('crm-vl-search')?.value || '';
-    state.visitLogFilter.range = document.getElementById('crm-vl-range')?.value || '30';
-    renderVisitLogList();
-  }
-
-  function renderVisitLog() {
-    const root = document.getElementById('crm-vl-content');
-    if (!root) return;
-    if (state.visitLogEditing) {
-      renderVisitLogForm(state.visitLogEditing);
-      return;
-    }
-    renderVisitLogList();
-  }
-
-  function getFilteredVisits() {
-    const q = (state.visitLogFilter.q || '').toLowerCase().trim();
-    const range = state.visitLogFilter.range;
-    let rows = (state.salesVisits || []).slice();
-    if (range !== 'all') {
-      const days = parseInt(range, 10);
-      const cutoff = isoDate(addDays(new Date(), -days));
-      rows = rows.filter(v => v.visit_date >= cutoff);
-    }
-    if (q) {
-      rows = rows.filter(v => {
-        const loc = state.locations.find(l => l.id === v.location_id);
-        const locName = (loc ? loc.location_name : v.location_name_freeform) || '';
-        return locName.toLowerCase().includes(q)
-          || (v.contact_person||'').toLowerCase().includes(q)
-          || (v.contact_role||'').toLowerCase().includes(q)
-          || (v.outcome||'').toLowerCase().includes(q)
-          || (v.notes||'').toLowerCase().includes(q)
-          || (v.reported_by_email||'').toLowerCase().includes(q);
-      });
-    }
-    rows.sort((a,b) => {
-      if (a.visit_date !== b.visit_date) return a.visit_date < b.visit_date ? 1 : -1;
-      return (b.time_arrived||'').localeCompare(a.time_arrived||'');
+  // ── GPS helper ─────────────────────────────────────────────────────
+  function getGpsPositionOnce(timeoutMs = 15000) {
+    return new Promise((resolve) => {
+      if (!('geolocation' in navigator)) { resolve(null); return; }
+      navigator.geolocation.getCurrentPosition(
+        pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+        err => { state.relog.lastGpsError = err.message; resolve(null); },
+        { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 30000 }
+      );
     });
-    return rows;
   }
 
-  function renderVisitLogList() {
-    const root = document.getElementById('crm-vl-content');
-    if (!root) return;
-    const rows = getFilteredVisits();
-    const total = rows.length;
-    if (!total) {
-      root.innerHTML = `<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">No visits logged in this date range. Click "Log Visit" to start.</div>`;
-      return;
-    }
-    // Group by date
-    const byDate = {};
-    rows.forEach(v => { (byDate[v.visit_date] = byDate[v.visit_date] || []).push(v); });
-    root.innerHTML = `<div style="margin-bottom:10px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;font-weight:700">${total} visit${total===1?'':'s'}</div>
-      ${Object.keys(byDate).sort().reverse().map(d => {
-        const dt = new Date(d + 'T00:00:00');
-        return `<div style="margin-bottom:18px">
-          <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">
-            ${dt.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',year:'numeric'})}
-          </div>
-          ${byDate[d].map(v => renderVisitLogRow(v)).join('')}
-        </div>`;
-      }).join('')}`;
-  }
-
-  function renderVisitLogRow(v) {
-    const loc = state.locations.find(l => l.id === v.location_id);
-    const locName = loc ? loc.location_name : (v.location_name_freeform || 'Unknown location');
-    const timeStr = v.time_arrived && v.time_departed
-      ? `${fmtTime(v.time_arrived)} – ${fmtTime(v.time_departed)}`
-      : v.time_arrived
-        ? `Arrived ${fmtTime(v.time_arrived)}`
-        : '';
-    const duration = computeDurationMinutes(v.time_arrived, v.time_departed);
-    return `<div style="padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px">
-      <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
-        <div style="flex:1;min-width:200px">
-          <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.02em">${esc(locName)}${loc ? '' : ' <span style="font-size:10px;color:var(--text3);font-weight:400">(not in CRM)</span>'}</div>
-          ${v.contact_person ? `<div style="font-size:12px;color:var(--text2);margin-top:2px">Spoke with <strong>${esc(v.contact_person)}</strong>${v.contact_role?' (' + esc(v.contact_role) + ')':''}</div>` : ''}
-          ${timeStr ? `<div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${timeStr}${duration ? ' · ' + duration + ' min' : ''}</div>` : ''}
-          ${v.outcome ? `<div style="font-size:12px;color:var(--text);margin-top:6px;padding:6px 10px;background:var(--amber-bg);border-left:3px solid var(--accent);border-radius:var(--radius)"><strong style="text-transform:uppercase;letter-spacing:.05em;font-size:10px;color:var(--accent)">Outcome:</strong> ${esc(v.outcome)}</div>` : ''}
-          ${v.notes ? `<div style="font-size:12px;color:var(--text2);margin-top:6px;font-style:italic;white-space:pre-wrap">${esc(v.notes)}</div>` : ''}
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-          <div style="font-size:10px;color:var(--text3);text-align:right">${esc(v.reported_by_email || 'unknown')}</div>
-          <div style="display:flex;gap:4px">
-            <button class="btn btn-sm" onclick="CRM.editVisitLog(${v.id})" title="Edit"><i class="ti ti-edit"></i></button>
-            <button class="btn btn-sm" onclick="CRM.deleteVisitLog(${v.id})" title="Delete"><i class="ti ti-trash"></i></button>
-          </div>
-        </div>
-      </div>
-    </div>`;
-  }
-
-  function computeDurationMinutes(start, end) {
-    if (!start || !end) return null;
-    const toMin = t => { const [h,m] = t.split(':'); return parseInt(h,10)*60 + parseInt(m,10); };
-    const d = toMin(end) - toMin(start);
-    return d > 0 ? d : null;
-  }
-
-  function openNewVisitLog() {
-    state.visitLogEditing = 'new';
-    renderVisitLog();
-  }
-
-  function editVisitLog(id) {
-    state.visitLogEditing = id;
-    renderVisitLog();
-  }
-
-  async function deleteVisitLog(id) {
-    if (!confirm('Delete this visit log entry?')) return;
+  // ── Lifecycle: start / close / auto-close ──────────────────────────
+  async function startSession() {
+    if (state.relog.currentSession) { alert('A session is already open.'); return; }
+    if (!confirm('Start a new Customer Relations Log session?\n\nLocation will be tracked every 2 minutes while open. The app must remain foregrounded for GPS tracking to work.')) return;
     try {
-      const { error } = await sb.from('crm_sales_visits').delete().eq('id', id);
+      const userId = getCurrentUserId();
+      const email = getCurrentUserEmail();
+      const { data, error } = await sb.from('crm_session_logs').insert({
+        reported_by_user_id: userId,
+        reported_by_email: email,
+        started_at: new Date().toISOString(),
+        status: 'open'
+      }).select().single();
       if (error) throw error;
-      state.salesVisits = state.salesVisits.filter(v => v.id !== id);
-      renderVisitLogList();
-    } catch (e) { alert('Failed: ' + e.message); }
-  }
-
-  function cancelVisitLogEdit() {
-    state.visitLogEditing = null;
-    renderVisitLog();
-  }
-
-  function renderVisitLogForm(idOrNew) {
-    const root = document.getElementById('crm-vl-content');
-    if (!root) return;
-    const isNew = idOrNew === 'new';
-    const v = isNew ? null : (state.salesVisits || []).find(x => x.id === idOrNew);
-    if (!isNew && !v) { state.visitLogEditing = null; renderVisitLog(); return; }
-
-    // Defaults for new
-    const today = isoDate(new Date());
-    const nowTime = new Date().toTimeString().slice(0,5);
-    const data = v ? {
-      visit_date: v.visit_date,
-      time_arrived: (v.time_arrived||'').slice(0,5),
-      time_departed: (v.time_departed||'').slice(0,5),
-      location_id: v.location_id,
-      location_name_freeform: v.location_name_freeform || '',
-      contact_person: v.contact_person || '',
-      contact_role: v.contact_role || '',
-      outcome: v.outcome || '',
-      notes: v.notes || '',
-    } : {
-      visit_date: today,
-      time_arrived: nowTime,
-      time_departed: '',
-      location_id: null,
-      location_name_freeform: '',
-      contact_person: '',
-      contact_role: '',
-      outcome: '',
-      notes: '',
-    };
-
-    const locOptions = state.locations
-      .filter(l => l.status === 'active' && !(l.location_name||'').startsWith('[Personal'))
-      .sort((a,b) => a.location_name.localeCompare(b.location_name))
-      .map(l => `<option value="${l.id}" ${data.location_id===l.id?'selected':''}>${esc(l.location_name)}</option>`)
-      .join('');
-
-    root.innerHTML = `<div class="card" style="background:var(--bg);margin:0">
-      <div class="card-header">
-        <span class="card-title">${isNew ? 'Log New Visit' : 'Edit Visit'}</span>
-        <span style="font-size:11px;color:var(--text3)">Reporting as: <strong>${esc(getCurrentUserEmail() || 'unknown user')}</strong></span>
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-        <div>
-          <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Date</label>
-          <input type="date" id="vl-date" value="${data.visit_date}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box">
-        </div>
-        <div></div>
-        <div>
-          <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Time Arrived</label>
-          <input type="time" id="vl-arrived" value="${data.time_arrived}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box">
-        </div>
-        <div>
-          <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Time Departed</label>
-          <input type="time" id="vl-departed" value="${data.time_departed}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box">
-        </div>
-      </div>
-
-      <div style="margin-bottom:14px">
-        <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Location (existing customer)</label>
-        <select id="vl-loc" onchange="CRM._updateVisitLogFreeform()" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box">
-          <option value="">— Not in CRM (enter name below) —</option>
-          ${locOptions}
-        </select>
-        <input type="text" id="vl-loc-freeform" placeholder="Location name (only if not in CRM)" value="${esc(data.location_name_freeform)}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box;margin-top:6px;${data.location_id?'opacity:.5':''}">
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-        <div>
-          <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Contact Person</label>
-          <input type="text" id="vl-contact" value="${esc(data.contact_person)}" placeholder="e.g. Sarah Johnson" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box">
-        </div>
-        <div>
-          <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Their Role</label>
-          <input type="text" id="vl-role" value="${esc(data.contact_role)}" placeholder="e.g. Office Manager" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box">
-        </div>
-      </div>
-
-      <div style="margin-bottom:14px">
-        <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Outcome</label>
-        <input type="text" id="vl-outcome" value="${esc(data.outcome)}" placeholder="e.g. Closed sale, follow-up next month, not interested..." style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box">
-      </div>
-
-      <div style="margin-bottom:14px">
-        <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Notes</label>
-        <textarea id="vl-notes" rows="4" placeholder="What was discussed, next steps, any other context..." style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;resize:vertical;box-sizing:border-box">${esc(data.notes)}</textarea>
-      </div>
-
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn btn-sm" onclick="CRM.cancelVisitLogEdit()">Cancel</button>
-        <button class="btn btn-sm btn-primary" onclick="CRM.saveVisitLog(${isNew ? 'null' : v.id})"><i class="ti ti-check"></i> Save</button>
-      </div>
-    </div>`;
-    applyPermissions();
-  }
-
-  // Toggle the freeform field's visual emphasis based on whether a location is picked
-  function _updateVisitLogFreeform() {
-    const sel = document.getElementById('vl-loc');
-    const ff = document.getElementById('vl-loc-freeform');
-    if (!sel || !ff) return;
-    if (sel.value) {
-      ff.style.opacity = '.5';
-      ff.value = '';
-    } else {
-      ff.style.opacity = '1';
-    }
-  }
-
-  async function saveVisitLog(id) {
-    const get = el => document.getElementById(el)?.value?.trim() || null;
-    const locId = document.getElementById('vl-loc')?.value;
-    // Mobile uses #vl-loc-search as the type-ahead; desktop uses #vl-loc-freeform.
-    // If a location is picked, freeform is ignored. If not, take whichever text field exists.
-    let freeform = null;
-    if (!locId) {
-      freeform = get('vl-loc-freeform') || get('vl-loc-search');
-    }
-    const data = {
-      visit_date: get('vl-date'),
-      time_arrived: get('vl-arrived') || null,
-      time_departed: get('vl-departed') || null,
-      location_id: locId ? parseInt(locId, 10) : null,
-      location_name_freeform: locId ? null : freeform,
-      contact_person: get('vl-contact'),
-      contact_role: get('vl-role'),
-      outcome: get('vl-outcome'),
-      notes: get('vl-notes'),
-      reported_by_email: getCurrentUserEmail(),
-      reported_by_user_id: getCurrentUserId(),
-    };
-    if (!data.visit_date) { alert('Date is required.'); return; }
-    if (!data.location_id && !data.location_name_freeform) {
-      alert('Please select a location or enter a name.');
-      return;
-    }
-    try {
-      if (id) {
-        const { data: upd, error } = await sb.from('crm_sales_visits').update(data).eq('id', id).select().single();
-        if (error) throw error;
-        const i = state.salesVisits.findIndex(v => v.id === id);
-        if (i >= 0) state.salesVisits[i] = upd;
-        else state.salesVisits.push(upd);
+      state.relog.currentSession = data;
+      state.relog.sessionEvents = [];
+      state.relog.sessionPings = [];
+      // Request location permission upfront so user gets prompted now, not mid-session
+      const firstPos = await getGpsPositionOnce();
+      if (firstPos) {
+        state.relog.geoPermission = 'granted';
+        await pingNow();
       } else {
-        const { data: ins, error } = await sb.from('crm_sales_visits').insert(data).select().single();
-        if (error) throw error;
-        if (!state.salesVisits.some(v => v.id === ins.id)) state.salesVisits.push(ins);
+        state.relog.geoPermission = 'denied';
       }
-      state.visitLogEditing = null;
-      renderVisitLog();
+      startPingLoop();
+      renderRelog();
+      renderMobRelog();
     } catch (e) {
-      alert('Failed to save: ' + e.message);
-      console.error('[CRM] saveVisitLog', e);
+      alert('Failed to start session: ' + (e.message || e));
+      console.error('[CRM relog] startSession', e);
     }
   }
 
-  // ─── Mobile Visit Log ─────────────────────────────────────────────
-  function renderMobVisitLog() {
-    const root = document.getElementById('crm-vl-mob');
+  async function closeSession() {
+    if (!state.relog.currentSession) return;
+    const events = state.relog.sessionEvents.length;
+    if (!confirm(`Close this session permanently?\n\n${events} event${events===1?'':'s'} logged. Once closed, the log cannot be edited.`)) return;
+    try {
+      const id = state.relog.currentSession.id;
+      const { data, error } = await sb.from('crm_session_logs')
+        .update({ status: 'closed', closed_at: new Date().toISOString() })
+        .eq('id', id).select().single();
+      if (error) throw error;
+      stopPingLoop();
+      // Move to "viewing" mode showing the just-closed session
+      state.relog.viewing = id;
+      state.relog.viewingEvents = state.relog.sessionEvents.slice();
+      state.relog.viewingPings = state.relog.sessionPings.slice();
+      state.relog.currentSession = null;
+      state.relog.sessionEvents = [];
+      state.relog.sessionPings = [];
+      await refreshSessionHistory();
+      renderRelog();
+      renderMobRelog();
+    } catch (e) {
+      alert('Failed to close session: ' + (e.message || e));
+      console.error('[CRM relog] closeSession', e);
+    }
+  }
+
+  // Server-side auto-close of stale sessions (>16h open). Called on app load.
+  async function checkStaleSessionAutoClose() {
+    try {
+      const { error } = await sb.rpc('crm_auto_close_stale_sessions');
+      if (error) console.warn('[CRM relog] auto-close RPC:', error.message);
+    } catch (e) {
+      console.warn('[CRM relog] auto-close RPC failed', e);
+    }
+  }
+
+  // ── GPS ping loop ──────────────────────────────────────────────────
+  function startPingLoop() {
+    stopPingLoop();
+    state.relog.pingTimer = setInterval(pingNow, PING_INTERVAL_MS);
+  }
+  function stopPingLoop() {
+    if (state.relog.pingTimer) { clearInterval(state.relog.pingTimer); state.relog.pingTimer = null; }
+  }
+  async function pingNow() {
+    if (!state.relog.currentSession) return;
+    // Only ping when app is foregrounded (visibility API)
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    const pos = await getGpsPositionOnce(10000);
+    if (!pos) return;
+    try {
+      const { data, error } = await sb.from('crm_session_pings').insert({
+        session_id: state.relog.currentSession.id,
+        pinged_at: new Date().toISOString(),
+        lat: pos.lat, lng: pos.lng, accuracy_meters: pos.accuracy,
+      }).select().single();
+      if (error) throw error;
+      state.relog.sessionPings.push(data);
+      state.relog.lastPingAt = new Date();
+      updateRelogStatusBars();
+    } catch (e) {
+      console.warn('[CRM relog] ping insert failed', e.message);
+    }
+  }
+
+  // ── Event logging ──────────────────────────────────────────────────
+  async function logEvent() {
+    if (!state.relog.currentSession) { alert('No open session.'); return; }
+    const ta = document.getElementById('relog-event-input');
+    if (!ta) return;
+    const content = ta.value.trim();
+    if (!content) { ta.focus(); return; }
+    const pos = await getGpsPositionOnce(8000);
+    try {
+      const { data, error } = await sb.from('crm_session_events').insert({
+        session_id: state.relog.currentSession.id,
+        logged_at: new Date().toISOString(),
+        content,
+        lat: pos?.lat || null,
+        lng: pos?.lng || null,
+        accuracy_meters: pos?.accuracy || null,
+      }).select().single();
+      if (error) throw error;
+      state.relog.sessionEvents.unshift(data);
+      ta.value = '';
+      renderRelog();
+      renderMobRelog();
+    } catch (e) {
+      alert('Failed to log event: ' + (e.message || e));
+      console.error('[CRM relog] logEvent', e);
+    }
+  }
+
+  async function editOpenEvent(id) {
+    const ev = state.relog.sessionEvents.find(e => e.id === id);
+    if (!ev) return;
+    const newContent = prompt('Edit event content:', ev.content);
+    if (newContent === null) return;  // user cancelled
+    const trimmed = newContent.trim();
+    if (!trimmed || trimmed === ev.content) return;
+    try {
+      const { data, error } = await sb.from('crm_session_events').update({
+        content: trimmed,
+        manually_edited: true,
+        edited_at: new Date().toISOString(),
+        original_content: ev.original_content || ev.content,
+      }).eq('id', id).select().single();
+      if (error) throw error;
+      const i = state.relog.sessionEvents.findIndex(e => e.id === id);
+      if (i >= 0) state.relog.sessionEvents[i] = data;
+      renderRelog();
+      renderMobRelog();
+    } catch (e) {
+      alert('Failed to edit event: ' + (e.message || e));
+    }
+  }
+
+  async function deleteOpenEvent(id) {
+    if (!confirm('Delete this event?')) return;
+    try {
+      const { error } = await sb.from('crm_session_events').delete().eq('id', id);
+      if (error) throw error;
+      state.relog.sessionEvents = state.relog.sessionEvents.filter(e => e.id !== id);
+      renderRelog();
+      renderMobRelog();
+    } catch (e) { alert('Failed to delete: ' + (e.message || e)); }
+  }
+
+  // ── Loading / refreshing ───────────────────────────────────────────
+  async function loadActiveSessionForCurrentUser() {
+    const userId = getCurrentUserId();
+    if (!userId) return;
+    try {
+      const { data: sessions, error } = await sb.from('crm_session_logs')
+        .select('*')
+        .eq('reported_by_user_id', userId)
+        .eq('status', 'open')
+        .order('started_at', { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      if (sessions && sessions.length) {
+        state.relog.currentSession = sessions[0];
+        const [evRes, pgRes] = await Promise.all([
+          sb.from('crm_session_events').select('*').eq('session_id', sessions[0].id).order('logged_at', { ascending: false }),
+          sb.from('crm_session_pings').select('*').eq('session_id', sessions[0].id).order('pinged_at', { ascending: true }),
+        ]);
+        if (evRes.error) throw evRes.error;
+        if (pgRes.error) throw pgRes.error;
+        state.relog.sessionEvents = evRes.data || [];
+        state.relog.sessionPings = pgRes.data || [];
+        startPingLoop();
+        // Try one GPS reading immediately so we capture current location on resume
+        pingNow();
+      }
+    } catch (e) {
+      console.warn('[CRM relog] loadActiveSession', e);
+    }
+  }
+
+  async function refreshSessionHistory() {
+    try {
+      // Show most recent 30 closed sessions visible to this user (RLS filters)
+      const { data, error } = await sb.from('crm_session_logs')
+        .select('*')
+        .in('status', ['closed', 'auto-closed'])
+        .order('started_at', { ascending: false })
+        .limit(30);
+      if (error) throw error;
+      state.relog.history = data || [];
+    } catch (e) {
+      console.warn('[CRM relog] refreshHistory', e);
+    }
+  }
+
+  async function viewClosedSession(id) {
+    state.relog.viewing = id;
+    try {
+      const [evRes, pgRes] = await Promise.all([
+        sb.from('crm_session_events').select('*').eq('session_id', id).order('logged_at', { ascending: true }),
+        sb.from('crm_session_pings').select('*').eq('session_id', id).order('pinged_at', { ascending: true }),
+      ]);
+      state.relog.viewingEvents = (evRes.data || []);
+      state.relog.viewingPings = (pgRes.data || []);
+      renderRelog();
+      renderMobRelog();
+    } catch (e) { console.warn(e); }
+  }
+
+  function closeReviewView() {
+    state.relog.viewing = null;
+    state.relog.viewingEvents = [];
+    state.relog.viewingPings = [];
+    renderRelog();
+    renderMobRelog();
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────
+  function fmtSessionDuration(startISO, endISO) {
+    if (!startISO) return '—';
+    const start = new Date(startISO);
+    const end = endISO ? new Date(endISO) : new Date();
+    const mins = Math.round((end - start) / 60000);
+    if (mins < 60) return mins + ' min';
+    const h = Math.floor(mins / 60), m = mins % 60;
+    return `${h}h ${m}m`;
+  }
+  function fmtRelogTimestamp(iso) {
+    if (!iso) return '';
+    return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+  function fmtRelogDateTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' +
+           d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function updateRelogStatusBars() {
+    const els = document.querySelectorAll('[data-relog-status]');
+    els.forEach(el => { el.innerHTML = relogStatusBarHTML(); });
+  }
+  function relogStatusBarHTML() {
+    const s = state.relog;
+    if (!s.currentSession) return '';
+    const lastPing = s.lastPingAt;
+    const minsSincePing = lastPing ? Math.round((Date.now() - lastPing.getTime()) / 60000) : null;
+    let pingColor = 'var(--text3)', pingText = 'No GPS reading yet';
+    if (lastPing && minsSincePing != null) {
+      if (minsSincePing < 5) { pingColor = 'var(--green)'; pingText = `GPS ${minsSincePing}m ago`; }
+      else if (minsSincePing < 15) { pingColor = 'var(--amber)'; pingText = `GPS ${minsSincePing}m ago`; }
+      else { pingColor = 'var(--red)'; pingText = `GPS stale (${minsSincePing}m)`; }
+    }
+    if (s.geoPermission === 'denied') { pingColor = 'var(--red)'; pingText = 'GPS permission denied'; }
+    return `<span style="color:${pingColor};font-size:11px;font-weight:700">● ${esc(pingText)}</span>`;
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // RENDERING — Desktop
+  // ────────────────────────────────────────────────────────────────────
+  function renderRelog() {
+    const root = document.getElementById('crm-relog-content');
     if (!root) return;
-    if (state.visitLogEditing) {
-      renderMobVisitLogForm(state.visitLogEditing);
-      return;
-    }
-    // List view
-    root.innerHTML = `
-      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
-        <select id="crm-vl-mob-range" onchange="CRM.filterMobVisitLog()" style="padding:8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;flex:1;min-width:120px">
-          <option value="7">Last 7 days</option>
-          <option value="30" selected>Last 30 days</option>
-          <option value="90">Last 90 days</option>
-          <option value="all">All time</option>
-        </select>
-        <button class="btn btn-sm btn-primary" onclick="CRM.openNewVisitLog();renderMobVisitLog()"><i class="ti ti-plus"></i> New</button>
-      </div>
-      <div style="margin-bottom:10px">
-        <input type="text" id="crm-vl-mob-search" placeholder="Search..." oninput="CRM.filterMobVisitLog()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box">
-      </div>
-      <div id="crm-vl-mob-list"></div>`;
-    renderMobVisitLogList();
+    // If viewing a closed session
+    if (state.relog.viewing) { root.innerHTML = renderClosedSessionView(); return; }
+    // If a session is open, show the live console
+    if (state.relog.currentSession) { root.innerHTML = renderOpenSessionView(); return; }
+    // Otherwise the landing view: start button + history list
+    root.innerHTML = renderLandingView();
   }
 
-  function filterMobVisitLog() {
-    state.visitLogFilter.q = document.getElementById('crm-vl-mob-search')?.value || '';
-    state.visitLogFilter.range = document.getElementById('crm-vl-mob-range')?.value || '30';
-    renderMobVisitLogList();
+  function renderLandingView() {
+    const history = state.relog.history;
+    const userEmail = getCurrentUserEmail();
+    return `<div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:18px">
+      <button class="btn btn-primary" onclick="CRM.startSession()" style="font-size:14px;padding:12px 20px"><i class="ti ti-player-play"></i> Start New Session</button>
+      <div style="flex:1;min-width:200px;font-size:12px;color:var(--text2);padding:8px 0">
+        Reporting as: <strong>${esc(userEmail || 'unknown user')}</strong>
+      </div>
+    </div>
+    ${history.length ? `<div style="margin-top:12px">
+      <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">Recent Sessions</div>
+      ${history.map(s => renderHistoryRow(s)).join('')}
+    </div>` : `<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">No prior sessions yet. Tap "Start New Session" to begin.</div>`}`;
   }
 
-  function renderMobVisitLogList() {
-    const list = document.getElementById('crm-vl-mob-list');
-    if (!list) return;
-    const rows = getFilteredVisits();
-    if (!rows.length) {
-      list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text3);font-style:italic">No visits logged. Tap "New" to add one.</div>`;
-      return;
-    }
-    const byDate = {};
-    rows.forEach(v => { (byDate[v.visit_date] = byDate[v.visit_date] || []).push(v); });
-    list.innerHTML = Object.keys(byDate).sort().reverse().map(d => {
-      const dt = new Date(d + 'T00:00:00');
-      return `<div style="margin-bottom:14px">
-        <div style="font-family:var(--font-display);font-size:13px;color:var(--sidebar);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">
-          ${dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}
-        </div>
-        ${byDate[d].map(v => {
-          const loc = state.locations.find(l => l.id === v.location_id);
-          const locName = loc ? loc.location_name : (v.location_name_freeform || 'Unknown');
-          const dur = computeDurationMinutes(v.time_arrived, v.time_departed);
-          return `<div onclick="CRM.editVisitLog(${v.id});renderMobVisitLog()" style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;cursor:pointer">
-            <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.02em">${esc(locName)}</div>
-            ${v.contact_person ? `<div style="font-size:11px;color:var(--text2);margin-top:2px">${esc(v.contact_person)}${v.contact_role?' (' + esc(v.contact_role) + ')':''}</div>` : ''}
-            ${v.time_arrived ? `<div style="font-size:11px;color:var(--text3);margin-top:2px">${fmtTime(v.time_arrived)}${v.time_departed?' – ' + fmtTime(v.time_departed):''}${dur?' · ' + dur + ' min':''}</div>` : ''}
-            ${v.outcome ? `<div style="font-size:11px;color:var(--text);margin-top:4px;padding:4px 8px;background:var(--amber-bg);border-left:2px solid var(--accent);border-radius:var(--radius)">${esc(v.outcome)}</div>` : ''}
-          </div>`;
-        }).join('')}
-      </div>`;
-    }).join('');
+  function renderHistoryRow(s) {
+    const isAuto = s.status === 'auto-closed';
+    return `<div onclick="CRM.viewClosedSession(${s.id})" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;cursor:pointer">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700">${esc(s.reported_by_email || 'unknown')}${isAuto?'<span style="font-size:10px;color:var(--amber);margin-left:8px;text-transform:uppercase;font-weight:700">Auto-closed</span>':''}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${fmtRelogDateTime(s.started_at)} → ${fmtRelogTimestamp(s.closed_at)} <span style="color:var(--text2);font-weight:700;margin-left:6px">${fmtSessionDuration(s.started_at, s.closed_at)}</span></div>
+      </div>
+      <i class="ti ti-chevron-right" style="color:var(--text3)"></i>
+    </div>`;
   }
 
-  function renderMobVisitLogForm(idOrNew) {
-    const root = document.getElementById('crm-vl-mob');
-    if (!root) return;
-    const isNew = idOrNew === 'new';
-    const v = isNew ? null : (state.salesVisits || []).find(x => x.id === idOrNew);
-    if (!isNew && !v) { state.visitLogEditing = null; renderMobVisitLog(); return; }
-
-    const today = isoDate(new Date());
-    const nowTime = new Date().toTimeString().slice(0,5);
-    const data = v ? {
-      visit_date: v.visit_date,
-      time_arrived: (v.time_arrived||'').slice(0,5),
-      time_departed: (v.time_departed||'').slice(0,5),
-      location_id: v.location_id,
-      location_name_freeform: v.location_name_freeform || '',
-      contact_person: v.contact_person || '',
-      contact_role: v.contact_role || '',
-      outcome: v.outcome || '',
-      notes: v.notes || '',
-    } : {
-      visit_date: today,
-      time_arrived: nowTime,
-      time_departed: '',
-      location_id: null,
-      location_name_freeform: '',
-      contact_person: '',
-      contact_role: '',
-      outcome: '',
-      notes: '',
-    };
-
-    // Find the picked location's display name (if any), to show in the search field initially
-    const pickedLoc = data.location_id ? state.locations.find(l => l.id === data.location_id) : null;
-    const initialLocText = pickedLoc ? pickedLoc.location_name : data.location_name_freeform;
-
-    const inputStyle = 'width:100%;padding:10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box';
-    const labelStyle = 'font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px';
-
-    root.innerHTML = `<div class="card" style="margin:0">
-      <div style="font-family:var(--font-display);font-size:18px;color:var(--sidebar);margin-bottom:4px">${isNew ? 'Log Visit' : 'Edit Visit'}</div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:14px">Reporting as: <strong>${esc(getCurrentUserEmail() || 'unknown')}</strong></div>
-
-      <label style="${labelStyle}">Date</label>
-      <input type="date" id="vl-date" value="${data.visit_date}" style="${inputStyle};margin-bottom:12px">
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        <div>
-          <label style="${labelStyle}">Arrived</label>
-          <input type="time" id="vl-arrived" value="${data.time_arrived}" style="${inputStyle}">
-        </div>
-        <div>
-          <label style="${labelStyle}">Departed</label>
-          <input type="time" id="vl-departed" value="${data.time_departed}" style="${inputStyle}">
-        </div>
+  function renderOpenSessionView() {
+    const s = state.relog.currentSession;
+    const events = state.relog.sessionEvents;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+      <div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Session In Progress</div>
+        <div style="font-family:var(--font-display);font-size:18px;color:var(--sidebar)">Started ${fmtRelogTimestamp(s.started_at)} · ${fmtSessionDuration(s.started_at, null)} elapsed</div>
+        <div style="margin-top:4px" data-relog-status>${relogStatusBarHTML()}</div>
       </div>
+      <button class="btn btn-primary" onclick="CRM.closeSession()" style="background:var(--red);border-color:var(--red);color:#fff"><i class="ti ti-square-x"></i> Close Session</button>
+    </div>
 
-      <label style="${labelStyle}">Location</label>
-      <div style="position:relative;margin-bottom:12px">
-        <input type="text" id="vl-loc-search" value="${esc(initialLocText)}" placeholder="Type to search customers, or enter new..." oninput="CRM._filterLocPicker()" onfocus="CRM._filterLocPicker()" style="${inputStyle}" autocomplete="off">
-        <input type="hidden" id="vl-loc" value="${data.location_id || ''}">
-        <div id="vl-loc-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);max-height:220px;overflow-y:auto;z-index:30;box-shadow:0 4px 12px rgba(0,0,0,.15)"></div>
-        <div style="font-size:10px;color:var(--text3);margin-top:4px">Pick from the list or type a name that's not yet in your CRM</div>
+    <div class="card" style="margin:0 0 14px 0;background:var(--bg)">
+      <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:6px">Log Event</label>
+      <textarea id="relog-event-input" rows="2" placeholder="What just happened? (e.g. Arrived at Mercy Health Center · Spoke with Sarah about pricing · Closing for follow-up next week)" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:6px">
+        <button class="btn btn-sm btn-primary" onclick="CRM.logEvent()"><i class="ti ti-plus"></i> Log Event</button>
       </div>
+    </div>
 
-      <label style="${labelStyle}">Contact Person</label>
-      <input type="text" id="vl-contact" value="${esc(data.contact_person)}" placeholder="Name" style="${inputStyle};margin-bottom:12px">
+    <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">Timeline (${events.length} event${events.length===1?'':'s'})</div>
+    ${events.length ? events.map(e => renderEventRowEditable(e)).join('') : `<div style="padding:20px;text-align:center;color:var(--text3);font-style:italic">No events yet. Use the box above to log the first one.</div>`}`;
+  }
 
-      <label style="${labelStyle}">Their Role</label>
-      <input type="text" id="vl-role" value="${esc(data.contact_role)}" placeholder="Office Manager, Owner, etc." style="${inputStyle};margin-bottom:12px">
-
-      <label style="${labelStyle}">Outcome</label>
-      <input type="text" id="vl-outcome" value="${esc(data.outcome)}" placeholder="What happened?" style="${inputStyle};margin-bottom:12px">
-
-      <label style="${labelStyle}">Notes</label>
-      <textarea id="vl-notes" rows="4" placeholder="What was discussed, next steps..." style="${inputStyle};resize:vertical;margin-bottom:14px">${esc(data.notes)}</textarea>
-
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-sm" onclick="CRM.cancelVisitLogEdit();renderMobVisitLog()" style="flex:1">Cancel</button>
-        <button class="btn btn-sm btn-primary" onclick="CRM.saveVisitLog(${isNew ? 'null' : v.id}).then(()=>renderMobVisitLog())" style="flex:1"><i class="ti ti-check"></i> Save</button>
-        ${!isNew ? `<button class="btn btn-sm" onclick="CRM.deleteVisitLog(${v.id}).then(()=>{CRM.cancelVisitLogEdit();renderMobVisitLog()})" title="Delete"><i class="ti ti-trash"></i></button>` : ''}
+  function renderEventRowEditable(e) {
+    const editedMark = e.manually_edited ? '<span style="font-size:10px;color:var(--accent);margin-left:6px" title="Manually edited"><i class="ti ti-pencil"></i> edited</span>' : '';
+    return `<div style="display:flex;gap:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px">
+      <div style="flex-shrink:0;font-family:var(--font-mono,monospace);font-size:11px;color:var(--text3);min-width:64px">${fmtRelogTimestamp(e.logged_at)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;white-space:pre-wrap">${esc(e.content)}${editedMark}</div>
+        ${e.lat != null ? `<div style="font-size:10px;color:var(--text3);margin-top:3px"><i class="ti ti-map-pin" style="font-size:10px"></i> ${e.lat.toFixed(5)}, ${e.lng.toFixed(5)} (±${Math.round(e.accuracy_meters||0)}m)</div>` : '<div style="font-size:10px;color:var(--text3);margin-top:3px"><i class="ti ti-map-pin-off" style="font-size:10px"></i> no GPS</div>'}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <button class="btn btn-sm" onclick="CRM.editOpenEvent(${e.id})" title="Edit"><i class="ti ti-edit"></i></button>
+        <button class="btn btn-sm" onclick="CRM.deleteOpenEvent(${e.id})" title="Delete"><i class="ti ti-trash"></i></button>
       </div>
     </div>`;
   }
 
-  /**
-   * Filter the location-picker suggestions based on the search input.
-   * Cap at 25 visible results to keep the dropdown fast even with 200+ locations.
-   */
-  function _filterLocPicker() {
-    const input = document.getElementById('vl-loc-search');
-    const sug = document.getElementById('vl-loc-suggestions');
-    const hidden = document.getElementById('vl-loc');
-    if (!input || !sug || !hidden) return;
-    const q = input.value.toLowerCase().trim();
-    // When user types, clear any previously-picked location id so a freeform entry takes over
-    hidden.value = '';
-    if (!q) { sug.style.display = 'none'; return; }
-    const matches = state.locations
-      .filter(l => l.status === 'active'
-                && !(l.location_name||'').startsWith('[Personal')
-                && l.location_name.toLowerCase().includes(q))
-      .sort((a,b) => {
-        // Prefer prefix matches first
-        const ap = a.location_name.toLowerCase().startsWith(q) ? 0 : 1;
-        const bp = b.location_name.toLowerCase().startsWith(q) ? 0 : 1;
-        if (ap !== bp) return ap - bp;
-        return a.location_name.localeCompare(b.location_name);
-      })
-      .slice(0, 25);
-    if (!matches.length) {
-      sug.innerHTML = `<div style="padding:10px 12px;font-size:12px;color:var(--text3);font-style:italic">No matches — will save as new location name</div>`;
-      sug.style.display = 'block';
-      return;
-    }
-    sug.innerHTML = matches.map(l =>
-      `<div onclick="CRM._pickLoc(${l.id})" style="padding:10px 12px;font-size:13px;border-bottom:1px solid var(--bg2);cursor:pointer">${esc(l.location_name)}</div>`
-    ).join('');
-    sug.style.display = 'block';
+  function renderClosedSessionView() {
+    const s = state.relog.history.find(x => x.id === state.relog.viewing)
+            || { id: state.relog.viewing };
+    const events = state.relog.viewingEvents;
+    const pings = state.relog.viewingPings;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+      <div>
+        <button class="btn btn-sm" onclick="CRM.closeReviewView()" style="margin-bottom:6px"><i class="ti ti-arrow-left"></i> Back</button>
+        <div style="font-family:var(--font-display);font-size:18px;color:var(--sidebar)">${esc(s.reported_by_email || 'Session')}</div>
+        <div style="font-size:12px;color:var(--text3)">${fmtRelogDateTime(s.started_at)} → ${fmtRelogDateTime(s.closed_at)} · ${fmtSessionDuration(s.started_at, s.closed_at)} · ${events.length} event${events.length===1?'':'s'} · ${pings.length} GPS ping${pings.length===1?'':'s'}${s.status==='auto-closed'?' · <span style="color:var(--amber);font-weight:700">Auto-closed</span>':''}</div>
+      </div>
+    </div>
+
+    <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">Event Timeline</div>
+    ${events.length ? events.map(e => renderEventRowReadonly(e)).join('') : `<div style="padding:20px;text-align:center;color:var(--text3);font-style:italic">No events logged in this session.</div>`}
+
+    ${pings.length ? `<div style="margin-top:18px">
+      <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">GPS Trail</div>
+      ${renderGpsTrailLink(pings, s)}
+    </div>` : ''}`;
   }
 
-  function _pickLoc(id) {
-    const loc = state.locations.find(l => l.id === id);
-    if (!loc) return;
-    const input = document.getElementById('vl-loc-search');
-    const hidden = document.getElementById('vl-loc');
-    const sug = document.getElementById('vl-loc-suggestions');
-    if (input) input.value = loc.location_name;
-    if (hidden) hidden.value = id;
-    if (sug) sug.style.display = 'none';
+  function renderEventRowReadonly(e) {
+    const editedMark = e.manually_edited ? '<span style="font-size:10px;color:var(--accent);margin-left:6px;font-weight:700" title="Edited live, before close"><i class="ti ti-pencil"></i> edited</span>' : '';
+    return `<div style="display:flex;gap:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px">
+      <div style="flex-shrink:0;font-family:var(--font-mono,monospace);font-size:11px;color:var(--text3);min-width:64px">${fmtRelogTimestamp(e.logged_at)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;white-space:pre-wrap">${esc(e.content)}${editedMark}</div>
+        ${e.lat != null ? `<div style="font-size:10px;color:var(--text3);margin-top:3px"><i class="ti ti-map-pin" style="font-size:10px"></i> ${e.lat.toFixed(5)}, ${e.lng.toFixed(5)} <a href="https://www.google.com/maps?q=${e.lat},${e.lng}" target="_blank" rel="noopener" style="color:var(--accent);margin-left:4px">view</a></div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  function renderGpsTrailLink(pings, session) {
+    if (pings.length < 2) {
+      return `<div style="font-size:12px;color:var(--text3);padding:10px">Only ${pings.length} GPS reading${pings.length===1?'':'s'} captured — not enough to draw a route.</div>`;
+    }
+    // Build a Google Maps URL with waypoints. Limit to ~10 evenly-sampled points.
+    const sample = (arr, n) => {
+      if (arr.length <= n) return arr;
+      const step = arr.length / n;
+      const out = [];
+      for (let i = 0; i < n; i++) out.push(arr[Math.floor(i*step)]);
+      out[n-1] = arr[arr.length-1];
+      return out;
+    };
+    const points = sample(pings, 10);
+    const origin = `${points[0].lat},${points[0].lng}`;
+    const destination = `${points[points.length-1].lat},${points[points.length-1].lng}`;
+    const waypoints = points.slice(1, -1).map(p => `${p.lat},${p.lng}`).join('|');
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints ? '&waypoints=' + encodeURIComponent(waypoints) : ''}&travelmode=driving`;
+    const first = pings[0], last = pings[pings.length-1];
+    return `<div style="padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:6px">${pings.length} GPS readings between ${fmtRelogTimestamp(first.pinged_at)} and ${fmtRelogTimestamp(last.pinged_at)}</div>
+      <a href="${url}" target="_blank" rel="noopener" style="text-decoration:none">
+        <button class="btn btn-sm" style="background:var(--green);color:#fff;border-color:var(--green)"><i class="ti ti-route"></i> View route on Google Maps</button>
+      </a>
+    </div>`;
+  }
+
+  // Public entry: called when section is shown
+  async function renderRelogEntry() {
+    // Run auto-close on entry so any stale sessions get caught
+    await checkStaleSessionAutoClose();
+    if (!state.relog.currentSession) await loadActiveSessionForCurrentUser();
+    await refreshSessionHistory();
+    renderRelog();
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // RENDERING — Mobile (compact)
+  // ────────────────────────────────────────────────────────────────────
+  function renderMobRelog() {
+    const root = document.getElementById('crm-relog-mob');
+    if (!root) return;
+    if (state.relog.viewing) { root.innerHTML = renderMobClosedSessionView(); return; }
+    if (state.relog.currentSession) { root.innerHTML = renderMobOpenSessionView(); return; }
+    root.innerHTML = renderMobLandingView();
+  }
+
+  function renderMobLandingView() {
+    const history = state.relog.history;
+    return `<button class="btn btn-primary" onclick="CRM.startSession()" style="width:100%;font-size:15px;padding:14px;margin-bottom:14px"><i class="ti ti-player-play"></i> Start New Session</button>
+    <div style="font-size:11px;color:var(--text3);text-align:center;margin-bottom:14px">Reporting as: <strong>${esc(getCurrentUserEmail() || 'unknown')}</strong></div>
+    ${history.length ? `<div style="font-family:var(--font-display);font-size:13px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">Recent Sessions</div>
+      ${history.map(s => renderMobHistoryRow(s)).join('')}` : `<div style="padding:30px 14px;text-align:center;color:var(--text3);font-style:italic;font-size:13px">No prior sessions yet.</div>`}`;
+  }
+  function renderMobHistoryRow(s) {
+    const isAuto = s.status === 'auto-closed';
+    return `<div onclick="CRM.viewClosedSession(${s.id})" style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;cursor:pointer">
+      <div style="font-size:12px;font-weight:700">${fmtRelogDateTime(s.started_at)}${isAuto?' <span style="font-size:10px;color:var(--amber);font-weight:700">AUTO</span>':''}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:2px">${fmtSessionDuration(s.started_at, s.closed_at)}</div>
+    </div>`;
+  }
+
+  function renderMobOpenSessionView() {
+    const s = state.relog.currentSession;
+    const events = state.relog.sessionEvents;
+    return `<div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:var(--radius);padding:10px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div>
+          <div style="font-size:10px;color:var(--amber);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Session Open</div>
+          <div style="font-family:var(--font-display);font-size:15px;color:var(--sidebar)">Started ${fmtRelogTimestamp(s.started_at)} · ${fmtSessionDuration(s.started_at, null)}</div>
+        </div>
+        <button class="btn btn-sm" onclick="CRM.closeSession()" style="background:var(--red);color:#fff;border-color:var(--red)"><i class="ti ti-square-x"></i> Close</button>
+      </div>
+      <div style="margin-top:6px" data-relog-status>${relogStatusBarHTML()}</div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px;margin-bottom:12px">
+      <textarea id="relog-event-input" rows="3" placeholder="What just happened?" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box;resize:vertical"></textarea>
+      <button class="btn btn-sm btn-primary" onclick="CRM.logEvent()" style="margin-top:6px;width:100%;padding:10px"><i class="ti ti-plus"></i> Log Event</button>
+    </div>
+
+    <div style="font-family:var(--font-display);font-size:13px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">Timeline (${events.length})</div>
+    ${events.length ? events.map(e => renderMobEventRowEditable(e)).join('') : `<div style="padding:20px;text-align:center;color:var(--text3);font-style:italic;font-size:13px">No events yet.</div>`}`;
+  }
+
+  function renderMobEventRowEditable(e) {
+    const editedMark = e.manually_edited ? ' <span style="font-size:9px;color:var(--accent);font-weight:700"><i class="ti ti-pencil"></i> edited</span>' : '';
+    return `<div style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
+        <div style="font-family:var(--font-mono,monospace);font-size:11px;color:var(--text3);font-weight:700">${fmtRelogTimestamp(e.logged_at)}${editedMark}</div>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-sm" onclick="CRM.editOpenEvent(${e.id})"><i class="ti ti-edit"></i></button>
+          <button class="btn btn-sm" onclick="CRM.deleteOpenEvent(${e.id})"><i class="ti ti-trash"></i></button>
+        </div>
+      </div>
+      <div style="font-size:13px;white-space:pre-wrap">${esc(e.content)}</div>
+      ${e.lat != null ? `<div style="font-size:10px;color:var(--text3);margin-top:3px"><i class="ti ti-map-pin" style="font-size:10px"></i> ${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}</div>` : ''}
+    </div>`;
+  }
+
+  function renderMobClosedSessionView() {
+    const s = state.relog.history.find(x => x.id === state.relog.viewing) || { id: state.relog.viewing };
+    const events = state.relog.viewingEvents;
+    const pings = state.relog.viewingPings;
+    return `<button class="btn btn-sm" onclick="CRM.closeReviewView()" style="margin-bottom:10px"><i class="ti ti-arrow-left"></i> Back</button>
+    <div style="font-family:var(--font-display);font-size:15px;color:var(--sidebar)">${esc(s.reported_by_email || 'Session')}</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:14px">${fmtRelogDateTime(s.started_at)} → ${fmtRelogTimestamp(s.closed_at)} · ${fmtSessionDuration(s.started_at, s.closed_at)} · ${events.length} events · ${pings.length} pings</div>
+
+    ${events.length ? events.map(e => renderMobEventRowReadonly(e)).join('') : `<div style="padding:20px;text-align:center;color:var(--text3);font-style:italic;font-size:13px">No events.</div>`}
+
+    ${pings.length >= 2 ? `<div style="margin-top:14px">${renderGpsTrailLink(pings, s)}</div>` : ''}`;
+  }
+
+  function renderMobEventRowReadonly(e) {
+    const editedMark = e.manually_edited ? ' <span style="font-size:9px;color:var(--accent);font-weight:700"><i class="ti ti-pencil"></i> edited</span>' : '';
+    return `<div style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px">
+      <div style="font-family:var(--font-mono,monospace);font-size:11px;color:var(--text3);font-weight:700;margin-bottom:4px">${fmtRelogTimestamp(e.logged_at)}${editedMark}</div>
+      <div style="font-size:13px;white-space:pre-wrap">${esc(e.content)}</div>
+      ${e.lat != null ? `<div style="font-size:10px;color:var(--text3);margin-top:3px"><i class="ti ti-map-pin" style="font-size:10px"></i> ${e.lat.toFixed(5)}, ${e.lng.toFixed(5)} <a href="https://www.google.com/maps?q=${e.lat},${e.lng}" target="_blank" rel="noopener" style="color:var(--accent);margin-left:4px">view</a></div>` : ''}
+    </div>`;
   }
 
   return {
@@ -4495,16 +4536,15 @@ window.CRM = (function(){
     renderForecast,
     // Auto-scheduler
     startAutoSchedule, toggleProposal, toggleAllProposals, editProposal, cancelProposals, approveProposals,
-    // Visit Log
-    renderVisitLog, filterVisitLog, openNewVisitLog, editVisitLog, deleteVisitLog,
-    cancelVisitLogEdit, saveVisitLog, _updateVisitLogFreeform,
-    _filterLocPicker, _pickLoc,
+    // Customer Relations Log (session-based)
+    renderRelog: renderRelogEntry, startSession, closeSession, logEvent,
+    editOpenEvent, deleteOpenEvent, viewClosedSession, closeReviewView,
     // Mobile
     renderMobCustomers, filterMobCustomers, renderMobCustomerList,
     openMobProfile, renderMobProfile,
     renderMobSchedule, setMobScheduleTruck,
     renderMobForecast,
-    renderMobVisitLog, filterMobVisitLog,
+    renderMobRelog,
     _state: state
   };
 })();
@@ -4540,7 +4580,7 @@ init();
     <button class="mob-tab" data-sec="crm-customers" onclick="mobShow('crm-customers',this)"><i class="ti ti-building-store"></i>Customers</button>
     <button class="mob-tab" data-sec="crm-schedule" onclick="mobShow('crm-schedule',this)"><i class="ti ti-calendar"></i>Schedule</button>
     <button class="mob-tab" data-sec="crm-forecast" onclick="mobShow('crm-forecast',this)"><i class="ti ti-trending-up"></i>Mfg Forecast</button>
-    <button class="mob-tab" data-sec="crm-visitlog" onclick="mobShow('crm-visitlog',this)"><i class="ti ti-clipboard-text"></i>Visit Log</button>
+    <button class="mob-tab" data-sec="crm-relog" onclick="mobShow('crm-relog',this)"><i class="ti ti-clipboard-text"></i>Relations Log</button>
   </div>
 
   <div class="mob-body" id="mob-body"></div>
