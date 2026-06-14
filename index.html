@@ -2123,9 +2123,9 @@ window.CRM = (function(){
     const l = state.locations.find(x => x.id === state.currentLocId);
     if (!l) { root.innerHTML = '<div class="card">Location not found.</div>'; return; }
 
-    const tabs = ['overview','sales','items','stock'];
-    const labels = { overview:'Overview', sales:'Sales History', items:'Item Hierarchy', stock:'Inventory Impact' };
-    const tabBar = `<div class="tab-bar" style="display:flex;border-bottom:1px solid var(--border);margin-bottom:16px">
+    const tabs = ['overview','sales','items','pattern','stock'];
+    const labels = { overview:'Overview', sales:'Sales History', items:'Item Hierarchy', pattern:'Visit Pattern', stock:'Inventory Impact' };
+    const tabBar = `<div class="tab-bar" style="display:flex;border-bottom:1px solid var(--border);margin-bottom:16px;flex-wrap:wrap">
       ${tabs.map(t => `<div onclick="CRM.setProfileTab('${t}')" style="padding:8px 14px;font-size:12px;cursor:pointer;border-bottom:2px solid ${state.profileTab===t?'var(--accent)':'transparent'};margin-bottom:-1px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${state.profileTab===t?'var(--accent)':'var(--text3)'}">${labels[t]}</div>`).join('')}
     </div>`;
 
@@ -2133,6 +2133,7 @@ window.CRM = (function(){
     if (state.profileTab === 'overview')   body = renderOverview(l);
     else if (state.profileTab === 'sales') body = renderSalesHistory(l);
     else if (state.profileTab === 'items') body = renderItemHierarchy(l);
+    else if (state.profileTab === 'pattern') body = renderVisitPattern(l);
     else if (state.profileTab === 'stock') body = renderInventoryImpact(l);
 
     root.innerHTML = `<div class="card">${tabBar}${body}</div>`;
@@ -2377,6 +2378,122 @@ window.CRM = (function(){
         <div style="text-align:right;min-width:80px"><div style="font-family:var(--font-display);font-size:16px;color:var(--sidebar)">${it.qty}</div><div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase">units</div></div>
         <div style="text-align:right;min-width:80px;margin-left:8px"><div style="font-size:13px;font-weight:700;color:var(--accent)">${fmtMoney(it.revenue)}</div></div>
       </div>`).join('')}`;
+  }
+
+  /**
+   * Render the Visit Pattern tab — shows what the auto-scheduler "knows" about this
+   * location: inferred cadence, typical day-of-week, typical time, confidence,
+   * and any explicit override coming from scheduling_preference text.
+   */
+  function renderVisitPattern(l) {
+    const pattern = computePattern(l.id);
+    const pref = parsePreference(l.scheduling_preference);
+
+    // Determine what cadence/day/time the scheduler would actually use, and why
+    let cadenceDays, cadenceSource;
+    if (pref?.intervalDays) { cadenceDays = pref.intervalDays; cadenceSource = 'preference text'; }
+    else if (pattern.cadenceDays) { cadenceDays = Math.round(pattern.cadenceDays); cadenceSource = 'inferred from history'; }
+    else { cadenceDays = tierCadenceDays(l.tier); cadenceSource = `tier fallback (${l.tier || 'pending'})`; }
+
+    let chosenDow, dowSource;
+    if (pref?.dows?.length) { chosenDow = pref.dows[0]; dowSource = 'preference text'; }
+    else if (pattern.byDow) {
+      let maxW = 0, maxDow = -1;
+      for (let i = 1; i <= 5; i++) { if (pattern.byDow[i] > maxW) { maxW = pattern.byDow[i]; maxDow = i; } }
+      if (maxDow >= 0 && maxW > 0) { chosenDow = maxDow; dowSource = 'inferred from history'; }
+    }
+    if (chosenDow == null) { chosenDow = l.tier === 'high' ? 1 : 3; dowSource = 'fallback (Mon/Wed by tier)'; }
+
+    let startTime, endTime, timeSource;
+    if (pref?.startTime && pref?.endTime) { startTime = pref.startTime; endTime = pref.endTime; timeSource = 'preference text'; }
+    else if (pattern.count > 0) { startTime = pattern.typicalStart; endTime = pattern.typicalEnd; timeSource = 'inferred from history'; }
+    else { startTime = '09:00:00'; endTime = '11:00:00'; timeSource = 'fallback (9–11 AM)'; }
+
+    const confidence = pref ? 'high' : pattern.count >= 6 ? 'high' : pattern.count >= 2 ? 'medium' : 'low';
+    const confColor = confidence === 'high' ? 'var(--green)' : confidence === 'medium' ? 'var(--amber)' : 'var(--text3)';
+    const confBg = confidence === 'high' ? 'var(--green-bg)' : confidence === 'medium' ? 'var(--amber-bg)' : 'var(--bg2)';
+
+    // Next due date
+    let nextDueText = '—';
+    if (pattern.lastVisit) {
+      const due = addDays(new Date(pattern.lastVisit + 'T12:00:00'), cadenceDays);
+      nextDueText = fmtDate(due) + ` (${cadenceDays} days after last visit)`;
+    } else {
+      nextDueText = 'No history — first scheduling will use fallback';
+    }
+
+    // Truck preference
+    let truckPick, truckSource;
+    if (l.truck_lock && l.preferred_truck) { truckPick = l.preferred_truck; truckSource = 'locked to preferred truck'; }
+    else if (l.preferred_truck) { truckPick = l.preferred_truck; truckSource = 'preferred truck (overridable)'; }
+    else if (pattern.byTruck) {
+      truckPick = (pattern.byTruck[1] || 0) >= (pattern.byTruck[2] || 0) ? 1 : 2;
+      truckSource = 'inferred from history';
+    } else { truckPick = 1; truckSource = 'fallback (Truck 1)'; }
+
+    // DOW distribution chart (top 7)
+    const dowBars = pattern.byDow ? pattern.byDow.map((w, i) => {
+      const pct = Math.round(w * 100);
+      return `<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:3px 0">
+        <div style="width:32px;color:var(--text3);font-weight:700">${DOW_NAMES[i]}</div>
+        <div style="flex:1;height:6px;background:var(--bg2);border-radius:4px;overflow:hidden">
+          <div style="height:6px;background:${pct>0?'var(--accent)':'transparent'};width:${Math.max(pct,1)}%"></div>
+        </div>
+        <div style="width:36px;text-align:right;color:var(--text2);font-weight:700">${pct}%</div>
+      </div>`;
+    }).join('') : '';
+
+    return `<p class="section-intro">What the auto-scheduler will use for this location. Edit the location's <strong>Scheduling Preference</strong> text on the Overview tab to override any inferred values.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="card" style="margin:0">
+        <div class="card-header"><span class="card-title">Cadence</span></div>
+        <div style="font-family:var(--font-display);font-size:28px;color:var(--sidebar);line-height:1">${cadenceDays} days</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Source: <span style="color:var(--text2);font-weight:700">${cadenceSource}</span></div>
+        <div style="margin-top:10px;font-size:12px;color:var(--text2)">
+          <strong>Next due:</strong> ${nextDueText}
+        </div>
+        <div style="margin-top:6px;font-size:12px;color:var(--text2)">
+          <strong>Last visit:</strong> ${pattern.lastVisit ? fmtDate(pattern.lastVisit) : '—'}
+        </div>
+      </div>
+
+      <div class="card" style="margin:0">
+        <div class="card-header"><span class="card-title">Day &amp; Time</span></div>
+        <div style="font-family:var(--font-display);font-size:22px;color:var(--sidebar);line-height:1.2">${DOW_NAMES[chosenDow]} · ${fmtTime(startTime)}–${fmtTime(endTime)}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Day source: <span style="color:var(--text2);font-weight:700">${dowSource}</span></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Time source: <span style="color:var(--text2);font-weight:700">${timeSource}</span></div>
+      </div>
+
+      <div class="card" style="margin:0">
+        <div class="card-header"><span class="card-title">Truck</span></div>
+        <div style="font-family:var(--font-display);font-size:22px;color:var(--sidebar)">Truck ${truckPick}${l.truck_lock?' <span style="font-size:13px;color:var(--amber)"><i class="ti ti-lock"></i></span>':''}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">${truckSource}</div>
+      </div>
+
+      <div class="card" style="margin:0">
+        <div class="card-header"><span class="card-title">Confidence</span></div>
+        <div><span style="font-size:14px;padding:4px 10px;border-radius:4px;background:${confBg};color:${confColor};font-weight:700;text-transform:uppercase;letter-spacing:.04em">${confidence}</span></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:8px">${pattern.count} past stop${pattern.count===1?'':'s'} in history${pref?' · preference text parsed':''}</div>
+      </div>
+    </div>
+
+    ${pattern.byDow ? `<div class="card" style="margin-top:14px">
+      <div class="card-header"><span class="card-title">Visit Distribution by Day of Week</span></div>
+      <p style="font-size:11px;color:var(--text3);margin-bottom:8px">Recency-weighted (half-life ~6 months). Bars show which weekdays past visits clustered on.</p>
+      ${dowBars}
+    </div>` : ''}
+
+    ${pref ? `<div class="card" style="margin-top:14px;background:var(--amber-bg);border-color:var(--amber)">
+      <div class="card-header"><span class="card-title" style="color:var(--amber)">Preference Override Detected</span></div>
+      <p style="font-size:11px;color:var(--text2);margin-bottom:6px">The scheduling preference text was parsed into structured rules. These take priority over history.</p>
+      <div style="font-family:var(--font-mono,monospace);font-size:12px;padding:8px;background:var(--surface);border-radius:var(--radius)">
+        ${pref.dows?.length ? `<div>Days: ${pref.dows.map(d => DOW_NAMES[d]).join(', ')}</div>` : ''}
+        ${pref.intervalDays ? `<div>Interval: every ${pref.intervalDays} days</div>` : ''}
+        ${pref.nthOfMonth ? `<div>Nth of month: ${pref.nthOfMonth.join(', ')}</div>` : ''}
+        ${pref.startTime ? `<div>Time: ${fmtTime(pref.startTime)}–${fmtTime(pref.endTime)}</div>` : ''}
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px;font-style:italic">Original text: "${esc(l.scheduling_preference)}"</div>
+    </div>` : ''}`;
   }
 
   function renderInventoryImpact(l) {
