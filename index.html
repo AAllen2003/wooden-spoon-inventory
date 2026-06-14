@@ -1813,7 +1813,6 @@ window.CRM = (function(){
     locations: [],
     stops: [],
     visits: [],
-    salesVisits: [],
     settings: { buffer_minutes: 15, truck_device_map: {} },
     currentLocId: null,
     profileTab: 'overview',
@@ -1870,11 +1869,10 @@ window.CRM = (function(){
   async function loadAll() {
     if (!sb) { console.warn('[CRM] no supabase client'); return; }
     try {
-      const [locations, stops, visits, salesVisits, setR] = await Promise.all([
+      const [locations, stops, visits, setR] = await Promise.all([
         fetchAll('crm_locations', 'location_name', true),
         fetchAll('crm_stops', 'scheduled_date', true),
         fetchAll('crm_visits', 'visit_date', false),
-        fetchAll('crm_sales_visits', 'visit_date', false),
         sb.from('app_settings').select('*').in('key', ['crm_buffer_minutes','crm_truck_device_map'])
       ]);
 
@@ -1888,10 +1886,9 @@ window.CRM = (function(){
         });
       };
 
-      state.locations   = dedupe(locations);
-      state.stops       = dedupe(stops);
-      state.visits      = dedupe(visits);
-      state.salesVisits = dedupe(salesVisits);
+      state.locations = dedupe(locations);
+      state.stops     = dedupe(stops);
+      state.visits    = dedupe(visits);
 
       (setR.data || []).forEach(r => {
         if (r.key === 'crm_buffer_minutes') state.settings.buffer_minutes = parseInt(r.value, 10) || 15;
@@ -1902,7 +1899,7 @@ window.CRM = (function(){
       });
       state.loaded = true;
       if (!state.weekStart) state.weekStart = mondayOf(new Date());
-      console.log(`[CRM] loaded: ${state.locations.length} locations, ${state.stops.length} stops, ${state.visits.length} visits, ${state.salesVisits.length} sales reports`);
+      console.log(`[CRM] loaded: ${state.locations.length} locations, ${state.stops.length} stops, ${state.visits.length} visits`);
       subscribeRealtime();
     } catch (e) {
       console.error('[CRM] load error', e);
@@ -1912,14 +1909,18 @@ window.CRM = (function(){
   function subscribeRealtime() {
     if (state.subscribed || !sb) return;
     state.subscribed = true;
-    ['crm_locations','crm_stops','crm_visits','crm_sales_visits'].forEach(table => {
+    ['crm_locations','crm_stops','crm_visits','crm_session_logs','crm_session_events','crm_session_pings'].forEach(table => {
       sb.channel(`crm-${table}`)
         .on('postgres_changes', { event:'*', schema:'public', table }, payload => {
           // Always read live array references from `state`, not captured at subscribe-time
+          // Route the realtime event to the right local cache; session tables push into state.relog
+          if (table === 'crm_session_logs' || table === 'crm_session_events' || table === 'crm_session_pings') {
+            handleRelogRealtime(table, payload);
+            return;
+          }
           const arr = table === 'crm_locations' ? state.locations
                     : table === 'crm_stops'     ? state.stops
-                    : table === 'crm_visits'    ? state.visits
-                    : state.salesVisits;
+                    : state.visits;
           if (payload.eventType === 'INSERT') {
             // Dedupe: skip if we already have this id (manual push beat the event)
             if (!arr.some(r => r.id === payload.new.id)) arr.push(payload.new);
@@ -4128,7 +4129,9 @@ window.CRM = (function(){
     if (!ta) return;
     const content = ta.value.trim();
     if (!content) { ta.focus(); return; }
+    console.log('[CRM relog] logEvent: starting GPS lookup…');
     const pos = await getGpsPositionOnce(8000);
+    console.log('[CRM relog] logEvent: GPS=', pos, '— inserting');
     try {
       const { data, error } = await sb.from('crm_session_events').insert({
         session_id: state.relog.currentSession.id,
@@ -4139,13 +4142,62 @@ window.CRM = (function(){
         accuracy_meters: pos?.accuracy || null,
       }).select().single();
       if (error) throw error;
-      state.relog.sessionEvents.unshift(data);
+      console.log('[CRM relog] logEvent: inserted', data);
+      // Dedup against realtime push that may have arrived first
+      if (!state.relog.sessionEvents.some(e => e.id === data.id)) {
+        state.relog.sessionEvents.unshift(data);
+      }
       ta.value = '';
       renderRelog();
       renderMobRelog();
     } catch (e) {
       alert('Failed to log event: ' + (e.message || e));
       console.error('[CRM relog] logEvent', e);
+    }
+  }
+
+  // Realtime handler for session tables — dispatches inserts/updates/deletes to the right state arrays
+  function handleRelogRealtime(table, payload) {
+    const ev = payload.eventType;
+    if (table === 'crm_session_events') {
+      const arr = state.relog.sessionEvents;
+      // Only react if the event belongs to the currently-open session (otherwise it's noise)
+      const sessionId = (payload.new || payload.old || {}).session_id;
+      if (!state.relog.currentSession || sessionId !== state.relog.currentSession.id) return;
+      if (ev === 'INSERT') {
+        if (!arr.some(e => e.id === payload.new.id)) arr.unshift(payload.new);
+      } else if (ev === 'UPDATE') {
+        const i = arr.findIndex(e => e.id === payload.new.id);
+        if (i >= 0) arr[i] = payload.new;
+      } else if (ev === 'DELETE') {
+        const i = arr.findIndex(e => e.id === payload.old.id);
+        if (i >= 0) arr.splice(i, 1);
+      }
+      renderRelog();
+      renderMobRelog();
+    } else if (table === 'crm_session_pings') {
+      const sessionId = (payload.new || payload.old || {}).session_id;
+      if (!state.relog.currentSession || sessionId !== state.relog.currentSession.id) return;
+      if (ev === 'INSERT') {
+        const arr = state.relog.sessionPings;
+        if (!arr.some(p => p.id === payload.new.id)) arr.push(payload.new);
+        state.relog.lastPingAt = new Date(payload.new.pinged_at);
+        updateRelogStatusBars();
+        // Also re-render so the "Pings: N" counter updates live
+        renderRelog();
+        renderMobRelog();
+      }
+    } else if (table === 'crm_session_logs') {
+      // Session was closed externally (e.g., by auto-close), or by this user from another tab
+      if (ev === 'UPDATE' && state.relog.currentSession && payload.new.id === state.relog.currentSession.id) {
+        if (payload.new.status !== 'open') {
+          stopPingLoop();
+          state.relog.currentSession = null;
+          state.relog.sessionEvents = [];
+          state.relog.sessionPings = [];
+          refreshSessionHistory().then(() => { renderRelog(); renderMobRelog(); });
+        }
+      }
     }
   }
 
@@ -4335,6 +4387,7 @@ window.CRM = (function(){
   function renderOpenSessionView() {
     const s = state.relog.currentSession;
     const events = state.relog.sessionEvents;
+    const pings = state.relog.sessionPings;
     return `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
       <div>
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Session In Progress</div>
@@ -4347,13 +4400,34 @@ window.CRM = (function(){
     <div class="card" style="margin:0 0 14px 0;background:var(--bg)">
       <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:6px">Log Event</label>
       <textarea id="relog-event-input" rows="2" placeholder="What just happened? (e.g. Arrived at Mercy Health Center · Spoke with Sarah about pricing · Closing for follow-up next week)" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
-      <div style="display:flex;justify-content:flex-end;margin-top:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:8px;flex-wrap:wrap">
+        <div style="font-size:11px;color:var(--text3)">${pings.length} GPS ping${pings.length===1?'':'s'} captured so far${pings.length>=2 ? ' · <a href="#" onclick="event.preventDefault();CRM.openLiveGpsTrail()" style="color:var(--accent);font-weight:700">View location history</a>':''}</div>
         <button class="btn btn-sm btn-primary" onclick="CRM.logEvent()"><i class="ti ti-plus"></i> Log Event</button>
       </div>
     </div>
 
     <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">Timeline (${events.length} event${events.length===1?'':'s'})</div>
     ${events.length ? events.map(e => renderEventRowEditable(e)).join('') : `<div style="padding:20px;text-align:center;color:var(--text3);font-style:italic">No events yet. Use the box above to log the first one.</div>`}`;
+  }
+
+  // Open the live GPS trail (during an open session) — same Google Maps route link as the closed-session review
+  function openLiveGpsTrail() {
+    const pings = state.relog.sessionPings;
+    if (pings.length < 2) { alert('Need at least 2 GPS readings to show a route.'); return; }
+    const sample = (arr, n) => {
+      if (arr.length <= n) return arr;
+      const step = arr.length / n;
+      const out = [];
+      for (let i = 0; i < n; i++) out.push(arr[Math.floor(i*step)]);
+      out[n-1] = arr[arr.length-1];
+      return out;
+    };
+    const points = sample(pings, 10);
+    const origin = `${points[0].lat},${points[0].lng}`;
+    const destination = `${points[points.length-1].lat},${points[points.length-1].lng}`;
+    const waypoints = points.slice(1, -1).map(p => `${p.lat},${p.lng}`).join('|');
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints ? '&waypoints=' + encodeURIComponent(waypoints) : ''}&travelmode=driving`;
+    window.open(url, '_blank', 'noopener');
   }
 
   function renderEventRowEditable(e) {
@@ -4469,6 +4543,7 @@ window.CRM = (function(){
   function renderMobOpenSessionView() {
     const s = state.relog.currentSession;
     const events = state.relog.sessionEvents;
+    const pings = state.relog.sessionPings;
     return `<div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:var(--radius);padding:10px;margin-bottom:12px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
         <div>
@@ -4477,7 +4552,10 @@ window.CRM = (function(){
         </div>
         <button class="btn btn-sm" onclick="CRM.closeSession()" style="background:var(--red);color:#fff;border-color:var(--red)"><i class="ti ti-square-x"></i> Close</button>
       </div>
-      <div style="margin-top:6px" data-relog-status>${relogStatusBarHTML()}</div>
+      <div style="margin-top:6px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px" data-relog-status-container>
+        <span data-relog-status>${relogStatusBarHTML()}</span>
+        <span style="font-size:11px;color:var(--text3)">${pings.length} ping${pings.length===1?'':'s'}${pings.length>=2?' · <a href="#" onclick="event.preventDefault();CRM.openLiveGpsTrail()" style="color:var(--accent);font-weight:700">view trail</a>':''}</span>
+      </div>
     </div>
 
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px;margin-bottom:12px">
@@ -4539,6 +4617,7 @@ window.CRM = (function(){
     // Customer Relations Log (session-based)
     renderRelog: renderRelogEntry, startSession, closeSession, logEvent,
     editOpenEvent, deleteOpenEvent, viewClosedSession, closeReviewView,
+    openLiveGpsTrail,
     // Mobile
     renderMobCustomers, filterMobCustomers, renderMobCustomerList,
     openMobProfile, renderMobProfile,
