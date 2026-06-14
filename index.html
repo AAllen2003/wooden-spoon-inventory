@@ -304,6 +304,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
     <button class="nav-item" onclick="showSection('crm-customers',this)"><i class="ti ti-building-store"></i> Customers</button>
     <button class="nav-item" onclick="showSection('crm-schedule',this)"><i class="ti ti-calendar"></i> Schedule</button>
     <button class="nav-item" onclick="showSection('crm-forecast',this)"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
+    <button class="nav-item" onclick="showSection('crm-visitlog',this)"><i class="ti ti-clipboard-text"></i> Visit Log</button>
     <div class="nav-section">System</div>
     <button class="nav-item" onclick="showSection('settings',this)"><i class="ti ti-settings"></i> Settings</button>
   </nav>
@@ -678,6 +679,26 @@ body.staff-mode [data-admin-only]{display:none !important;}
       </div>
     </div>
 
+    <div class="section" id="sec-crm-visitlog">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Visit Log</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input type="text" id="crm-vl-search" placeholder="Search location, contact, notes..." oninput="CRM.filterVisitLog()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;min-width:220px">
+            <select id="crm-vl-range" onchange="CRM.filterVisitLog()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+              <option value="7">Last 7 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="all">All time</option>
+            </select>
+            <button class="btn btn-sm btn-accent" onclick="CRM.openNewVisitLog()"><i class="ti ti-plus"></i> Log Visit</button>
+          </div>
+        </div>
+        <p class="section-intro">Salesperson activity log: where you went, who you spoke with, time spent, and what happened. Separate from POS sales attribution.</p>
+        <div id="crm-vl-content"></div>
+      </div>
+    </div>
+
   </div>
 </main>
 
@@ -702,6 +723,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
     <button class="more-item" onclick="showSection('crm-customers',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-building-store"></i> Customers</button>
     <button class="more-item" onclick="showSection('crm-schedule',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-calendar"></i> Schedule</button>
     <button class="more-item" onclick="showSection('crm-forecast',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
+    <button class="more-item" onclick="showSection('crm-visitlog',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-clipboard-text"></i> Visit Log</button>
     <hr class="more-divider">
     <button class="more-item" onclick="showSection('settings',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-settings"></i> Settings</button>
     <button class="more-item" onclick="syncNow();closeMoreDrawer()"><i class="ti ti-refresh"></i> Sync Data</button>
@@ -931,7 +953,7 @@ function openMoreDrawer(){document.getElementById('more-overlay').classList.add(
 function closeMoreDrawer(){document.getElementById('more-overlay').classList.remove('open');document.getElementById('more-drawer').classList.remove('open');}
 
 // ── NAV ───────────────────────────────────────────────────────────
-const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer Profile','crm-schedule':'Schedule','crm-forecast':'Manufacturing Forecast'};
+const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer Profile','crm-schedule':'Schedule','crm-forecast':'Manufacturing Forecast','crm-visitlog':'Visit Log'};
 function showSection(name,btn){
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
@@ -950,6 +972,7 @@ function showSection(name,btn){
   if(name==='crm-profile'){/* rendered via openProfile */}
   if(name==='crm-schedule')CRM.renderSchedule();
   if(name==='crm-forecast')CRM.renderForecast();
+  if(name==='crm-visitlog')CRM.renderVisitLog();
   applyPermissions();
 }
 function openLocDetail(loc){currentLoc=loc;document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.getElementById('sec-loc-detail').classList.add('active');document.getElementById('page-title').textContent=loc;document.getElementById('back-btn').style.display='inline-flex';document.getElementById('loc-detail-cat-filter').value='';renderLocDetail();applyPermissions();}
@@ -1516,7 +1539,7 @@ function mobShow(sec,btn){
   document.querySelectorAll('.mob-tab').forEach(t=>t.classList.remove('active'));
   if(btn)btn.classList.add('active');
   if(btn)btn.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
-  const titles={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer','crm-schedule':'Schedule','crm-forecast':'Mfg Forecast'};
+  const titles={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer','crm-schedule':'Schedule','crm-forecast':'Mfg Forecast','crm-visitlog':'Visit Log'};
   document.getElementById('mob-title').textContent=titles[sec]||sec;
   // Render immediately with whatever data we have
   mobRender();
@@ -1545,6 +1568,7 @@ function mobRender(){
   else if(mobSection==='crm-profile'){el.innerHTML='<div id="crm-profile-mob"></div>';CRM.renderMobProfile();}
   else if(mobSection==='crm-schedule'){el.innerHTML='<div id="crm-schedule-mob"></div>';CRM.renderMobSchedule();}
   else if(mobSection==='crm-forecast'){el.innerHTML='<div id="crm-forecast-mob"></div>';CRM.renderMobForecast();}
+  else if(mobSection==='crm-visitlog'){el.innerHTML='<div id="crm-vl-mob"></div>';CRM.renderMobVisitLog();}
   el.scrollTop=0;
   // Update alert badge
   const b=document.getElementById('mob-alert-badge');
@@ -1799,6 +1823,7 @@ window.CRM = (function(){
     locations: [],
     stops: [],
     visits: [],
+    salesVisits: [],
     settings: { buffer_minutes: 15, truck_device_map: {} },
     currentLocId: null,
     profileTab: 'overview',
@@ -1855,10 +1880,11 @@ window.CRM = (function(){
   async function loadAll() {
     if (!sb) { console.warn('[CRM] no supabase client'); return; }
     try {
-      const [locations, stops, visits, setR] = await Promise.all([
+      const [locations, stops, visits, salesVisits, setR] = await Promise.all([
         fetchAll('crm_locations', 'location_name', true),
         fetchAll('crm_stops', 'scheduled_date', true),
         fetchAll('crm_visits', 'visit_date', false),
+        fetchAll('crm_sales_visits', 'visit_date', false),
         sb.from('app_settings').select('*').in('key', ['crm_buffer_minutes','crm_truck_device_map'])
       ]);
 
@@ -1872,9 +1898,10 @@ window.CRM = (function(){
         });
       };
 
-      state.locations = dedupe(locations);
-      state.stops     = dedupe(stops);
-      state.visits    = dedupe(visits);
+      state.locations   = dedupe(locations);
+      state.stops       = dedupe(stops);
+      state.visits      = dedupe(visits);
+      state.salesVisits = dedupe(salesVisits);
 
       (setR.data || []).forEach(r => {
         if (r.key === 'crm_buffer_minutes') state.settings.buffer_minutes = parseInt(r.value, 10) || 15;
@@ -1885,7 +1912,7 @@ window.CRM = (function(){
       });
       state.loaded = true;
       if (!state.weekStart) state.weekStart = mondayOf(new Date());
-      console.log(`[CRM] loaded: ${state.locations.length} locations, ${state.stops.length} stops, ${state.visits.length} visits`);
+      console.log(`[CRM] loaded: ${state.locations.length} locations, ${state.stops.length} stops, ${state.visits.length} visits, ${state.salesVisits.length} sales reports`);
       subscribeRealtime();
     } catch (e) {
       console.error('[CRM] load error', e);
@@ -1895,13 +1922,14 @@ window.CRM = (function(){
   function subscribeRealtime() {
     if (state.subscribed || !sb) return;
     state.subscribed = true;
-    ['crm_locations','crm_stops','crm_visits'].forEach(table => {
+    ['crm_locations','crm_stops','crm_visits','crm_sales_visits'].forEach(table => {
       sb.channel(`crm-${table}`)
         .on('postgres_changes', { event:'*', schema:'public', table }, payload => {
           // Always read live array references from `state`, not captured at subscribe-time
           const arr = table === 'crm_locations' ? state.locations
                     : table === 'crm_stops'     ? state.stops
-                    : state.visits;
+                    : table === 'crm_visits'    ? state.visits
+                    : state.salesVisits;
           if (payload.eventType === 'INSERT') {
             // Dedupe: skip if we already have this id (manual push beat the event)
             if (!arr.some(r => r.id === payload.new.id)) arr.push(payload.new);
@@ -2039,6 +2067,7 @@ window.CRM = (function(){
     else if (id === 'sec-crm-profile') renderProfile();
     else if (id === 'sec-crm-schedule') renderSchedule();
     else if (id === 'sec-crm-forecast') renderForecast();
+    else if (id === 'sec-crm-visitlog') renderVisitLog();
   }
 
   // ─── Customers list ────────────────────────────────────────────────
@@ -3959,6 +3988,453 @@ window.CRM = (function(){
     root.innerHTML = `<div class="card"><div style="font-family:var(--font-display);font-size:16px;color:var(--sidebar);margin-bottom:14px">Next 7 Days</div>${body}</div>`;
   }
 
+  // ─── Sales Visit Log ──────────────────────────────────────────────
+  // Salesperson activity log: distinct from crm_visits (POS attribution).
+  // Stored in crm_sales_visits table.
+
+  state.visitLogFilter = { q: '', range: '30' };
+  state.visitLogEditing = null; // id of visit being edited, or 'new', or null
+
+  function getCurrentUserEmail() {
+    if (typeof currentUser !== 'undefined' && currentUser?.email) return currentUser.email;
+    return null;
+  }
+  function getCurrentUserId() {
+    if (typeof currentUser !== 'undefined' && currentUser?.id) return currentUser.id;
+    return null;
+  }
+
+  function filterVisitLog() {
+    state.visitLogFilter.q = document.getElementById('crm-vl-search')?.value || '';
+    state.visitLogFilter.range = document.getElementById('crm-vl-range')?.value || '30';
+    renderVisitLogList();
+  }
+
+  function renderVisitLog() {
+    const root = document.getElementById('crm-vl-content');
+    if (!root) return;
+    if (state.visitLogEditing) {
+      renderVisitLogForm(state.visitLogEditing);
+      return;
+    }
+    renderVisitLogList();
+  }
+
+  function getFilteredVisits() {
+    const q = (state.visitLogFilter.q || '').toLowerCase().trim();
+    const range = state.visitLogFilter.range;
+    let rows = (state.salesVisits || []).slice();
+    if (range !== 'all') {
+      const days = parseInt(range, 10);
+      const cutoff = isoDate(addDays(new Date(), -days));
+      rows = rows.filter(v => v.visit_date >= cutoff);
+    }
+    if (q) {
+      rows = rows.filter(v => {
+        const loc = state.locations.find(l => l.id === v.location_id);
+        const locName = (loc ? loc.location_name : v.location_name_freeform) || '';
+        return locName.toLowerCase().includes(q)
+          || (v.contact_person||'').toLowerCase().includes(q)
+          || (v.contact_role||'').toLowerCase().includes(q)
+          || (v.outcome||'').toLowerCase().includes(q)
+          || (v.notes||'').toLowerCase().includes(q)
+          || (v.reported_by_email||'').toLowerCase().includes(q);
+      });
+    }
+    rows.sort((a,b) => {
+      if (a.visit_date !== b.visit_date) return a.visit_date < b.visit_date ? 1 : -1;
+      return (b.time_arrived||'').localeCompare(a.time_arrived||'');
+    });
+    return rows;
+  }
+
+  function renderVisitLogList() {
+    const root = document.getElementById('crm-vl-content');
+    if (!root) return;
+    const rows = getFilteredVisits();
+    const total = rows.length;
+    if (!total) {
+      root.innerHTML = `<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">No visits logged in this date range. Click "Log Visit" to start.</div>`;
+      return;
+    }
+    // Group by date
+    const byDate = {};
+    rows.forEach(v => { (byDate[v.visit_date] = byDate[v.visit_date] || []).push(v); });
+    root.innerHTML = `<div style="margin-bottom:10px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;font-weight:700">${total} visit${total===1?'':'s'}</div>
+      ${Object.keys(byDate).sort().reverse().map(d => {
+        const dt = new Date(d + 'T00:00:00');
+        return `<div style="margin-bottom:18px">
+          <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">
+            ${dt.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',year:'numeric'})}
+          </div>
+          ${byDate[d].map(v => renderVisitLogRow(v)).join('')}
+        </div>`;
+      }).join('')}`;
+  }
+
+  function renderVisitLogRow(v) {
+    const loc = state.locations.find(l => l.id === v.location_id);
+    const locName = loc ? loc.location_name : (v.location_name_freeform || 'Unknown location');
+    const timeStr = v.time_arrived && v.time_departed
+      ? `${fmtTime(v.time_arrived)} – ${fmtTime(v.time_departed)}`
+      : v.time_arrived
+        ? `Arrived ${fmtTime(v.time_arrived)}`
+        : '';
+    const duration = computeDurationMinutes(v.time_arrived, v.time_departed);
+    return `<div style="padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px">
+      <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.02em">${esc(locName)}${loc ? '' : ' <span style="font-size:10px;color:var(--text3);font-weight:400">(not in CRM)</span>'}</div>
+          ${v.contact_person ? `<div style="font-size:12px;color:var(--text2);margin-top:2px">Spoke with <strong>${esc(v.contact_person)}</strong>${v.contact_role?' (' + esc(v.contact_role) + ')':''}</div>` : ''}
+          ${timeStr ? `<div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${timeStr}${duration ? ' · ' + duration + ' min' : ''}</div>` : ''}
+          ${v.outcome ? `<div style="font-size:12px;color:var(--text);margin-top:6px;padding:6px 10px;background:var(--amber-bg);border-left:3px solid var(--accent);border-radius:var(--radius)"><strong style="text-transform:uppercase;letter-spacing:.05em;font-size:10px;color:var(--accent)">Outcome:</strong> ${esc(v.outcome)}</div>` : ''}
+          ${v.notes ? `<div style="font-size:12px;color:var(--text2);margin-top:6px;font-style:italic;white-space:pre-wrap">${esc(v.notes)}</div>` : ''}
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <div style="font-size:10px;color:var(--text3);text-align:right">${esc(v.reported_by_email || 'unknown')}</div>
+          <div style="display:flex;gap:4px">
+            <button class="btn btn-sm" onclick="CRM.editVisitLog(${v.id})" title="Edit"><i class="ti ti-edit"></i></button>
+            <button class="btn btn-sm" onclick="CRM.deleteVisitLog(${v.id})" title="Delete"><i class="ti ti-trash"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function computeDurationMinutes(start, end) {
+    if (!start || !end) return null;
+    const toMin = t => { const [h,m] = t.split(':'); return parseInt(h,10)*60 + parseInt(m,10); };
+    const d = toMin(end) - toMin(start);
+    return d > 0 ? d : null;
+  }
+
+  function openNewVisitLog() {
+    state.visitLogEditing = 'new';
+    renderVisitLog();
+  }
+
+  function editVisitLog(id) {
+    state.visitLogEditing = id;
+    renderVisitLog();
+  }
+
+  async function deleteVisitLog(id) {
+    if (!confirm('Delete this visit log entry?')) return;
+    try {
+      const { error } = await sb.from('crm_sales_visits').delete().eq('id', id);
+      if (error) throw error;
+      state.salesVisits = state.salesVisits.filter(v => v.id !== id);
+      renderVisitLogList();
+    } catch (e) { alert('Failed: ' + e.message); }
+  }
+
+  function cancelVisitLogEdit() {
+    state.visitLogEditing = null;
+    renderVisitLog();
+  }
+
+  function renderVisitLogForm(idOrNew) {
+    const root = document.getElementById('crm-vl-content');
+    if (!root) return;
+    const isNew = idOrNew === 'new';
+    const v = isNew ? null : (state.salesVisits || []).find(x => x.id === idOrNew);
+    if (!isNew && !v) { state.visitLogEditing = null; renderVisitLog(); return; }
+
+    // Defaults for new
+    const today = isoDate(new Date());
+    const nowTime = new Date().toTimeString().slice(0,5);
+    const data = v ? {
+      visit_date: v.visit_date,
+      time_arrived: (v.time_arrived||'').slice(0,5),
+      time_departed: (v.time_departed||'').slice(0,5),
+      location_id: v.location_id,
+      location_name_freeform: v.location_name_freeform || '',
+      contact_person: v.contact_person || '',
+      contact_role: v.contact_role || '',
+      outcome: v.outcome || '',
+      notes: v.notes || '',
+    } : {
+      visit_date: today,
+      time_arrived: nowTime,
+      time_departed: '',
+      location_id: null,
+      location_name_freeform: '',
+      contact_person: '',
+      contact_role: '',
+      outcome: '',
+      notes: '',
+    };
+
+    const locOptions = state.locations
+      .filter(l => l.status === 'active' && !(l.location_name||'').startsWith('[Personal'))
+      .sort((a,b) => a.location_name.localeCompare(b.location_name))
+      .map(l => `<option value="${l.id}" ${data.location_id===l.id?'selected':''}>${esc(l.location_name)}</option>`)
+      .join('');
+
+    root.innerHTML = `<div class="card" style="background:var(--bg);margin:0">
+      <div class="card-header">
+        <span class="card-title">${isNew ? 'Log New Visit' : 'Edit Visit'}</span>
+        <span style="font-size:11px;color:var(--text3)">Reporting as: <strong>${esc(getCurrentUserEmail() || 'unknown user')}</strong></span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        <div>
+          <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Date</label>
+          <input type="date" id="vl-date" value="${data.visit_date}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box">
+        </div>
+        <div></div>
+        <div>
+          <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Time Arrived</label>
+          <input type="time" id="vl-arrived" value="${data.time_arrived}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Time Departed</label>
+          <input type="time" id="vl-departed" value="${data.time_departed}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box">
+        </div>
+      </div>
+
+      <div style="margin-bottom:14px">
+        <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Location (existing customer)</label>
+        <select id="vl-loc" onchange="CRM._updateVisitLogFreeform()" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box">
+          <option value="">— Not in CRM (enter name below) —</option>
+          ${locOptions}
+        </select>
+        <input type="text" id="vl-loc-freeform" placeholder="Location name (only if not in CRM)" value="${esc(data.location_name_freeform)}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box;margin-top:6px;${data.location_id?'opacity:.5':''}">
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        <div>
+          <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Contact Person</label>
+          <input type="text" id="vl-contact" value="${esc(data.contact_person)}" placeholder="e.g. Sarah Johnson" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Their Role</label>
+          <input type="text" id="vl-role" value="${esc(data.contact_role)}" placeholder="e.g. Office Manager" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box">
+        </div>
+      </div>
+
+      <div style="margin-bottom:14px">
+        <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Outcome</label>
+        <input type="text" id="vl-outcome" value="${esc(data.outcome)}" placeholder="e.g. Closed sale, follow-up next month, not interested..." style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;box-sizing:border-box">
+      </div>
+
+      <div style="margin-bottom:14px">
+        <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Notes</label>
+        <textarea id="vl-notes" rows="4" placeholder="What was discussed, next steps, any other context..." style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;resize:vertical;box-sizing:border-box">${esc(data.notes)}</textarea>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-sm" onclick="CRM.cancelVisitLogEdit()">Cancel</button>
+        <button class="btn btn-sm btn-primary" onclick="CRM.saveVisitLog(${isNew ? 'null' : v.id})"><i class="ti ti-check"></i> Save</button>
+      </div>
+    </div>`;
+    applyPermissions();
+  }
+
+  // Toggle the freeform field's visual emphasis based on whether a location is picked
+  function _updateVisitLogFreeform() {
+    const sel = document.getElementById('vl-loc');
+    const ff = document.getElementById('vl-loc-freeform');
+    if (!sel || !ff) return;
+    if (sel.value) {
+      ff.style.opacity = '.5';
+      ff.value = '';
+    } else {
+      ff.style.opacity = '1';
+    }
+  }
+
+  async function saveVisitLog(id) {
+    const get = el => document.getElementById(el)?.value?.trim() || null;
+    const locId = document.getElementById('vl-loc')?.value;
+    const data = {
+      visit_date: get('vl-date'),
+      time_arrived: get('vl-arrived') || null,
+      time_departed: get('vl-departed') || null,
+      location_id: locId ? parseInt(locId, 10) : null,
+      location_name_freeform: locId ? null : get('vl-loc-freeform'),
+      contact_person: get('vl-contact'),
+      contact_role: get('vl-role'),
+      outcome: get('vl-outcome'),
+      notes: get('vl-notes'),
+      reported_by_email: getCurrentUserEmail(),
+      reported_by_user_id: getCurrentUserId(),
+    };
+    if (!data.visit_date) { alert('Date is required.'); return; }
+    if (!data.location_id && !data.location_name_freeform) {
+      alert('Please select a location or enter a name.');
+      return;
+    }
+    try {
+      if (id) {
+        // Update existing
+        const { data: upd, error } = await sb.from('crm_sales_visits').update(data).eq('id', id).select().single();
+        if (error) throw error;
+        const i = state.salesVisits.findIndex(v => v.id === id);
+        if (i >= 0) state.salesVisits[i] = upd;
+        else state.salesVisits.push(upd);
+      } else {
+        // Insert new
+        const { data: ins, error } = await sb.from('crm_sales_visits').insert(data).select().single();
+        if (error) throw error;
+        if (!state.salesVisits.some(v => v.id === ins.id)) state.salesVisits.push(ins);
+      }
+      state.visitLogEditing = null;
+      renderVisitLog();
+    } catch (e) {
+      alert('Failed to save: ' + e.message);
+      console.error('[CRM] saveVisitLog', e);
+    }
+  }
+
+  // ─── Mobile Visit Log ─────────────────────────────────────────────
+  function renderMobVisitLog() {
+    const root = document.getElementById('crm-vl-mob');
+    if (!root) return;
+    if (state.visitLogEditing) {
+      renderMobVisitLogForm(state.visitLogEditing);
+      return;
+    }
+    // List view
+    root.innerHTML = `
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
+        <select id="crm-vl-mob-range" onchange="CRM.filterMobVisitLog()" style="padding:8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;flex:1;min-width:120px">
+          <option value="7">Last 7 days</option>
+          <option value="30" selected>Last 30 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="all">All time</option>
+        </select>
+        <button class="btn btn-sm btn-primary" onclick="CRM.openNewVisitLog();renderMobVisitLog()"><i class="ti ti-plus"></i> New</button>
+      </div>
+      <div style="margin-bottom:10px">
+        <input type="text" id="crm-vl-mob-search" placeholder="Search..." oninput="CRM.filterMobVisitLog()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box">
+      </div>
+      <div id="crm-vl-mob-list"></div>`;
+    renderMobVisitLogList();
+  }
+
+  function filterMobVisitLog() {
+    state.visitLogFilter.q = document.getElementById('crm-vl-mob-search')?.value || '';
+    state.visitLogFilter.range = document.getElementById('crm-vl-mob-range')?.value || '30';
+    renderMobVisitLogList();
+  }
+
+  function renderMobVisitLogList() {
+    const list = document.getElementById('crm-vl-mob-list');
+    if (!list) return;
+    const rows = getFilteredVisits();
+    if (!rows.length) {
+      list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text3);font-style:italic">No visits logged. Tap "New" to add one.</div>`;
+      return;
+    }
+    const byDate = {};
+    rows.forEach(v => { (byDate[v.visit_date] = byDate[v.visit_date] || []).push(v); });
+    list.innerHTML = Object.keys(byDate).sort().reverse().map(d => {
+      const dt = new Date(d + 'T00:00:00');
+      return `<div style="margin-bottom:14px">
+        <div style="font-family:var(--font-display);font-size:13px;color:var(--sidebar);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">
+          ${dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}
+        </div>
+        ${byDate[d].map(v => {
+          const loc = state.locations.find(l => l.id === v.location_id);
+          const locName = loc ? loc.location_name : (v.location_name_freeform || 'Unknown');
+          const dur = computeDurationMinutes(v.time_arrived, v.time_departed);
+          return `<div onclick="CRM.editVisitLog(${v.id});renderMobVisitLog()" style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;cursor:pointer">
+            <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.02em">${esc(locName)}</div>
+            ${v.contact_person ? `<div style="font-size:11px;color:var(--text2);margin-top:2px">${esc(v.contact_person)}${v.contact_role?' (' + esc(v.contact_role) + ')':''}</div>` : ''}
+            ${v.time_arrived ? `<div style="font-size:11px;color:var(--text3);margin-top:2px">${fmtTime(v.time_arrived)}${v.time_departed?' – ' + fmtTime(v.time_departed):''}${dur?' · ' + dur + ' min':''}</div>` : ''}
+            ${v.outcome ? `<div style="font-size:11px;color:var(--text);margin-top:4px;padding:4px 8px;background:var(--amber-bg);border-left:2px solid var(--accent);border-radius:var(--radius)">${esc(v.outcome)}</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>`;
+    }).join('');
+  }
+
+  function renderMobVisitLogForm(idOrNew) {
+    const root = document.getElementById('crm-vl-mob');
+    if (!root) return;
+    const isNew = idOrNew === 'new';
+    const v = isNew ? null : (state.salesVisits || []).find(x => x.id === idOrNew);
+    if (!isNew && !v) { state.visitLogEditing = null; renderMobVisitLog(); return; }
+
+    const today = isoDate(new Date());
+    const nowTime = new Date().toTimeString().slice(0,5);
+    const data = v ? {
+      visit_date: v.visit_date,
+      time_arrived: (v.time_arrived||'').slice(0,5),
+      time_departed: (v.time_departed||'').slice(0,5),
+      location_id: v.location_id,
+      location_name_freeform: v.location_name_freeform || '',
+      contact_person: v.contact_person || '',
+      contact_role: v.contact_role || '',
+      outcome: v.outcome || '',
+      notes: v.notes || '',
+    } : {
+      visit_date: today,
+      time_arrived: nowTime,
+      time_departed: '',
+      location_id: null,
+      location_name_freeform: '',
+      contact_person: '',
+      contact_role: '',
+      outcome: '',
+      notes: '',
+    };
+
+    const locOptions = state.locations
+      .filter(l => l.status === 'active' && !(l.location_name||'').startsWith('[Personal'))
+      .sort((a,b) => a.location_name.localeCompare(b.location_name))
+      .map(l => `<option value="${l.id}" ${data.location_id===l.id?'selected':''}>${esc(l.location_name)}</option>`)
+      .join('');
+
+    const inputStyle = 'width:100%;padding:10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box';
+    const labelStyle = 'font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px';
+
+    root.innerHTML = `<div class="card" style="margin:0">
+      <div style="font-family:var(--font-display);font-size:18px;color:var(--sidebar);margin-bottom:4px">${isNew ? 'Log Visit' : 'Edit Visit'}</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:14px">Reporting as: <strong>${esc(getCurrentUserEmail() || 'unknown')}</strong></div>
+
+      <label style="${labelStyle}">Date</label>
+      <input type="date" id="vl-date" value="${data.visit_date}" style="${inputStyle};margin-bottom:12px">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div>
+          <label style="${labelStyle}">Arrived</label>
+          <input type="time" id="vl-arrived" value="${data.time_arrived}" style="${inputStyle}">
+        </div>
+        <div>
+          <label style="${labelStyle}">Departed</label>
+          <input type="time" id="vl-departed" value="${data.time_departed}" style="${inputStyle}">
+        </div>
+      </div>
+
+      <label style="${labelStyle}">Location</label>
+      <select id="vl-loc" onchange="CRM._updateVisitLogFreeform()" style="${inputStyle};margin-bottom:6px">
+        <option value="">— Not in CRM —</option>
+        ${locOptions}
+      </select>
+      <input type="text" id="vl-loc-freeform" placeholder="Location name (only if not in CRM)" value="${esc(data.location_name_freeform)}" style="${inputStyle};margin-bottom:12px;${data.location_id?'opacity:.5':''}">
+
+      <label style="${labelStyle}">Contact Person</label>
+      <input type="text" id="vl-contact" value="${esc(data.contact_person)}" placeholder="Name" style="${inputStyle};margin-bottom:12px">
+
+      <label style="${labelStyle}">Their Role</label>
+      <input type="text" id="vl-role" value="${esc(data.contact_role)}" placeholder="Office Manager, Owner, etc." style="${inputStyle};margin-bottom:12px">
+
+      <label style="${labelStyle}">Outcome</label>
+      <input type="text" id="vl-outcome" value="${esc(data.outcome)}" placeholder="What happened?" style="${inputStyle};margin-bottom:12px">
+
+      <label style="${labelStyle}">Notes</label>
+      <textarea id="vl-notes" rows="4" placeholder="What was discussed, next steps..." style="${inputStyle};resize:vertical;margin-bottom:14px">${esc(data.notes)}</textarea>
+
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="CRM.cancelVisitLogEdit();renderMobVisitLog()" style="flex:1">Cancel</button>
+        <button class="btn btn-sm btn-primary" onclick="CRM.saveVisitLog(${isNew ? 'null' : v.id}).then(()=>renderMobVisitLog())" style="flex:1"><i class="ti ti-check"></i> Save</button>
+        ${!isNew ? `<button class="btn btn-sm" onclick="CRM.deleteVisitLog(${v.id}).then(()=>{CRM.cancelVisitLogEdit();renderMobVisitLog()})" title="Delete"><i class="ti ti-trash"></i></button>` : ''}
+      </div>
+    </div>`;
+  }
+
   return {
     init: loadAll,
     renderCustomers, filterCustomers,
@@ -3969,11 +4445,15 @@ window.CRM = (function(){
     renderForecast,
     // Auto-scheduler
     startAutoSchedule, toggleProposal, toggleAllProposals, editProposal, cancelProposals, approveProposals,
+    // Visit Log
+    renderVisitLog, filterVisitLog, openNewVisitLog, editVisitLog, deleteVisitLog,
+    cancelVisitLogEdit, saveVisitLog, _updateVisitLogFreeform,
     // Mobile
     renderMobCustomers, filterMobCustomers, renderMobCustomerList,
     openMobProfile, renderMobProfile,
     renderMobSchedule, setMobScheduleTruck,
     renderMobForecast,
+    renderMobVisitLog, filterMobVisitLog,
     _state: state
   };
 })();
@@ -4009,6 +4489,7 @@ init();
     <button class="mob-tab" data-sec="crm-customers" onclick="mobShow('crm-customers',this)"><i class="ti ti-building-store"></i>Customers</button>
     <button class="mob-tab" data-sec="crm-schedule" onclick="mobShow('crm-schedule',this)"><i class="ti ti-calendar"></i>Schedule</button>
     <button class="mob-tab" data-sec="crm-forecast" onclick="mobShow('crm-forecast',this)"><i class="ti ti-trending-up"></i>Mfg Forecast</button>
+    <button class="mob-tab" data-sec="crm-visitlog" onclick="mobShow('crm-visitlog',this)"><i class="ti ti-clipboard-text"></i>Visit Log</button>
   </div>
 
   <div class="mob-body" id="mob-body"></div>
