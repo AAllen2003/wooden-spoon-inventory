@@ -2142,20 +2142,26 @@ window.CRM = (function(){
         sales_last_synced_at: new Date().toISOString(),
       };
 
-      // Write to Supabase (upsert in case a row already exists without sales)
+      // Write to Supabase. Use upsert with onConflict on stop_id so racing
+      // calls (e.g. profile open + nightly cron) cooperate — DB has a unique
+      // index on stop_id (added in migration 10), so this is safe.
       let visit;
-      if (existing) {
-        const { data: upd, error } = await sb.from('crm_visits').update(visitData).eq('id', existing.id).select().single();
+      if (stop.id) {
+        const { data: ups, error } = await sb
+          .from('crm_visits')
+          .upsert(visitData, { onConflict: 'stop_id' })
+          .select()
+          .single();
         if (error) throw error;
-        visit = upd;
-        const i = state.visits.findIndex(v => v.id === existing.id);
+        visit = ups;
+        const i = state.visits.findIndex(v => v.stop_id === stop.id);
         if (i >= 0) state.visits[i] = visit;
-        else state.visits.push(visit);
+        else if (!state.visits.some(v => v.id === visit.id)) state.visits.push(visit);
       } else {
+        // No stop_id — shouldn't happen here since `stop` is required, but be safe
         const { data: ins, error } = await sb.from('crm_visits').insert(visitData).select().single();
         if (error) throw error;
         visit = ins;
-        // Only add if not already present (realtime INSERT may have raced us)
         if (!state.visits.some(v => v.id === visit.id)) state.visits.push(visit);
       }
 
