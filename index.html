@@ -706,7 +706,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
         <div class="card-header">
           <span class="card-title">Customer Data Cleanup</span>
         </div>
-        <p class="section-intro">Find and merge duplicate customers, identify orphan locations with no stops or visits, and recover recently-deleted records. Admin only.</p>
+        <p class="section-intro">Find and merge duplicate customers, identify orphan locations with no stops or visits, and recover recently-deleted records. <strong>Scheduled</strong> = stops on the calendar (including pre-CRM historical imports — many may never have happened). <strong>Completed</strong> = visits with Square sales data attached. Admin only.</p>
         <div id="crm-cleanup-content"></div>
       </div>
     </div>
@@ -2351,7 +2351,7 @@ window.CRM = (function(){
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
         <div class="metric"><div class="metric-label">Avg / Visit</div><div class="metric-value">${l.seed_avg_per_visit?fmtMoney(l.seed_avg_per_visit):'—'}</div></div>
         <div class="metric"><div class="metric-label">Total Sales</div><div class="metric-value">${l.seed_total_sales?fmtMoney(l.seed_total_sales):'—'}</div></div>
-        <div class="metric"><div class="metric-label">Visit Count</div><div class="metric-value">${l.seed_visit_count||'—'}</div></div>
+        <div class="metric"><div class="metric-label">Historical Visits</div><div class="metric-value">${l.seed_visit_count||'—'}</div></div>
         <div class="metric"><div class="metric-label">Last Visit</div><div class="metric-value" style="font-size:14px;margin-top:6px">${l.seed_last_visit?fmtDate(l.seed_last_visit):'—'}</div></div>
       </div>
       <div style="font-size:11px;color:var(--text3);margin-top:8px;font-style:italic">These values are imported from the spreadsheet and will be superseded by live visit data as it accumulates.</div>
@@ -2497,25 +2497,34 @@ window.CRM = (function(){
   }
 
   function renderSalesHistory(l) {
-    const visits = state.visits.filter(v => v.location_id === l.id).slice(0, 24);
+    const visits = state.visits.filter(v => v.location_id === l.id)
+      .sort((a,b) => (a.visit_date < b.visit_date ? 1 : -1))
+      .slice(0, 24);
     if (!visits.length) {
       return `<div style="padding:30px;text-align:center;color:var(--text3)">
         <i class="ti ti-chart-line" style="font-size:32px;display:block;margin-bottom:8px;color:var(--bg2)"></i>
         <div style="font-style:italic;margin-bottom:6px">No live visits recorded yet.</div>
         <div style="font-size:11px">Historical seed totals: ${l.seed_visit_count||0} visits, ${fmtMoney(l.seed_total_sales)} total. Live sales attribution will begin once stops are scheduled and visited.</div>
       </div>`;
-    }    return `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    }
+    return `<p class="section-intro" style="margin-bottom:10px">Each row is a recorded visit with Square sales pulled for that truck's device in the stop's time window. If sales were attributed to the wrong customer, use Reassign.</p>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="border-bottom:1px solid var(--border)">
         <th style="text-align:left;padding:8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Date</th>
         <th style="text-align:left;padding:8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Truck</th>
         <th style="text-align:right;padding:8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Transactions</th>
         <th style="text-align:right;padding:8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Revenue</th>
+        <th style="text-align:right;padding:8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em"></th>
       </tr></thead>
       <tbody>${visits.map(v => `<tr style="border-bottom:1px solid rgba(132,79,6,.1)">
         <td style="padding:8px">${fmtDate(v.visit_date)}</td>
         <td style="padding:8px">Truck ${v.truck}</td>
         <td style="padding:8px;text-align:right">${v.transaction_count||0}</td>
         <td style="padding:8px;text-align:right;font-weight:700;color:var(--accent)">${fmtMoney(v.total_revenue)}</td>
+        <td style="padding:8px;text-align:right;white-space:nowrap" data-admin-only>
+          <button class="btn btn-xs" onclick="CRM.openReassignVisit(${v.id})" title="Move this visit to a different customer"><i class="ti ti-arrows-right-left"></i></button>
+          <button class="btn btn-xs" onclick="CRM.confirmDeleteVisit(${v.id})" title="Delete this visit" style="background:var(--red-bg);color:var(--red)"><i class="ti ti-trash"></i></button>
+        </td>
       </tr>`).join('')}</tbody>
     </table>`;
   }
@@ -4901,7 +4910,7 @@ window.CRM = (function(){
           return `<div class="card" style="margin-bottom:12px;padding:12px;background:var(--bg2)">
             <div style="font-size:12px;font-weight:700;color:var(--sidebar);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Cluster ${idx + 1} — ${c.length} possible duplicates</div>
             <table style="width:100%;font-size:12px;margin-bottom:10px">
-              <thead><tr style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase"><th>Name</th><th>Address</th><th>Stops</th><th>Visits</th><th></th></tr></thead>
+              <thead><tr style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase"><th>Name</th><th>Address</th><th>Scheduled</th><th>Completed</th><th></th></tr></thead>
               <tbody>${rows}</tbody>
             </table>
             <div style="display:flex;gap:6px;flex-wrap:wrap">${pickers}</div>
@@ -5031,6 +5040,176 @@ window.CRM = (function(){
     } catch (e) {
       console.error('[CRM] restore failed', e);
       alert('Restore failed: ' + (e.message || e));
+    }
+  }
+
+  // ─── VISIT REASSIGN / DELETE ────────────────────────────────────
+  // For correcting mis-attributed sales (e.g., Truck 2's Tontitown sales
+  // got credited to Goddard East because a phantom stop existed there).
+
+  function openReassignVisit(visitId) {
+    const v = state.visits.find(x => x.id === visitId);
+    if (!v) { alert('Visit not found.'); return; }
+    const fromLoc = state.locations.find(l => l.id === v.location_id);
+    state._reassignVisitId = visitId;
+    renderReassignPicker('');
+  }
+
+  function renderReassignPicker(filter) {
+    closeMergeModal(); // reuse the same DOM slot
+    const v = state.visits.find(x => x.id === state._reassignVisitId);
+    if (!v) return;
+    const fromLoc = state.locations.find(l => l.id === v.location_id);
+
+    const f = (filter || '').toLowerCase();
+    const candidates = state.locations
+      .filter(l => l.id !== v.location_id)
+      .filter(l => !f || (l.location_name || '').toLowerCase().includes(f) || (l.full_address || '').toLowerCase().includes(f));
+
+    const modal = document.createElement('div');
+    modal.id = 'merge-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = `
+      <div style="background:var(--surface);border-radius:var(--radius-lg);max-width:640px;width:100%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.3)">
+        <div style="padding:18px 20px;border-bottom:1px solid var(--border)">
+          <div style="font-family:var(--font-display);font-size:20px;color:var(--sidebar)">Reassign visit to another customer</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:6px">
+            <strong>${fmtDate(v.visit_date)}</strong> &middot; Truck ${v.truck} &middot;
+            <strong>${v.transaction_count||0}</strong> transaction${v.transaction_count===1?'':'s'} &middot;
+            <strong style="color:var(--accent)">${fmtMoney(v.total_revenue)}</strong><br>
+            Currently attributed to: <strong>${esc(fromLoc?.location_name || '—')}</strong>
+          </div>
+        </div>
+        <div style="padding:14px 20px;border-bottom:1px solid var(--border)">
+          <input type="text" placeholder="Search customers by name or address…" oninput="CRM.filterReassignPicker(this.value)" autofocus style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:var(--font-body)">
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:8px 0">
+          ${candidates.slice(0, 200).map(l => `
+            <div onclick="CRM.confirmReassign(${l.id})" style="padding:10px 20px;cursor:pointer;border-bottom:1px solid var(--bg2)" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'">
+              <div style="font-weight:700">${esc(l.location_name)}</div>
+              <div style="font-size:11px;color:var(--text3)">${esc(l.full_address || '—')}</div>
+            </div>`).join('') || '<p style="padding:20px;color:var(--text3);font-style:italic;text-align:center">No customers match that search.</p>'}
+        </div>
+        <div style="padding:14px 20px;border-top:1px solid var(--border);text-align:right">
+          <button class="btn btn-sm" onclick="CRM.closeMergeModal()">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
+  function filterReassignPicker(v) { renderReassignPicker(v); }
+
+  // After the user picks a destination, check for conflict and show resolution UI if needed
+  async function confirmReassign(toLocId) {
+    const v = state.visits.find(x => x.id === state._reassignVisitId);
+    if (!v) return;
+    const toLoc = state.locations.find(l => l.id === toLocId);
+    if (!toLoc) return;
+
+    // Check if destination already has a visit for same date + truck
+    const existing = state.visits.find(x =>
+      x.id !== v.id &&
+      x.location_id === toLocId &&
+      x.visit_date === v.visit_date &&
+      x.truck === v.truck
+    );
+
+    if (!existing) {
+      // No conflict — just confirm and execute
+      if (!confirm(`Move this visit to "${toLoc.location_name}"?`)) return;
+      await executeReassign(toLocId, 'add'); // mode irrelevant when no conflict
+      return;
+    }
+
+    // Conflict — show resolution UI
+    renderReassignConflict(toLoc, v, existing);
+  }
+
+  function renderReassignConflict(toLoc, srcVisit, existing) {
+    closeMergeModal();
+    const sumTrans = (existing.transaction_count||0) + (srcVisit.transaction_count||0);
+    const sumRev = (existing.total_revenue||0) + (srcVisit.total_revenue||0);
+    const modal = document.createElement('div');
+    modal.id = 'merge-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = `
+      <div style="background:var(--surface);border-radius:var(--radius-lg);max-width:600px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3)">
+        <div style="padding:18px 20px;border-bottom:1px solid var(--border)">
+          <div style="font-family:var(--font-display);font-size:20px;color:var(--sidebar)">Conflict: ${esc(toLoc.location_name)} already has a visit</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:6px">${fmtDate(srcVisit.visit_date)} &middot; Truck ${srcVisit.truck} already exists at this customer with <strong>${existing.transaction_count||0}</strong> trans / <strong>${fmtMoney(existing.total_revenue)}</strong>.</div>
+        </div>
+        <div style="padding:14px 20px">
+          <p style="font-size:12px;margin-bottom:12px">How should the conflict be resolved?</p>
+          <label style="display:block;padding:12px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;cursor:pointer">
+            <input type="radio" name="conflict_mode" value="add" checked style="margin-right:6px">
+            <strong>Add</strong> — combine the sales into the existing visit
+            <div style="font-size:11px;color:var(--text3);margin-left:20px;margin-top:4px">Existing visit becomes <strong>${sumTrans}</strong> transactions / <strong style="color:var(--accent)">${fmtMoney(sumRev)}</strong>. Watch for double-counting if both came from the same Square time window.</div>
+          </label>
+          <label style="display:block;padding:12px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;cursor:pointer">
+            <input type="radio" name="conflict_mode" value="replace" style="margin-right:6px">
+            <strong>Replace</strong> — discard the destination's existing visit and use this one instead
+          </label>
+          <label style="display:block;padding:12px;border:1px solid var(--border);border-radius:6px;cursor:pointer">
+            <input type="radio" name="conflict_mode" value="keep_both" style="margin-right:6px">
+            <strong>Keep both</strong> — let both visits coexist (the moved one won't be linked to a stop)
+          </label>
+        </div>
+        <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
+          <button class="btn btn-sm" onclick="CRM.closeMergeModal()">Cancel</button>
+          <button class="btn btn-sm btn-accent" onclick="CRM._submitReassignConflict(${toLoc.id})">Apply</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
+  function _submitReassignConflict(toLocId) {
+    const sel = document.querySelector('#merge-modal input[name="conflict_mode"]:checked');
+    const mode = sel ? sel.value : 'add';
+    executeReassign(toLocId, mode);
+  }
+
+  async function executeReassign(toLocId, mode) {
+    try {
+      const { data, error } = await sb.rpc('crm_reassign_visit', {
+        p_visit_id: state._reassignVisitId,
+        p_new_location_id: toLocId,
+        p_conflict_mode: mode
+      });
+      if (error) throw error;
+      closeMergeModal();
+      await loadAll();
+      // If we were viewing the source customer, the visit moved away; if the destination, it appeared
+      renderCurrent();
+      const msg = data.mode === 'merged_add'
+        ? `Merged. Destination visit now has ${data.combined_transactions} transactions / $${(data.combined_revenue||0).toFixed(2)}.`
+        : data.mode === 'replaced'
+          ? `Replaced. Visit now attributed to ${data.new_location}.`
+          : data.mode === 'kept_both'
+            ? `Both visits kept; this one moved to ${data.new_location}.`
+            : `Visit moved to ${data.new_location}.`;
+      alert(msg);
+    } catch (e) {
+      console.error('[CRM] reassign failed', e);
+      alert('Reassign failed: ' + (e.message || e));
+    }
+  }
+
+  async function confirmDeleteVisit(visitId) {
+    const v = state.visits.find(x => x.id === visitId);
+    if (!v) { alert('Visit not found.'); return; }
+    const msg = `Delete this visit?\n\n` +
+      `${fmtDate(v.visit_date)} · Truck ${v.truck} · ${v.transaction_count||0} transactions · $${(v.total_revenue||0).toFixed(2)}\n\n` +
+      `Use this only when the sales don't belong to ANY of your customers (e.g. picked up from a Square device at a non-customer location). For wrong customer, use Reassign instead.\n\n` +
+      `This is a hard delete but the row is snapshotted to the audit log.`;
+    if (!confirm(msg)) return;
+    try {
+      const { error } = await sb.rpc('crm_delete_visit', { p_visit_id: visitId });
+      if (error) throw error;
+      await loadAll();
+      renderCurrent();
+    } catch (e) {
+      console.error('[CRM] delete visit failed', e);
+      alert('Delete failed: ' + (e.message || e));
     }
   }
 
@@ -5237,6 +5416,8 @@ window.CRM = (function(){
     // Cleanup (delete / merge / recover)
     renderCleanup, confirmDelete, restoreLocation, bulkDeleteOrphans, toggleAllOrphans,
     openMergeFor, openMergePicker, openMergeReview, executeMerge, closeMergeModal, filterMergePicker,
+    // Visit reassign / delete (per-row sales-history actions)
+    openReassignVisit, filterReassignPicker, confirmReassign, _submitReassignConflict, confirmDeleteVisit,
     // Mobile
     renderMobCustomers, filterMobCustomers, renderMobCustomerList,
     openMobProfile, renderMobProfile,
