@@ -316,6 +316,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
     <button class="nav-item" onclick="showSection('crm-schedule',this)"><i class="ti ti-calendar"></i> Schedule</button>
     <button class="nav-item" onclick="showSection('crm-forecast',this)"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
     <button class="nav-item" onclick="showSection('crm-relog',this)"><i class="ti ti-clipboard-text"></i> Relations Log</button>
+    <button class="nav-item" onclick="showSection('crm-cleanup',this)" data-admin-only><i class="ti ti-broom"></i> Cleanup</button>
     <div class="nav-section">System</div>
     <button class="nav-item" onclick="showSection('settings',this)"><i class="ti ti-settings"></i> Settings</button>
   </nav>
@@ -700,6 +701,16 @@ body.staff-mode [data-admin-only]{display:none !important;}
       </div>
     </div>
 
+    <div class="section" id="sec-crm-cleanup">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Customer Data Cleanup</span>
+        </div>
+        <p class="section-intro">Find and merge duplicate customers, identify orphan locations with no stops or visits, and recover recently-deleted records. Admin only.</p>
+        <div id="crm-cleanup-content"></div>
+      </div>
+    </div>
+
   </div>
 </main>
 
@@ -954,7 +965,7 @@ function openMoreDrawer(){document.getElementById('more-overlay').classList.add(
 function closeMoreDrawer(){document.getElementById('more-overlay').classList.remove('open');document.getElementById('more-drawer').classList.remove('open');}
 
 // ── NAV ───────────────────────────────────────────────────────────
-const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer Profile','crm-schedule':'Schedule','crm-forecast':'Manufacturing Forecast','crm-relog':'Customer Relations Log'};
+const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer Profile','crm-schedule':'Schedule','crm-forecast':'Manufacturing Forecast','crm-relog':'Customer Relations Log','crm-cleanup':'Customer Data Cleanup'};
 function showSection(name,btn){
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
@@ -974,6 +985,7 @@ function showSection(name,btn){
   if(name==='crm-schedule')CRM.renderSchedule();
   if(name==='crm-forecast')CRM.renderForecast();
   if(name==='crm-relog')CRM.renderRelog();
+  if(name==='crm-cleanup')CRM.renderCleanup();
   applyPermissions();
 }
 function openLocDetail(loc){currentLoc=loc;document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.getElementById('sec-loc-detail').classList.add('active');document.getElementById('page-title').textContent=loc;document.getElementById('back-btn').style.display='inline-flex';document.getElementById('loc-detail-cat-filter').value='';renderLocDetail();applyPermissions();}
@@ -1913,6 +1925,7 @@ function mobEsc(s){return String(s).replace(/'/g,"\\'");}
 window.CRM = (function(){
   const state = {
     locations: [],
+    deletedLocations: [],   // soft-deleted, shown in Cleanup recovery panel
     stops: [],
     visits: [],
     settings: { buffer_minutes: 15, truck_device_map: {} },
@@ -1988,7 +2001,9 @@ window.CRM = (function(){
         });
       };
 
-      state.locations = dedupe(locations);
+      state.locations = dedupe(locations).filter(l => !l.deleted_at);
+      // Keep a separate view of soft-deleted for the cleanup recovery panel
+      state.deletedLocations = dedupe(locations).filter(l => l.deleted_at);
       state.stops     = dedupe(stops);
       state.visits    = dedupe(visits);
 
@@ -2020,9 +2035,30 @@ window.CRM = (function(){
             handleRelogRealtime(table, payload);
             return;
           }
-          const arr = table === 'crm_locations' ? state.locations
-                    : table === 'crm_stops'     ? state.stops
-                    : state.visits;
+          // Locations have a soft-delete flag — route between active list and recovery list
+          if (table === 'crm_locations') {
+            const isDeleted = !!payload.new?.deleted_at;
+            if (payload.eventType === 'DELETE') {
+              const i1 = state.locations.findIndex(r => r.id === payload.old.id);
+              if (i1 >= 0) state.locations.splice(i1, 1);
+              const i2 = (state.deletedLocations||[]).findIndex(r => r.id === payload.old.id);
+              if (i2 >= 0) state.deletedLocations.splice(i2, 1);
+              renderCurrent();
+              return;
+            }
+            const target = isDeleted ? (state.deletedLocations = state.deletedLocations || []) : state.locations;
+            const other  = isDeleted ? state.locations : (state.deletedLocations = state.deletedLocations || []);
+            // Remove from the "other" array if it moved sides
+            const oi = other.findIndex(r => r.id === payload.new.id);
+            if (oi >= 0) other.splice(oi, 1);
+            // Upsert into target
+            const ti = target.findIndex(r => r.id === payload.new.id);
+            if (ti >= 0) target[ti] = payload.new;
+            else target.push(payload.new);
+            renderCurrent();
+            return;
+          }
+          const arr = table === 'crm_stops' ? state.stops : state.visits;
           if (payload.eventType === 'INSERT') {
             // Dedupe: skip if we already have this id (manual push beat the event)
             if (!arr.some(r => r.id === payload.new.id)) arr.push(payload.new);
@@ -2161,6 +2197,7 @@ window.CRM = (function(){
     else if (id === 'sec-crm-schedule') renderSchedule();
     else if (id === 'sec-crm-forecast') renderForecast();
     else if (id === 'sec-crm-relog') renderRelog();
+    else if (id === 'sec-crm-cleanup') renderCleanup();
   }
 
   // ─── Customers list ────────────────────────────────────────────────
@@ -2270,9 +2307,11 @@ window.CRM = (function(){
       </div>` : '';
 
     return `${flagBox}
-    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;gap:8px">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;gap:8px;flex-wrap:wrap">
       <button class="btn btn-sm" onclick="CRM.startEdit()" data-admin-only><i class="ti ti-edit"></i> Edit</button>
       <button class="btn btn-sm btn-accent" onclick="CRM.scheduleStopFor(${l.id})" data-admin-only><i class="ti ti-calendar-plus"></i> Schedule Stop</button>
+      <button class="btn btn-sm" onclick="CRM.openMergeFor(${l.id})" data-admin-only style="background:var(--bg2)"><i class="ti ti-arrows-join"></i> Merge into…</button>
+      <button class="btn btn-sm" onclick="CRM.confirmDelete(${l.id})" data-admin-only style="background:var(--red-bg);color:var(--red)"><i class="ti ti-trash"></i> Delete</button>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div>
@@ -4753,6 +4792,428 @@ window.CRM = (function(){
     </div>`;
   }
 
+  // ═════════════════════════════════════════════════════════════════
+  // CUSTOMER DATA CLEANUP — delete, merge, recover
+  // ═════════════════════════════════════════════════════════════════
+
+  function normalizeName(name) {
+    return String(name || '')
+      .toLowerCase()
+      .replace(/\b(llc|inc|incorporated|corp|corporation|ltd|limited|co|company)\b/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+      .replace(/\s+/g, ' ');
+  }
+
+  function editDistance(a, b) {
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    const dp = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+    for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        dp[i][j] = a[i-1] === b[j-1]
+          ? dp[i-1][j-1]
+          : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+      }
+    }
+    return dp[a.length][b.length];
+  }
+
+  function findDuplicateClusters() {
+    const locs = state.locations.slice();
+    const norms = locs.map(l => ({ loc: l, norm: normalizeName(l.location_name) }));
+    const clusters = [];
+    const used = new Set();
+
+    for (let i = 0; i < norms.length; i++) {
+      if (used.has(i) || !norms[i].norm) continue;
+      const cluster = [norms[i].loc];
+      for (let j = i + 1; j < norms.length; j++) {
+        if (used.has(j) || !norms[j].norm) continue;
+        const a = norms[i].norm, b = norms[j].norm;
+        const dist = editDistance(a, b);
+        const shorter = Math.min(a.length, b.length);
+        const isMatch =
+          a === b ||
+          (shorter >= 4 && dist <= Math.max(2, Math.floor(shorter * 0.15))) ||
+          (shorter >= 6 && (a.startsWith(b) || b.startsWith(a)));
+        if (isMatch) {
+          cluster.push(norms[j].loc);
+          used.add(j);
+        }
+      }
+      if (cluster.length > 1) {
+        used.add(i);
+        clusters.push(cluster);
+      }
+    }
+    clusters.forEach(c => {
+      c.forEach(l => {
+        l._stopCount = state.stops.filter(s => s.location_id === l.id).length;
+        l._visitCount = state.visits.filter(v => v.location_id === l.id).length;
+      });
+    });
+    clusters.sort((a, b) => b.length - a.length);
+    return clusters;
+  }
+
+  function findOrphans() {
+    return state.locations.filter(l => {
+      const stops = state.stops.filter(s => s.location_id === l.id).length;
+      const visits = state.visits.filter(v => v.location_id === l.id).length;
+      l._stopCount = stops;
+      l._visitCount = visits;
+      return stops === 0 && visits === 0;
+    });
+  }
+
+  function renderCleanup() {
+    const root = document.getElementById('crm-cleanup-content');
+    if (!root) return;
+    if (!isAdmin()) {
+      root.innerHTML = '<div class="alert-bar alert-info"><i class="ti ti-info-circle"></i> Only admins can access the cleanup tools.</div>';
+      return;
+    }
+
+    const clusters = findDuplicateClusters();
+    const orphans = findOrphans();
+    const deleted = state.deletedLocations || [];
+
+    const dupHtml = clusters.length
+      ? clusters.map((c, idx) => {
+          const rows = c.map(l => `
+            <tr>
+              <td><strong>${esc(l.location_name)}</strong>${l.tier ? ` <span class="cat-chip" style="font-size:9px">${esc(l.tier)}</span>` : ''}</td>
+              <td style="font-size:11px;color:var(--text3)">${esc(l.full_address || '—')}</td>
+              <td style="text-align:center">${l._stopCount}</td>
+              <td style="text-align:center">${l._visitCount}</td>
+              <td><button class="btn btn-xs" onclick="CRM.openProfile(${l.id})">View</button></td>
+            </tr>`).join('');
+          const pickers = c.map(l => `<button class="btn btn-xs" onclick="CRM.openMergePicker(${l.id}, [${c.filter(x => x.id !== l.id).map(x => x.id).join(',')}])">Keep "${esc(l.location_name).slice(0, 30)}"</button>`).join(' ');
+          return `<div class="card" style="margin-bottom:12px;padding:12px;background:var(--bg2)">
+            <div style="font-size:12px;font-weight:700;color:var(--sidebar);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Cluster ${idx + 1} — ${c.length} possible duplicates</div>
+            <table style="width:100%;font-size:12px;margin-bottom:10px">
+              <thead><tr style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase"><th>Name</th><th>Address</th><th>Stops</th><th>Visits</th><th></th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">${pickers}</div>
+          </div>`;
+        }).join('')
+      : '<p style="color:var(--text3);font-style:italic;padding:8px 0">No likely duplicates found.</p>';
+
+    const orphanHtml = orphans.length
+      ? `<div class="card" style="padding:12px;background:var(--bg2)">
+          <p style="font-size:11px;color:var(--text3);margin-bottom:10px">Locations with no scheduled stops and no recorded visits. Safe to bulk-delete.</p>
+          <table style="width:100%;font-size:12px">
+            <thead><tr style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase"><th><input type="checkbox" id="cleanup-orphan-all" onchange="CRM.toggleAllOrphans(this.checked)"></th><th>Name</th><th>Address</th><th>Created</th><th></th></tr></thead>
+            <tbody>${orphans.map(l => `
+              <tr>
+                <td><input type="checkbox" class="cleanup-orphan-cb" data-id="${l.id}"></td>
+                <td><strong>${esc(l.location_name)}</strong></td>
+                <td style="font-size:11px;color:var(--text3)">${esc(l.full_address || '—')}</td>
+                <td style="font-size:11px;color:var(--text3)">${fmtDate(l.created_at)}</td>
+                <td><button class="btn btn-xs" onclick="CRM.confirmDelete(${l.id})" style="background:var(--red-bg);color:var(--red)">Delete</button></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+          <div style="margin-top:10px"><button class="btn btn-sm" onclick="CRM.bulkDeleteOrphans()" style="background:var(--red);color:#fff"><i class="ti ti-trash"></i> Delete Selected</button></div>
+        </div>`
+      : '<p style="color:var(--text3);font-style:italic;padding:8px 0">No orphan locations found.</p>';
+
+    const recoveryHtml = deleted.length
+      ? `<div class="card" style="padding:12px;background:var(--bg2)">
+          <p style="font-size:11px;color:var(--text3);margin-bottom:10px">Soft-deleted customers (auto-purged after 90 days). Restore brings stops and visits back with them.</p>
+          <table style="width:100%;font-size:12px">
+            <thead><tr style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase"><th>Name</th><th>Deleted</th><th>Merged Into</th><th></th></tr></thead>
+            <tbody>${deleted.map(l => {
+              const mergedInto = l.merged_into_id ? (state.locations.find(x => x.id === l.merged_into_id)?.location_name || `#${l.merged_into_id}`) : '—';
+              return `<tr>
+                <td><strong>${esc(l.location_name)}</strong></td>
+                <td style="font-size:11px;color:var(--text3)">${fmtDate(l.deleted_at)}</td>
+                <td style="font-size:11px;color:var(--text3)">${esc(mergedInto)}</td>
+                <td><button class="btn btn-xs" onclick="CRM.restoreLocation(${l.id})">Restore</button></td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>`
+      : '<p style="color:var(--text3);font-style:italic;padding:8px 0">No deleted customers in the recovery window.</p>';
+
+    root.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:18px">
+        <div style="background:var(--bg2);padding:12px;border-radius:6px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--sidebar)">${state.locations.length}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Active Customers</div></div>
+        <div style="background:var(--bg2);padding:12px;border-radius:6px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--amber)">${clusters.length}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Duplicate Clusters</div></div>
+        <div style="background:var(--bg2);padding:12px;border-radius:6px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--amber)">${orphans.length}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Orphan Locations</div></div>
+        <div style="background:var(--bg2);padding:12px;border-radius:6px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--red)">${deleted.length}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">In Recovery</div></div>
+      </div>
+
+      <div style="font-family:var(--font-display);font-size:18px;color:var(--sidebar);margin:18px 0 8px">Possible Duplicates</div>
+      ${dupHtml}
+
+      <div style="font-family:var(--font-display);font-size:18px;color:var(--sidebar);margin:24px 0 8px">Orphan Locations</div>
+      ${orphanHtml}
+
+      <div style="font-family:var(--font-display);font-size:18px;color:var(--sidebar);margin:24px 0 8px">Recently Deleted (Recovery)</div>
+      ${recoveryHtml}
+    `;
+  }
+
+  function toggleAllOrphans(checked) {
+    document.querySelectorAll('.cleanup-orphan-cb').forEach(cb => cb.checked = checked);
+  }
+
+  async function bulkDeleteOrphans() {
+    const ids = Array.from(document.querySelectorAll('.cleanup-orphan-cb:checked')).map(cb => parseInt(cb.dataset.id, 10));
+    if (!ids.length) { alert('No orphans selected.'); return; }
+    if (!confirm(`Delete ${ids.length} orphan location${ids.length === 1 ? '' : 's'}? This is recoverable for 90 days.`)) return;
+    let ok = 0, fail = 0;
+    for (const id of ids) {
+      try {
+        const { error } = await sb.rpc('crm_delete_location', { p_loc_id: id });
+        if (error) throw error;
+        ok++;
+      } catch (e) {
+        console.error('[CRM cleanup] delete', id, e);
+        fail++;
+      }
+    }
+    await loadAll();
+    renderCleanup();
+    alert(`Deleted ${ok} location${ok === 1 ? '' : 's'}.${fail ? ` (${fail} failed)` : ''}`);
+  }
+
+  async function confirmDelete(locId) {
+    const l = state.locations.find(x => x.id === locId);
+    if (!l) { alert('Location not found.'); return; }
+    const stops = state.stops.filter(s => s.location_id === locId).length;
+    const visits = state.visits.filter(v => v.location_id === locId).length;
+    const msg = `Delete "${l.location_name}"?\n\n` +
+      `This customer has ${stops} scheduled stop${stops === 1 ? '' : 's'} and ${visits} recorded visit${visits === 1 ? '' : 's'}.\n` +
+      `These stay attached and will come back if you restore.\n\n` +
+      `Soft-delete is recoverable for 90 days. Type the customer name below to confirm.`;
+    const typed = prompt(msg);
+    if (typed == null) return;
+    if (typed.trim().toLowerCase() !== l.location_name.trim().toLowerCase()) {
+      alert('Name did not match. Delete cancelled.');
+      return;
+    }
+    try {
+      const { data, error } = await sb.rpc('crm_delete_location', { p_loc_id: locId });
+      if (error) throw error;
+      await loadAll();
+      if (state.currentLocId === locId) {
+        state.currentLocId = null;
+        showSection('crm-customers', null);
+      } else {
+        renderCurrent();
+      }
+      alert(`Deleted "${data.location_name}". Recoverable in Cleanup → Recovery for 90 days.`);
+    } catch (e) {
+      console.error('[CRM] delete failed', e);
+      alert('Delete failed: ' + (e.message || e));
+    }
+  }
+
+  async function restoreLocation(locId) {
+    if (!confirm('Restore this customer? Their stops and visits will reappear.')) return;
+    try {
+      const { error } = await sb.rpc('crm_restore_location', { p_loc_id: locId });
+      if (error) throw error;
+      await loadAll();
+      renderCleanup();
+    } catch (e) {
+      console.error('[CRM] restore failed', e);
+      alert('Restore failed: ' + (e.message || e));
+    }
+  }
+
+  // ─── MERGE FLOW ─────────────────────────────────────────────────
+  function openMergeFor(loserId) {
+    const loser = state.locations.find(x => x.id === loserId);
+    if (!loser) return;
+    state._mergeLoserId = loserId;
+    renderMergeWinnerPicker();
+  }
+
+  function renderMergeWinnerPicker(filter = '') {
+    const loser = state.locations.find(x => x.id === state._mergeLoserId);
+    if (!loser) return;
+    const candidates = state.locations
+      .filter(l => l.id !== loser.id)
+      .filter(l => !filter || normalizeName(l.location_name).includes(normalizeName(filter)));
+
+    closeMergeModal();
+    const modal = document.createElement('div');
+    modal.id = 'merge-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = `
+      <div style="background:var(--surface);border-radius:var(--radius-lg);max-width:640px;width:100%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.3)">
+        <div style="padding:18px 20px;border-bottom:1px solid var(--border)">
+          <div style="font-family:var(--font-display);font-size:20px;color:var(--sidebar)">Merge "${esc(loser.location_name)}" into…</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:4px">Pick the customer to keep. The other will be moved into it and soft-deleted.</div>
+        </div>
+        <div style="padding:14px 20px;border-bottom:1px solid var(--border)">
+          <input type="text" placeholder="Search customers…" oninput="CRM.filterMergePicker(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:var(--font-body)" autofocus>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:8px 0">
+          ${candidates.slice(0, 200).map(l => `
+            <div onclick="CRM.openMergeReview(${l.id}, ${loser.id})" style="padding:10px 20px;cursor:pointer;border-bottom:1px solid var(--bg2)" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'">
+              <div style="font-weight:700">${esc(l.location_name)}</div>
+              <div style="font-size:11px;color:var(--text3)">${esc(l.full_address || '—')}</div>
+            </div>`).join('')}
+        </div>
+        <div style="padding:14px 20px;border-top:1px solid var(--border);text-align:right">
+          <button class="btn btn-sm" onclick="CRM.closeMergeModal()">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
+  function filterMergePicker(v) { renderMergeWinnerPicker(v); }
+
+  function openMergePicker(winnerId, loserIds) {
+    if (loserIds.length === 1) { openMergeReview(winnerId, loserIds[0]); return; }
+    const winner = state.locations.find(x => x.id === winnerId);
+    if (!winner) return;
+    closeMergeModal();
+    const modal = document.createElement('div');
+    modal.id = 'merge-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+    const losers = loserIds.map(id => state.locations.find(x => x.id === id)).filter(Boolean);
+    modal.innerHTML = `
+      <div style="background:var(--surface);border-radius:var(--radius-lg);max-width:520px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3)">
+        <div style="padding:18px 20px;border-bottom:1px solid var(--border)">
+          <div style="font-family:var(--font-display);font-size:18px;color:var(--sidebar)">Merge which duplicate into "${esc(winner.location_name)}"?</div>
+        </div>
+        <div style="padding:8px 0">
+          ${losers.map(l => `
+            <div onclick="CRM.openMergeReview(${winnerId}, ${l.id})" style="padding:10px 20px;cursor:pointer;border-bottom:1px solid var(--bg2)" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'">
+              <div style="font-weight:700">${esc(l.location_name)}</div>
+              <div style="font-size:11px;color:var(--text3)">${esc(l.full_address || '—')}</div>
+            </div>`).join('')}
+        </div>
+        <div style="padding:14px 20px;border-top:1px solid var(--border);text-align:right">
+          <button class="btn btn-sm" onclick="CRM.closeMergeModal()">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
+  function openMergeReview(winnerId, loserId) {
+    closeMergeModal();
+    const winner = state.locations.find(x => x.id === winnerId);
+    const loser = state.locations.find(x => x.id === loserId);
+    if (!winner || !loser) { alert('Customer not found.'); return; }
+    const stops = state.stops.filter(s => s.location_id === loserId).length;
+    const visits = state.visits.filter(v => v.location_id === loserId).length;
+    const FIELDS = [
+      ['full_address', 'Address'],
+      ['city', 'City'],
+      ['state', 'State'],
+      ['zip', 'ZIP'],
+      ['region', 'Region'],
+      ['point_of_contact', 'Contact'],
+      ['phone', 'Phone'],
+      ['email', 'Email'],
+      ['scheduling_preference', 'Scheduling preference'],
+      ['preferred_truck', 'Preferred truck'],
+      ['tier', 'Tier'],
+      ['notes', 'Notes'],
+      ['internal_flags', 'Internal flags']
+    ];
+    const rows = FIELDS.map(([key, label]) => {
+      const wv = winner[key], lv = loser[key];
+      const wStr = wv == null || wv === '' ? '' : String(wv);
+      const lStr = lv == null || lv === '' ? '' : String(lv);
+      if (wStr === lStr) return '';
+      const safeKey = esc(key);
+      return `<tr>
+        <td style="padding:8px 10px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;font-weight:700;border-bottom:1px solid var(--bg2)">${esc(label)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--bg2)">
+          <label style="display:flex;align-items:flex-start;gap:6px;font-size:12px;cursor:pointer">
+            <input type="radio" name="mf_${safeKey}" value="winner" ${wStr ? 'checked' : ''} style="margin-top:3px">
+            <span>${wStr ? esc(wStr) : '<em style="color:var(--text3)">(blank)</em>'}</span>
+          </label>
+        </td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--bg2)">
+          <label style="display:flex;align-items:flex-start;gap:6px;font-size:12px;cursor:pointer">
+            <input type="radio" name="mf_${safeKey}" value="loser" ${!wStr && lStr ? 'checked' : ''} style="margin-top:3px">
+            <span>${lStr ? esc(lStr) : '<em style="color:var(--text3)">(blank)</em>'}</span>
+          </label>
+        </td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--bg2)">
+          <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3);cursor:pointer">
+            <input type="radio" name="mf_${safeKey}" value="blank">
+            <span>blank</span>
+          </label>
+        </td>
+      </tr>`;
+    }).filter(Boolean).join('');
+
+    const modal = document.createElement('div');
+    modal.id = 'merge-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = `
+      <div style="background:var(--surface);border-radius:var(--radius-lg);max-width:880px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.3)">
+        <div style="padding:18px 20px;border-bottom:1px solid var(--border)">
+          <div style="font-family:var(--font-display);font-size:20px;color:var(--sidebar)">Review merge</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:6px">Moving <strong>${stops}</strong> stop${stops === 1 ? '' : 's'} and <strong>${visits}</strong> visit${visits === 1 ? '' : 's'} from <strong>${esc(loser.location_name)}</strong> into <strong>${esc(winner.location_name)}</strong>.</div>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:14px 20px">
+          ${rows ? `
+            <p style="font-size:12px;color:var(--text3);margin-bottom:10px">For each conflicting field, pick which value to keep on the winner.</p>
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr>
+                <th style="text-align:left;padding:6px 10px;font-size:10px;color:var(--text3);text-transform:uppercase">Field</th>
+                <th style="text-align:left;padding:6px 10px;font-size:10px;color:var(--accent);text-transform:uppercase">Keep "${esc(winner.location_name).slice(0,24)}" value</th>
+                <th style="text-align:left;padding:6px 10px;font-size:10px;color:var(--amber);text-transform:uppercase">Use "${esc(loser.location_name).slice(0,24)}" value</th>
+                <th style="text-align:left;padding:6px 10px;font-size:10px;color:var(--text3);text-transform:uppercase">Clear field</th>
+              </tr></thead>
+              <tbody>${rows}</tbody>
+            </table>` : `<p style="color:var(--text3);font-style:italic">No field conflicts — fields are identical or both blank.</p>`}
+        </div>
+        <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <div style="font-size:11px;color:var(--text3)">Soft-delete is recoverable for 90 days via Cleanup → Recovery.</div>
+          <div>
+            <button class="btn btn-sm" onclick="CRM.closeMergeModal()">Cancel</button>
+            <button class="btn btn-sm btn-accent" onclick="CRM.executeMerge(${winnerId}, ${loserId})"><i class="ti ti-arrows-join"></i> Merge</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
+  async function executeMerge(winnerId, loserId) {
+    const decisions = {};
+    document.querySelectorAll('#merge-modal input[type="radio"]:checked').forEach(r => {
+      const fieldName = r.name.replace(/^mf_/, '');
+      const val = r.value;
+      if (val !== 'winner') decisions[fieldName] = val;
+    });
+    try {
+      const { data, error } = await sb.rpc('crm_merge_locations', {
+        p_winner_id: winnerId,
+        p_loser_id: loserId,
+        p_field_overrides: decisions
+      });
+      if (error) throw error;
+      closeMergeModal();
+      await loadAll();
+      if (state.currentLocId === loserId) state.currentLocId = winnerId;
+      renderCurrent();
+      alert(`Merged. ${data.stops_moved} stop${data.stops_moved === 1 ? '' : 's'} and ${data.visits_moved} visit${data.visits_moved === 1 ? '' : 's'} moved.`);
+    } catch (e) {
+      console.error('[CRM] merge failed', e);
+      alert('Merge failed: ' + (e.message || e));
+    }
+  }
+
+  function closeMergeModal() {
+    const m = document.getElementById('merge-modal');
+    if (m) m.remove();
+  }
+
   return {
     init: loadAll,
     renderCustomers, filterCustomers,
@@ -4767,6 +5228,9 @@ window.CRM = (function(){
     renderRelog: renderRelogEntry, startSession, closeSession, logEvent,
     editOpenEvent, deleteOpenEvent, viewClosedSession, closeReviewView,
     openLiveGpsTrail,
+    // Cleanup (delete / merge / recover)
+    renderCleanup, confirmDelete, restoreLocation, bulkDeleteOrphans, toggleAllOrphans,
+    openMergeFor, openMergePicker, openMergeReview, executeMerge, closeMergeModal, filterMergePicker,
     // Mobile
     renderMobCustomers, filterMobCustomers, renderMobCustomerList,
     openMobProfile, renderMobProfile,
