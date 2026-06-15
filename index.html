@@ -4138,7 +4138,14 @@ window.CRM = (function(){
   // ── Event logging ──────────────────────────────────────────────────
   async function logEvent() {
     if (!state.relog.currentSession) { alert('No open session.'); return; }
-    const ta = document.getElementById('relog-event-input');
+    // Find ALL textareas with this id (mobile + desktop renderers may both have injected one).
+    // Use the one that's actually visible (has nonzero size).
+    const candidates = document.querySelectorAll('#relog-event-input');
+    let ta = null;
+    for (const c of candidates) {
+      if (c.offsetParent !== null) { ta = c; break; }  // first visible one
+    }
+    if (!ta && candidates.length) ta = candidates[candidates.length - 1];  // fallback to last
     if (!ta) { console.warn('[CRM relog] logEvent: textarea not found'); return; }
     const content = ta.value.trim();
     if (!content) { ta.focus(); return; }
