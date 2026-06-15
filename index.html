@@ -4014,10 +4014,23 @@ window.CRM = (function(){
   function getGpsPositionOnce(timeoutMs = 15000) {
     return new Promise((resolve) => {
       if (!('geolocation' in navigator)) { resolve(null); return; }
+      // Hard cap: if the browser geolocation API doesn't fire callbacks at all (which has been observed
+      // on some Safari PWAs after a denied prompt), the Promise should still resolve.
+      const hardCap = setTimeout(() => { resolve(null); }, timeoutMs + 1000);
       navigator.geolocation.getCurrentPosition(
-        pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
-        err => { state.relog.lastGpsError = err.message; resolve(null); },
-        { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 30000 }
+        pos => {
+          clearTimeout(hardCap);
+          resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
+        },
+        err => {
+          clearTimeout(hardCap);
+          state.relog.lastGpsError = err.message;
+          if (err.code === 1) state.relog.geoPermission = 'denied';  // PERMISSION_DENIED
+          resolve(null);
+        },
+        // Lower-accuracy mode is much faster, especially indoors, and accuracy of 50-100m is plenty
+        // for our purposes. maximumAge=60000 means a 1-minute-old position is acceptable.
+        { enableHighAccuracy: false, timeout: timeoutMs, maximumAge: 60000 }
       );
     });
   }
@@ -4126,13 +4139,18 @@ window.CRM = (function(){
   async function logEvent() {
     if (!state.relog.currentSession) { alert('No open session.'); return; }
     const ta = document.getElementById('relog-event-input');
-    if (!ta) return;
+    if (!ta) { console.warn('[CRM relog] logEvent: textarea not found'); return; }
     const content = ta.value.trim();
     if (!content) { ta.focus(); return; }
-    console.log('[CRM relog] logEvent: starting GPS lookup…');
-    const pos = await getGpsPositionOnce(8000);
-    console.log('[CRM relog] logEvent: GPS=', pos, '— inserting');
+    // Disable all the "Log Event" buttons + textarea so the user sees something is happening
+    const buttons = document.querySelectorAll('button[onclick*="CRM.logEvent"]');
+    buttons.forEach(b => { b.disabled = true; b.style.opacity = '.5'; b.dataset._originalHtml = b.innerHTML; b.innerHTML = '<i class="ti ti-loader"></i> Logging…'; });
+    ta.disabled = true;
     try {
+      console.log('[CRM relog] logEvent: GPS lookup (max 4s)…');
+      // Short timeout so we don't hang the UI if GPS is slow indoors
+      const pos = await getGpsPositionOnce(4000);
+      console.log('[CRM relog] logEvent: GPS=', pos, '— inserting');
       const { data, error } = await sb.from('crm_session_events').insert({
         session_id: state.relog.currentSession.id,
         logged_at: new Date().toISOString(),
@@ -4153,6 +4171,13 @@ window.CRM = (function(){
     } catch (e) {
       alert('Failed to log event: ' + (e.message || e));
       console.error('[CRM relog] logEvent', e);
+      // Re-enable so the user can retry
+      buttons.forEach(b => {
+        b.disabled = false;
+        b.style.opacity = '';
+        if (b.dataset._originalHtml) { b.innerHTML = b.dataset._originalHtml; delete b.dataset._originalHtml; }
+      });
+      if (ta) ta.disabled = false;
     }
   }
 
