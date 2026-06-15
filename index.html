@@ -4169,8 +4169,23 @@ window.CRM = (function(){
       renderRelog();
       renderMobRelog();
     } catch (e) {
-      alert('Failed to log event: ' + (e.message || e));
       console.error('[CRM relog] logEvent', e);
+      // Show error in-DOM (alert() can be suppressed on mobile / hidden by keyboard)
+      const errMsg = `Failed to log event: ${e.message || e}\nCheck connection and try again.`;
+      const taEl = document.getElementById('relog-event-input');
+      if (taEl) {
+        let errDiv = document.getElementById('relog-error-display');
+        if (!errDiv) {
+          errDiv = document.createElement('div');
+          errDiv.id = 'relog-error-display';
+          errDiv.style.cssText = 'margin-top:8px;padding:8px 10px;background:var(--red-bg);border:1px solid var(--red);border-radius:var(--radius);font-size:12px;color:var(--red);white-space:pre-wrap';
+          taEl.parentElement.appendChild(errDiv);
+        }
+        errDiv.textContent = errMsg;
+        setTimeout(() => { if (errDiv && errDiv.parentElement) errDiv.parentElement.removeChild(errDiv); }, 12000);
+      }
+      // Also try the alert as fallback (in case the user IS on desktop)
+      try { alert(errMsg); } catch (_) {}
       // Re-enable so the user can retry
       buttons.forEach(b => {
         b.disabled = false;
