@@ -2816,6 +2816,7 @@ window.CRM = (function(){
         <option value="1" ${s.truck===1?'selected':''}>Truck 1</option>
         <option value="2" ${s.truck===2?'selected':''}>Truck 2</option>
       </select>
+      <button class="btn btn-sm" onclick="event.stopPropagation();CRM.openEditStop(${s.id})" data-admin-only title="Edit stop"><i class="ti ti-edit"></i></button>
       <button class="btn btn-sm" onclick="event.stopPropagation();CRM.deleteStop(${s.id})" data-admin-only title="Delete stop"><i class="ti ti-trash"></i></button>
     </div>`;
   }
@@ -2913,6 +2914,84 @@ window.CRM = (function(){
       if (!state.stops.some(s => s.id === ins.id)) state.stops.push(ins);
       renderSchedule();
     } catch (e) { alert('Failed: '+e.message); }
+  }
+
+  // ─── Edit an existing stop ─────────────────────────────────────
+  function openEditStop(stopId) {
+    const s = state.stops.find(x => x.id === stopId);
+    if (!s) { alert('Stop not found.'); return; }
+    const root = document.getElementById('crm-schedule-content');
+    if (!root) return;
+    const locOptions = state.locations
+      .filter(l => l.status === 'active')
+      .sort((a, b) => a.location_name.localeCompare(b.location_name))
+      .map(l => `<option value="${l.id}" ${s.location_id === l.id ? 'selected' : ''}>${esc(l.location_name)}</option>`)
+      .join('');
+    const truckOptions = `<option value="1" ${s.truck===1?'selected':''}>Truck 1</option><option value="2" ${s.truck===2?'selected':''}>Truck 2</option>`;
+    const ruleOptions = ['one-time','weekly','biweekly','every_6_weeks','quarterly','manual_only','locked']
+      .map(r => `<option value="${r}" ${s.recurrence_rule===r?'selected':''}>${r}</option>`).join('');
+
+    state._editStopId = stopId;
+    root.innerHTML = `<div class="card" style="background:var(--bg)">
+      <div class="card-header"><span class="card-title">Edit Stop</span></div>
+      <p class="section-intro" style="margin-bottom:14px">Editing affects only this single stop. Changing the customer reassigns it; changing the date moves it on the calendar. Sales already attributed to this stop are unaffected (manage those via Sales History → Reassign).</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div>
+          ${selField('Location','edit-loc',locOptions)}
+          ${editField('Date','edit-date',s.scheduled_date || '')}
+          ${editField('Notes','edit-notes',s.notes || '',true)}
+        </div>
+        <div>
+          ${editField('Start time (HH:MM)','edit-start',s.start_time || '09:00')}
+          ${editField('End time (HH:MM)','edit-end',s.end_time || '10:00')}
+          ${selField('Truck','edit-truck',truckOptions)}
+          ${selField('Recurrence','edit-rule',ruleOptions)}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button class="btn btn-sm" onclick="CRM.renderSchedule()">Cancel</button>
+        <button class="btn btn-sm btn-primary" onclick="CRM.saveEditStop()"><i class="ti ti-check"></i> Save Changes</button>
+      </div>
+    </div>`;
+    document.getElementById('edit-date').type = 'date';
+  }
+
+  async function saveEditStop() {
+    const stopId = state._editStopId;
+    if (!stopId) return;
+    const orig = state.stops.find(x => x.id === stopId);
+    if (!orig) { alert('Stop no longer exists.'); return; }
+    const get = id => document.getElementById(id)?.value;
+    const patch = {
+      location_id: parseInt(get('edit-loc'), 10),
+      truck: parseInt(get('edit-truck'), 10),
+      scheduled_date: get('edit-date'),
+      start_time: get('edit-start'),
+      end_time: get('edit-end'),
+      recurrence_rule: get('edit-rule') || 'one-time',
+      notes: get('edit-notes') || null
+    };
+    if (!patch.location_id || !patch.scheduled_date) { alert('Pick a location and date.'); return; }
+    // Validate the time order
+    if (patch.start_time && patch.end_time && patch.end_time <= patch.start_time) {
+      alert('End time must be after start time.');
+      return;
+    }
+    const newLoc = state.locations.find(l => l.id === patch.location_id);
+    if (newLoc && newLoc.truck_lock && newLoc.preferred_truck && newLoc.preferred_truck !== patch.truck) {
+      if (!confirm(`${newLoc.location_name} is locked to Truck ${newLoc.preferred_truck}. Override?`)) return;
+    }
+    try {
+      const { data: upd, error } = await sb.from('crm_stops').update(patch).eq('id', stopId).select().single();
+      if (error) throw error;
+      const i = state.stops.findIndex(x => x.id === stopId);
+      if (i >= 0) state.stops[i] = upd;
+      state._editStopId = null;
+      renderSchedule();
+    } catch (e) {
+      console.error('[CRM] save edit stop failed', e);
+      alert('Save failed: ' + (e.message || e));
+    }
   }
 
   function openAddCustomer() {
@@ -5404,7 +5483,7 @@ window.CRM = (function(){
     renderCustomers, filterCustomers,
     openProfile, setProfileTab, startEdit, cancelEdit, saveEdit,
     renderSchedule, shiftWeek, setScheduleTruck, reassignStopTruck, deleteStop,
-    openAddStop, saveNewStop, scheduleStopFor,
+    openAddStop, saveNewStop, scheduleStopFor, openEditStop, saveEditStop,
     openAddCustomer, saveNewCustomer,
     renderForecast,
     // Auto-scheduler
