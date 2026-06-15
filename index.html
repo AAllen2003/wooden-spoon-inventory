@@ -1391,7 +1391,10 @@ function renderSales(){
   const SALES_COLS=['Online','Restaurant','Truck 1','Truck 2','Truck 3'];
   // Init totals for the new columns
   SALES_COLS.forEach(c=>{if(lt[c]===undefined){lt[c]=0;lr[c]=0;}});
-  document.getElementById('sales-table').innerHTML=S.items.map(item=>{const d=sd||{},price=S.prices[item]||0;let itemTotalRev=0;const cols=SALES_COLS.map(col=>{let qty=0,rev=0;if(col==='Online'){qty=Object.values(sdOnline[item]||{}).reduce((s,q)=>s+q,0);rev=Object.entries(sdOnline[item]||{}).reduce((s,[loc,q])=>s+getRev(item,loc,q,sdOnlineRev),0);}else{qty=(d[item]||{})[col]||0;rev=getRev(item,col,qty,sdRev);}lt[col]+=qty;lr[col]+=rev;gu+=qty;gr+=rev;itemTotalRev+=rev;return`<td class="qty-cell">${qty}</td>`;}).join('');const total=SALES_COLS.reduce((s,c)=>{if(c==='Online')return s+Object.values(sdOnline[item]||{}).reduce((a,q)=>a+q,0);return s+((d[item]||{})[c]||0);},0);return`<tr><td style="font-weight:700">${item}</td><td style="font-weight:700;color:var(--green)">${fmt(price)}</td>${cols}<td class="qty-cell" style="font-weight:700">${total}</td><td class="qty-cell" style="font-weight:700;color:var(--green)">$${itemTotalRev.toFixed(2)}</td></tr>`;}).join('');
+  // Build rows with revenue so we can sort highest → lowest
+  const _itemRows=S.items.map(item=>{const d=sd||{},price=S.prices[item]||0;let itemTotalRev=0;const cols=SALES_COLS.map(col=>{let qty=0,rev=0;if(col==='Online'){qty=Object.values(sdOnline[item]||{}).reduce((s,q)=>s+q,0);rev=Object.entries(sdOnline[item]||{}).reduce((s,[loc,q])=>s+getRev(item,loc,q,sdOnlineRev),0);}else{qty=(d[item]||{})[col]||0;rev=getRev(item,col,qty,sdRev);}lt[col]+=qty;lr[col]+=rev;gu+=qty;gr+=rev;itemTotalRev+=rev;return`<td class="qty-cell">${qty}</td>`;}).join('');const total=SALES_COLS.reduce((s,c)=>{if(c==='Online')return s+Object.values(sdOnline[item]||{}).reduce((a,q)=>a+q,0);return s+((d[item]||{})[c]||0);},0);return{rev:itemTotalRev,html:`<tr><td style="font-weight:700">${item}</td><td style="font-weight:700;color:var(--green)">${fmt(price)}</td>${cols}<td class="qty-cell" style="font-weight:700">${total}</td><td class="qty-cell" style="font-weight:700;color:var(--green)">$${itemTotalRev.toFixed(2)}</td></tr>`};});
+  _itemRows.sort((a,b)=>b.rev-a.rev);
+  document.getElementById('sales-table').innerHTML=_itemRows.map(r=>r.html).join('');
   const tr=document.getElementById('sales-totals-row');if(tr)tr.innerHTML=`<td>Totals</td><td></td>${SALES_COLS.map(l=>`<td class="qty-cell">${lt[l]||0}<br><span style="font-size:10px;opacity:.75">$${(lr[l]||0).toFixed(0)}</span></td>`).join('')}<td class="qty-cell">${gu}</td><td class="qty-cell">$${gr.toFixed(2)}</td>`;
   // Render Square-style breakdown
   const bp=document.getElementById('sales-breakdown-panel');
@@ -1404,14 +1407,14 @@ function renderSales(){
     const items=Object.keys(sdOnlineD).filter(item=>Object.values(sdOnlineD[item]||{}).some(q=>q>0));
     if(items.length){
       let oU=0,oR=0;
+      const sdORev=salesViewDate?(salesViewDataOnlineRevenue||{}):(S.salesOnlineRevenue||{});
       const rows=items.map(item=>{
         const p=S.prices[item]||0;
         const total=Object.values(sdOnlineD[item]||{}).reduce((s,q)=>s+q,0);
-        const sdORev=salesViewDate?(salesViewDataOnlineRevenue||{}):(S.salesOnlineRevenue||{});
         const itemRev=Object.entries(sdOnlineD[item]||{}).reduce((s,[loc,q])=>s+getRev(item,loc,q,sdORev),0);
         oU+=total;oR+=itemRev;
-        return`<tr><td style="font-weight:700">${item}</td><td class="qty-cell" style="font-weight:700">${total}</td><td class="qty-cell" style="font-weight:700;color:var(--green)">$${itemRev.toFixed(2)}</td></tr>`;
-      }).join('');
+        return{rev:itemRev,html:`<tr><td style="font-weight:700">${item}</td><td class="qty-cell" style="font-weight:700">${total}</td><td class="qty-cell" style="font-weight:700;color:var(--green)">$${itemRev.toFixed(2)}</td></tr>`};
+      }).sort((a,b)=>b.rev-a.rev).map(r=>r.html).join('');
       onlinePanel.style.display='block';
       onlinePanel.innerHTML=`<div class="card" style="background:var(--amber-bg);border-color:var(--amber);margin-top:16px"><div class="card-header"><span class="card-title" style="color:var(--amber)">Online Sales — Pending Delivery</span><span style="font-size:13px;font-weight:700;color:var(--amber)">${oU} units &middot; $${oR.toFixed(2)}</span></div><p class="section-intro" style="color:var(--text3);margin-top:4px">Online sales (WooCommerce/Square Online) are delivered Mondays. Inventory is NOT auto-deducted — update warehouse stock manually after delivery.</p><div class="tbl-wrap"><table><thead><tr><th>Item</th><th class="qty-cell">Pending Qty</th><th class="qty-cell">Revenue</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
     } else {
@@ -1828,10 +1831,10 @@ function mobSalesHTML(){
   h+=`<div class="m-sales-sum"><div class="m-ss-i"><div class="m-ss-v">${gU}</div><div class="m-ss-l">Units Sold</div></div><div class="m-ss-i"><div class="m-ss-v">$${gR.toFixed(0)}</div><div class="m-ss-l">Revenue</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Truck 1']}</div><div class="m-ss-l">Truck 1</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Truck 2']}</div><div class="m-ss-l">Truck 2</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Truck 3']||0}</div><div class="m-ss-l">Truck 3</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Restaurant']||0}</div><div class="m-ss-l">Restaurant</div></div><div class="m-ss-i"><div class="m-ss-v">${onlineUnits}</div><div class="m-ss-l">Online</div></div></div>`;
   const rows=S.items.map(item=>{
     const p=S.prices[item]||0,total=LOCS.reduce((s,l)=>s+((sd?.[item]||{})[l]||0),0);const itemRev=LOCS.reduce((s,l)=>s+getRev(item,l,(sd?.[item]||{})[l]||0,sdRev),0);
-    if(!total)return'';
+    if(!total)return null;
     const lstr=LOCS.map((loc,i)=>{const q=(sd?.[item]||{})[loc]||0;return q>0?LL[i]+':'+q:null;}).filter(Boolean).join(' ');
-    return`<div class="m-sale-row"><span class="m-sale-name">${item}</span><span class="m-sale-locs">${lstr}</span><div class="m-sale-right"><span class="m-sale-units">${total} sold</span><span class="m-sale-rev">$${itemRev.toFixed(2)}</span></div></div>`;
-  }).filter(Boolean).join('');
+    return{rev:itemRev,html:`<div class="m-sale-row"><span class="m-sale-name">${item}</span><span class="m-sale-locs">${lstr}</span><div class="m-sale-right"><span class="m-sale-units">${total} sold</span><span class="m-sale-rev">$${itemRev.toFixed(2)}</span></div></div>`};
+  }).filter(Boolean).sort((a,b)=>b.rev-a.rev).map(r=>r.html).join('');
   h+=`<div class="m-sale-list">${rows||'<p style="padding:14px;color:var(--text3);text-align:center;font-style:italic;font-size:10px">No sales recorded yet</p>'}</div>`;
   // Square-style breakdown
   const mobTotals=salesViewDate?(salesViewDataTotals||null):(S.salesTotals||null);
@@ -1847,8 +1850,8 @@ function mobSalesHTML(){
       const total=Object.values(sdOnline[item]||{}).reduce((s,q)=>s+q,0);
       const itemRev=Object.entries(sdOnline[item]||{}).reduce((s,[loc,q])=>s+getRev(item,loc,q,sdORev),0);
       oU+=total;oR+=itemRev;
-      return`<div class="m-sale-row"><span class="m-sale-name">${item}</span><div class="m-sale-right"><span class="m-sale-units">${total} sold</span><span class="m-sale-rev">$${itemRev.toFixed(2)}</span></div></div>`;
-    }).join('');
+      return{rev:itemRev,html:`<div class="m-sale-row"><span class="m-sale-name">${item}</span><div class="m-sale-right"><span class="m-sale-units">${total} sold</span><span class="m-sale-rev">$${itemRev.toFixed(2)}</span></div></div>`};
+    }).sort((a,b)=>b.rev-a.rev).map(r=>r.html).join('');
     h+=`<div style="margin-top:18px;padding:14px;background:var(--amber-bg);border:1px solid var(--amber);border-radius:8px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><span style="font-size:13px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.06em">Online Sales — Pending Delivery</span><span style="font-size:13px;font-weight:700;color:var(--amber)">${oU} units &middot; $${oR.toFixed(2)}</span></div><div style="font-size:11px;color:var(--text3);line-height:1.4;margin-bottom:10px">Online sales delivered on Mondays. Inventory is NOT auto-deducted — update warehouse stock manually after delivery.</div><div style="background:var(--surface);border-radius:6px;padding:0 12px">${onlineRows}</div></div>`;
   }
   return h;
