@@ -110,6 +110,17 @@ input[type=text],input[type=password],input[type=number],input[type=url],input[t
   background:var(--bg);
 }
 
+/* ── Mobile home landing (3-card menu) ── */
+.mob-home-grid{display:flex;flex-direction:column;gap:14px;padding:8px 0;}
+.mob-home-card{display:flex;align-items:center;gap:14px;padding:20px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);text-align:left;cursor:pointer;font-family:var(--font-body);width:100%;transition:transform .08s,box-shadow .15s;box-shadow:0 1px 3px rgba(60,30,5,.06);}
+.mob-home-card:active{transform:scale(.98);box-shadow:0 1px 2px rgba(60,30,5,.04);}
+.mob-home-icon{width:52px;height:52px;border-radius:12px;background:var(--sidebar);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.mob-home-icon i{font-size:28px;}
+.mob-home-text{flex:1;min-width:0;}
+.mob-home-title{font-family:var(--font-display);font-size:20px;color:var(--text);line-height:1.1;margin-bottom:3px;}
+.mob-home-sub{font-size:12px;color:var(--text3);line-height:1.3;}
+.mob-home-arrow{font-size:22px;color:var(--text3);flex-shrink:0;}
+
 /* ── Cards (exact mockup values) ── */
 .m-card{background:var(--surface);border-radius:8px;border:1px solid var(--border);padding:16px;margin-bottom:10px;}
 .m-metric-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
@@ -1515,13 +1526,84 @@ function applyPermissions(){
 // MOBILE APP — separate UI, no CSS conflicts
 // ═══════════════════════════════════════════════════════
 const LL=['WH','Rest','Tr1','Tr2','Tr3'];
-let mobSection='overview';
+let mobSection='home';
+let mobCategory='home'; // 'home' | 'inventory' | 'crm' | 'settings'
 let mobParLoc='Warehouse';
 
+// Category → ordered list of section keys (used to build the tab strip dynamically)
+const MOB_CATEGORIES = {
+  inventory: ['overview','inventory','locations','par','alerts','picklist','transfers','production','sales'],
+  crm:       ['crm-customers','crm-schedule','crm-forecast','crm-relog'],
+};
+
+// Section icon + label for the tab strip
+const MOB_SECTION_META = {
+  overview:        { icon:'ti-chart-bar',        label:'Overview' },
+  inventory:       { icon:'ti-package',          label:'Inventory' },
+  locations:       { icon:'ti-map-pin',          label:'Locations' },
+  par:             { icon:'ti-target',           label:'Par Levels' },
+  alerts:          { icon:'ti-bell',             label:'Alerts', hasBadge:true },
+  picklist:        { icon:'ti-clipboard-list',   label:'Pick List' },
+  transfers:       { icon:'ti-arrows-exchange',  label:'Transfers' },
+  production:      { icon:'ti-tool',             label:'Production' },
+  sales:           { icon:'ti-currency-dollar',  label:'Sales' },
+  'crm-customers': { icon:'ti-building-store',   label:'Customers' },
+  'crm-schedule':  { icon:'ti-calendar',         label:'Schedule' },
+  'crm-forecast':  { icon:'ti-trending-up',      label:'Mfg Forecast' },
+  'crm-relog':     { icon:'ti-clipboard-text',   label:'Relations Log' },
+};
 
 function mobInit(){
   if(!isMob())return;
+  rebuildMobTabs();
+  syncMobTitle();
   mobRender();
+}
+
+// Choose a top-level category from the home screen
+function mobGoto(category){
+  mobCategory = category;
+  if(category === 'settings'){
+    mobSection = 'settings';
+  } else if(category === 'home'){
+    mobSection = 'home';
+  } else {
+    // First tab in the category becomes the active section
+    mobSection = MOB_CATEGORIES[category][0];
+  }
+  rebuildMobTabs();
+  syncMobTitle();
+  mobRender();
+  applyPermissions();
+}
+
+// Rebuild the tab strip to reflect the active category
+function rebuildMobTabs(){
+  const strip = document.getElementById('mob-tabs');
+  if(!strip) return;
+  if(mobCategory === 'home' || mobCategory === 'settings'){
+    strip.style.display = 'none';
+    strip.innerHTML = '';
+    return;
+  }
+  strip.style.display = '';
+  const sections = MOB_CATEGORIES[mobCategory] || [];
+  strip.innerHTML = sections.map(sec=>{
+    const meta = MOB_SECTION_META[sec];
+    if(!meta) return '';
+    const active = sec === mobSection ? ' active' : '';
+    const badge = meta.hasBadge ? '<span class="mob-tab-badge" id="mob-alert-badge"></span>' : '';
+    return `<button class="mob-tab${active}" data-sec="${sec}" onclick="mobShow('${sec}',this)">${badge}<i class="ti ${meta.icon}"></i>${meta.label}</button>`;
+  }).join('');
+}
+
+function syncMobTitle(){
+  const titles={home:'Home',overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer','crm-schedule':'Schedule','crm-forecast':'Mfg Forecast','crm-relog':'Relations Log'};
+  const titleEl = document.getElementById('mob-title');
+  if(titleEl) titleEl.textContent = titles[mobSection] || mobSection;
+  // Show/hide the home button: visible whenever we're not on the home screen
+  const homeBtn = document.getElementById('mob-home-btn');
+  if(homeBtn) homeBtn.style.display = (mobSection === 'home') ? 'none' : '';
 }
 
 function mobShow(sec,btn){
@@ -1529,9 +1611,7 @@ function mobShow(sec,btn){
   document.querySelectorAll('.mob-tab').forEach(t=>t.classList.remove('active'));
   if(btn)btn.classList.add('active');
   if(btn)btn.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
-  const titles={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer','crm-schedule':'Schedule','crm-forecast':'Mfg Forecast','crm-relog':'Relations Log'};
-  document.getElementById('mob-title').textContent=titles[sec]||sec;
-  // Render immediately with whatever data we have
+  syncMobTitle();
   mobRender();
   applyPermissions();
   // Background refresh from Supabase to catch any changes from desktop/other users
@@ -1544,7 +1624,8 @@ function mobShow(sec,btn){
 function mobRender(){
   const el=document.getElementById('mob-body');
   if(!el)return;
-  if(mobSection==='overview')el.innerHTML=mobOverviewHTML();
+  if(mobSection==='home')el.innerHTML=mobHomeHTML();
+  else if(mobSection==='overview')el.innerHTML=mobOverviewHTML();
   else if(mobSection==='inventory')el.innerHTML=mobInvHTML();
   else if(mobSection==='locations')el.innerHTML=mobLocsHTML();
   else if(mobSection==='par')el.innerHTML=mobParHTML();
@@ -1560,9 +1641,27 @@ function mobRender(){
   else if(mobSection==='crm-forecast'){el.innerHTML='<div id="crm-forecast-mob"></div>';CRM.renderMobForecast();}
   else if(mobSection==='crm-relog'){el.innerHTML='<div id="crm-relog-mob"></div>';CRM.renderRelog().then(()=>CRM.renderMobRelog());}
   el.scrollTop=0;
-  // Update alert badge
+  // Update alert badge (only present when the strip is showing the inventory category)
   const b=document.getElementById('mob-alert-badge');
   if(b){const n=S.alerts.length;b.style.display=n?'block':'none';b.textContent=n;}
+}
+
+// Home landing screen — three big tappable category cards
+function mobHomeHTML(){
+  const card = (cat, icon, title, subtitle) =>
+    `<button class="mob-home-card" onclick="mobGoto('${cat}')" type="button">
+      <div class="mob-home-icon"><i class="ti ${icon}"></i></div>
+      <div class="mob-home-text">
+        <div class="mob-home-title">${title}</div>
+        <div class="mob-home-sub">${subtitle}</div>
+      </div>
+      <i class="ti ti-chevron-right mob-home-arrow"></i>
+    </button>`;
+  return `<div class="mob-home-grid">
+    ${card('inventory','ti-package','Inventory Manager','Stock, par levels, transfers, sales')}
+    ${card('crm','ti-building-store','CRM','Customers, schedule, forecasts, logs')}
+    ${card('settings','ti-settings','Settings','App configuration')}
+  </div>`;
 }
 
 function mobOverviewHTML(){
@@ -4689,25 +4788,11 @@ init();
       <span class="mob-bar-title" id="mob-title">Overview</span>
       <span id="mob-role-badge" style="display:none;font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;color:#fff;letter-spacing:.04em;text-transform:uppercase"></span>
     </div>
+    <button class="mob-bar-icon" id="mob-home-btn" onclick="mobGoto('home')" title="Home" style="display:none;margin-right:8px"><i class="ti ti-home"></i></button>
     <button class="mob-bar-icon" id="mob-sync-btn" onclick="mobSync()" title="Sync Data"><i class="ti ti-refresh"></i></button>
   </div>
 
-  <div class="mob-tabs" id="mob-tabs">
-    <button class="mob-tab active" data-sec="overview" onclick="mobShow('overview',this)"><i class="ti ti-chart-bar"></i>Overview</button>
-    <button class="mob-tab" data-sec="inventory" onclick="mobShow('inventory',this)"><i class="ti ti-package"></i>Inventory</button>
-    <button class="mob-tab" data-sec="locations" onclick="mobShow('locations',this)"><i class="ti ti-map-pin"></i>Locations</button>
-    <button class="mob-tab" data-sec="par" onclick="mobShow('par',this)"><i class="ti ti-target"></i>Par Levels</button>
-    <button class="mob-tab" data-sec="alerts" onclick="mobShow('alerts',this)"><span class="mob-tab-badge" id="mob-alert-badge"></span><i class="ti ti-bell"></i>Alerts</button>
-    <button class="mob-tab" data-sec="picklist" onclick="mobShow('picklist',this)"><i class="ti ti-clipboard-list"></i>Pick List</button>
-    <button class="mob-tab" data-sec="transfers" onclick="mobShow('transfers',this)"><i class="ti ti-arrows-exchange"></i>Transfers</button>
-    <button class="mob-tab" data-sec="production" onclick="mobShow('production',this)"><i class="ti ti-tool"></i>Production</button>
-    <button class="mob-tab" data-sec="sales" onclick="mobShow('sales',this)"><i class="ti ti-currency-dollar"></i>Sales</button>
-    <button class="mob-tab" data-sec="settings" onclick="mobShow('settings',this)"><i class="ti ti-settings"></i>Settings</button>
-    <button class="mob-tab" data-sec="crm-customers" onclick="mobShow('crm-customers',this)"><i class="ti ti-building-store"></i>Customers</button>
-    <button class="mob-tab" data-sec="crm-schedule" onclick="mobShow('crm-schedule',this)"><i class="ti ti-calendar"></i>Schedule</button>
-    <button class="mob-tab" data-sec="crm-forecast" onclick="mobShow('crm-forecast',this)"><i class="ti ti-trending-up"></i>Mfg Forecast</button>
-    <button class="mob-tab" data-sec="crm-relog" onclick="mobShow('crm-relog',this)"><i class="ti ti-clipboard-text"></i>Relations Log</button>
-  </div>
+  <div class="mob-tabs" id="mob-tabs" style="display:none"></div>
 
   <div class="mob-body" id="mob-body"></div>
 
