@@ -1926,6 +1926,7 @@ window.CRM = (function(){
   const state = {
     locations: [],
     deletedLocations: [],   // soft-deleted, shown in Cleanup recovery panel
+    dismissedDupPairs: new Set(), // "a:b" pair keys marked "not a duplicate"
     stops: [],
     visits: [],
     settings: { buffer_minutes: 15, truck_device_map: {} },
@@ -1984,11 +1985,12 @@ window.CRM = (function(){
   async function loadAll() {
     if (!sb) { console.warn('[CRM] no supabase client'); return; }
     try {
-      const [locations, stops, visits, setR] = await Promise.all([
+      const [locations, stops, visits, setR, dismissed] = await Promise.all([
         fetchAll('crm_locations', 'location_name', true),
         fetchAll('crm_stops', 'scheduled_date', true),
         fetchAll('crm_visits', 'visit_date', false),
-        sb.from('app_settings').select('*').in('key', ['crm_buffer_minutes','crm_truck_device_map'])
+        sb.from('app_settings').select('*').in('key', ['crm_buffer_minutes','crm_truck_device_map']),
+        sb.from('crm_dup_dismissed').select('loc_a_id, loc_b_id')
       ]);
 
       // Dedupe defensively by id (in case realtime has been firing in parallel)
@@ -2006,6 +2008,10 @@ window.CRM = (function(){
       state.deletedLocations = dedupe(locations).filter(l => l.deleted_at);
       state.stops     = dedupe(stops);
       state.visits    = dedupe(visits);
+      // Build a Set of dismissed pair keys "a:b" with a<b for O(1) lookup
+      state.dismissedDupPairs = new Set(
+        (dismissed?.data || []).map(r => `${Math.min(r.loc_a_id, r.loc_b_id)}:${Math.max(r.loc_a_id, r.loc_b_id)}`)
+      );
 
       (setR.data || []).forEach(r => {
         if (r.key === 'crm_buffer_minutes') state.settings.buffer_minutes = parseInt(r.value, 10) || 15;
@@ -4915,11 +4921,17 @@ window.CRM = (function(){
     return dp[a.length][b.length];
   }
 
+  // Quick helper for the pair key (smaller id first)
+  function _dupPairKey(a, b) {
+    return a < b ? `${a}:${b}` : `${b}:${a}`;
+  }
+
   function findDuplicateClusters() {
     const locs = state.locations.slice();
     const norms = locs.map(l => ({ loc: l, norm: normalizeName(l.location_name) }));
     const clusters = [];
     const used = new Set();
+    const dismissed = state.dismissedDupPairs || new Set();
 
     for (let i = 0; i < norms.length; i++) {
       if (used.has(i) || !norms[i].norm) continue;
@@ -4940,7 +4952,15 @@ window.CRM = (function(){
       }
       if (cluster.length > 1) {
         used.add(i);
-        clusters.push(cluster);
+        // Filter out cluster members whose every pairing with the rest of
+        // the cluster has been dismissed.
+        const filtered = cluster.filter(member => {
+          return cluster.some(other =>
+            other.id !== member.id &&
+            !dismissed.has(_dupPairKey(member.id, other.id))
+          );
+        });
+        if (filtered.length > 1) clusters.push(filtered);
       }
     }
     clusters.forEach(c => {
@@ -4977,15 +4997,19 @@ window.CRM = (function(){
 
     const dupHtml = clusters.length
       ? clusters.map((c, idx) => {
+          const otherIdsList = id => c.filter(x => x.id !== id).map(x => x.id).join(',');
           const rows = c.map(l => `
             <tr>
               <td><strong>${esc(l.location_name)}</strong>${l.tier ? ` <span class="cat-chip" style="font-size:9px">${esc(l.tier)}</span>` : ''}</td>
               <td style="font-size:11px;color:var(--text3)">${esc(l.full_address || '—')}</td>
               <td style="text-align:center">${l._stopCount}</td>
               <td style="text-align:center">${l._visitCount}</td>
-              <td><button class="btn btn-xs" onclick="CRM.openProfile(${l.id})">View</button></td>
+              <td style="white-space:nowrap">
+                <button class="btn btn-xs" onclick="CRM.openProfile(${l.id})" title="View profile"><i class="ti ti-eye"></i></button>
+                <button class="btn btn-xs" onclick="CRM.dismissDupRow(${l.id}, [${otherIdsList(l.id)}])" title="Mark this customer as NOT a duplicate of the others in this cluster"><i class="ti ti-x"></i> Not a dup</button>
+              </td>
             </tr>`).join('');
-          const pickers = c.map(l => `<button class="btn btn-xs" onclick="CRM.openMergePicker(${l.id}, [${c.filter(x => x.id !== l.id).map(x => x.id).join(',')}])">Keep "${esc(l.location_name).slice(0, 30)}"</button>`).join(' ');
+          const pickers = c.map(l => `<button class="btn btn-xs" onclick="CRM.openMergePicker(${l.id}, [${otherIdsList(l.id)}])">Keep "${esc(l.location_name).slice(0, 30)}"</button>`).join(' ');
           return `<div class="card" style="margin-bottom:12px;padding:12px;background:var(--bg2)">
             <div style="font-size:12px;font-weight:700;color:var(--sidebar);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Cluster ${idx + 1} — ${c.length} possible duplicates</div>
             <table style="width:100%;font-size:12px;margin-bottom:10px">
@@ -5119,6 +5143,25 @@ window.CRM = (function(){
     } catch (e) {
       console.error('[CRM] restore failed', e);
       alert('Restore failed: ' + (e.message || e));
+    }
+  }
+
+  // Mark this customer as NOT a duplicate of the other cluster members.
+  // Persists to crm_dup_dismissed so the pairings don't reappear.
+  async function dismissDupRow(locId, otherIds) {
+    if (!otherIds || !otherIds.length) return;
+    try {
+      const { error } = await sb.rpc('crm_dismiss_dup_pairs', {
+        p_loc_id: locId,
+        p_other_ids: otherIds
+      });
+      if (error) throw error;
+      // Update local Set so the next renderCleanup reflects it immediately
+      otherIds.forEach(o => state.dismissedDupPairs.add(_dupPairKey(locId, o)));
+      renderCleanup();
+    } catch (e) {
+      console.error('[CRM] dismiss dup row failed', e);
+      alert('Failed to mark as not a duplicate: ' + (e.message || e));
     }
   }
 
@@ -5510,7 +5553,7 @@ window.CRM = (function(){
     editOpenEvent, deleteOpenEvent, viewClosedSession, closeReviewView,
     openLiveGpsTrail,
     // Cleanup (delete / merge / recover)
-    renderCleanup, confirmDelete, restoreLocation, bulkDeleteOrphans, toggleAllOrphans,
+    renderCleanup, confirmDelete, restoreLocation, bulkDeleteOrphans, toggleAllOrphans, dismissDupRow,
     openMergeFor, openMergePicker, openMergeReview, executeMerge, closeMergeModal, filterMergePicker,
     // Visit reassign / delete (per-row sales-history actions)
     openReassignVisit, filterReassignPicker, confirmReassign, _submitReassignConflict, confirmDeleteVisit,
