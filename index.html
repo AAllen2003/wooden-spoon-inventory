@@ -2314,8 +2314,10 @@ window.CRM = (function(){
   function renderOverview(l) {
     if (state.profileEditing) return renderOverviewEdit(l);
     const flagBox = l.internal_flags ? `
-      <div class="alert-bar alert-info" style="background:var(--amber-bg);color:var(--amber);border-left:3px solid var(--amber);padding:10px 14px;border-radius:var(--radius);margin-bottom:14px;font-size:12px">
-        <i class="ti ti-flag"></i> <strong>Needs review:</strong> ${esc(l.internal_flags)}
+      <div class="alert-bar alert-info" style="background:var(--amber-bg);color:var(--amber);border-left:3px solid var(--amber);padding:10px 14px;border-radius:var(--radius);margin-bottom:14px;font-size:12px;display:flex;align-items:center;gap:10px">
+        <i class="ti ti-flag"></i>
+        <div style="flex:1"><strong>Needs review:</strong> ${esc(l.internal_flags)}</div>
+        <button class="btn btn-xs" onclick="CRM.clearFlag(${l.id})" data-admin-only title="Clear this flag"><i class="ti ti-x"></i> Clear</button>
       </div>` : '';
 
     return `${flagBox}
@@ -2446,7 +2448,7 @@ window.CRM = (function(){
       email: get('f-email'),
       scheduling_preference: get('f-sched'),
       notes: get('f-notes'),
-      internal_flags: get('f-flags'),
+      internal_flags: get('f-flags') || null,
       preferred_truck: document.getElementById('f-truck')?.value ? parseInt(document.getElementById('f-truck').value,10) : null,
       truck_lock: document.getElementById('f-lock')?.checked || false,
       tier: get('f-tier'),
@@ -5146,6 +5148,22 @@ window.CRM = (function(){
     }
   }
 
+  // Clear the "needs review" flag from a customer (admin-only)
+  async function clearFlag(locId) {
+    const l = state.locations.find(x => x.id === locId);
+    if (!l) return;
+    if (!confirm(`Clear the "${l.internal_flags}" flag from ${l.location_name}?`)) return;
+    try {
+      const { error } = await sb.from('crm_locations').update({ internal_flags: null }).eq('id', locId);
+      if (error) throw error;
+      l.internal_flags = null;
+      renderCurrent();
+    } catch (e) {
+      console.error('[CRM] clearFlag failed', e);
+      alert('Failed to clear flag: ' + (e.message || e));
+    }
+  }
+
   // Mark this customer as NOT a duplicate of the other cluster members.
   // Persists to crm_dup_dismissed so the pairings don't reappear.
   async function dismissDupRow(locId, otherIds) {
@@ -5553,7 +5571,7 @@ window.CRM = (function(){
     editOpenEvent, deleteOpenEvent, viewClosedSession, closeReviewView,
     openLiveGpsTrail,
     // Cleanup (delete / merge / recover)
-    renderCleanup, confirmDelete, restoreLocation, bulkDeleteOrphans, toggleAllOrphans, dismissDupRow,
+    renderCleanup, confirmDelete, restoreLocation, bulkDeleteOrphans, toggleAllOrphans, dismissDupRow, clearFlag,
     openMergeFor, openMergePicker, openMergeReview, executeMerge, closeMergeModal, filterMergePicker,
     // Visit reassign / delete (per-row sales-history actions)
     openReassignVisit, filterReassignPicker, confirmReassign, _submitReassignConflict, confirmDeleteVisit,
