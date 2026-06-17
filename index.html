@@ -2377,11 +2377,16 @@ window.CRM = (function(){
         <button class="btn btn-xs" onclick="CRM.clearFlag(${l.id})" data-admin-only title="Clear this flag"><i class="ti ti-x"></i> Clear</button>
       </div>` : '';
 
+    const wipeBtn = (isAdmin() && state.settings?.manual_visit_entry_enabled)
+      ? `<button class="btn btn-sm" onclick="CRM.confirmWipeHistory(${l.id})" data-admin-only style="background:var(--red);color:#fff" title="Delete all visits, all stops, and clear seed numbers for this customer"><i class="ti ti-eraser"></i> Wipe History</button>`
+      : '';
+
     return `${flagBox}
     <div style="display:flex;justify-content:flex-end;margin-bottom:12px;gap:8px;flex-wrap:wrap">
       <button class="btn btn-sm" onclick="CRM.startEdit()" data-admin-only><i class="ti ti-edit"></i> Edit</button>
       <button class="btn btn-sm btn-accent" onclick="CRM.scheduleStopFor(${l.id})" data-admin-only><i class="ti ti-calendar-plus"></i> Schedule Stop</button>
       <button class="btn btn-sm" onclick="CRM.openMergeFor(${l.id})" data-admin-only style="background:var(--bg2)"><i class="ti ti-arrows-join"></i> Merge into…</button>
+      ${wipeBtn}
       <button class="btn btn-sm" onclick="CRM.confirmDelete(${l.id})" data-admin-only style="background:var(--red-bg);color:var(--red)"><i class="ti ti-trash"></i> Delete</button>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -2567,7 +2572,8 @@ window.CRM = (function(){
       .slice(0, 24);
     const manualEnabled = isAdmin() && state.settings?.manual_visit_entry_enabled;
     const addBtn = manualEnabled ? `
-      <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px;gap:8px">
+        <button class="btn btn-sm" onclick="CRM.openSquareBackfill(${l.id})"><i class="ti ti-download"></i> Backfill from Square</button>
         <button class="btn btn-sm btn-accent" onclick="CRM.openAddManualVisit(${l.id})"><i class="ti ti-plus"></i> Add Past Visit</button>
       </div>` : '';
     if (!visits.length) {
@@ -5230,6 +5236,43 @@ window.CRM = (function(){
     }
   }
 
+  // Wipe all sales/visit/stop history for a customer + clear seed numbers.
+  // Gated by the same Settings toggle as manual visit entry.
+  async function confirmWipeHistory(locId) {
+    const l = state.locations.find(x => x.id === locId);
+    if (!l) return;
+    if (!state.settings?.manual_visit_entry_enabled) {
+      alert('Wipe is gated by Settings → CRM Tools → Manual visit entry.');
+      return;
+    }
+    const visits = state.visits.filter(v => v.location_id === locId).length;
+    const stops = state.stops.filter(s => s.location_id === locId).length;
+    const futureStops = state.stops.filter(s => s.location_id === locId && s.scheduled_date >= new Date().toISOString().slice(0,10)).length;
+    const msg = `WIPE all history for "${l.location_name}"?\n\n` +
+      `This will permanently delete:\n` +
+      `  • ${visits} visit${visits===1?'':'s'} (sales records)\n` +
+      `  • ${stops} stop${stops===1?'':'s'} (${futureStops} of these are scheduled for today or later)\n` +
+      `  • Historical seed numbers (avg/visit, total sales, visit count, last visit)\n\n` +
+      `The customer record itself is NOT deleted. Deleted rows are snapshotted to the audit log.\n\n` +
+      `Type the customer name below to confirm.`;
+    const typed = prompt(msg);
+    if (typed == null) return;
+    if (typed.trim().toLowerCase() !== l.location_name.trim().toLowerCase()) {
+      alert('Name did not match. Wipe cancelled.');
+      return;
+    }
+    try {
+      const { data, error } = await sb.rpc('crm_wipe_customer_history', { p_location_id: locId });
+      if (error) throw error;
+      await loadAll();
+      renderCurrent();
+      alert(`Wiped "${data.location_name}". Removed ${data.visits_deleted} visit${data.visits_deleted===1?'':'s'} and ${data.stops_deleted} stop${data.stops_deleted===1?'':'s'}. Seed numbers cleared.`);
+    } catch (e) {
+      console.error('[CRM] wipe failed', e);
+      alert('Wipe failed: ' + (e.message || e));
+    }
+  }
+
   // Mark this customer as NOT a duplicate of the other cluster members.
   // Persists to crm_dup_dismissed so the pairings don't reappear.
   async function dismissDupRow(locId, otherIds) {
@@ -5404,6 +5447,262 @@ window.CRM = (function(){
     } catch (e) {
       console.error('[CRM] reassign failed', e);
       alert('Reassign failed: ' + (e.message || e));
+    }
+  }
+
+  // ─── SQUARE BACKFILL TOOL (gated by same setting) ────────────────
+  // Pre-fetch sales for a list of time windows for one customer, preview
+  // the results, then commit selected rows. Cleaner than manual entry
+  // because Square supplies the numbers — you only specify the windows.
+
+  function openSquareBackfill(locId) {
+    const loc = state.locations.find(l => l.id === locId);
+    if (!loc) { alert('Customer not found.'); return; }
+    if (!state.settings?.manual_visit_entry_enabled) {
+      alert('Backfill tool is gated by Settings → CRM Tools → Manual visit entry. Turn it on first.');
+      return;
+    }
+    if (!window.S?.workerUrl) {
+      alert('Worker URL not configured. Set it in Settings → Square Sync.');
+      return;
+    }
+    if (!state.settings?.truck_device_map?.['1'] || !state.settings?.truck_device_map?.['2']) {
+      alert('Truck device IDs not configured. Check Settings → Square Location IDs.');
+      return;
+    }
+    state._backfillLocId = locId;
+    state._backfillRows = []; // each row: {date, truck, start, end, _fetched?, _result?, _existing?, _selected?}
+    renderBackfillGrid();
+  }
+
+  function renderBackfillGrid() {
+    const loc = state.locations.find(l => l.id === state._backfillLocId);
+    if (!loc) return;
+    closeMergeModal();
+    const modal = document.createElement('div');
+    modal.id = 'merge-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = `
+      <div style="background:var(--surface);border-radius:var(--radius-lg);max-width:900px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.3)">
+        <div style="padding:18px 20px;border-bottom:1px solid var(--border)">
+          <div style="font-family:var(--font-display);font-size:20px;color:var(--sidebar)">Backfill from Square — ${esc(loc.location_name)}</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:6px">Enter visit windows below (one per row). Click Fetch to query Square. Review the numbers, uncheck any you don't want, then Save.</div>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:14px 20px" id="backfill-body"></div>
+        <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px;align-items:center">
+          <div style="font-size:11px;color:var(--text3)" id="backfill-status"></div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sm" onclick="CRM.closeMergeModal()">Close</button>
+            <button class="btn btn-sm" id="backfill-fetch-btn" onclick="CRM.backfillFetchAll()"><i class="ti ti-download"></i> Fetch from Square</button>
+            <button class="btn btn-sm btn-accent" id="backfill-save-btn" onclick="CRM.backfillSave()" style="display:none"><i class="ti ti-check"></i> Save Selected</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    // Seed with 5 empty rows if empty
+    if (!state._backfillRows.length) {
+      for (let i = 0; i < 5; i++) state._backfillRows.push({ date: '', truck: 1, start: '11:00', end: '14:00' });
+    }
+    renderBackfillRows();
+  }
+
+  function renderBackfillRows() {
+    const body = document.getElementById('backfill-body');
+    if (!body) return;
+    const rows = state._backfillRows;
+    body.innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:6px;font-size:10px;color:var(--text3);text-transform:uppercase">Date</th>
+          <th style="text-align:left;padding:6px;font-size:10px;color:var(--text3);text-transform:uppercase">Truck</th>
+          <th style="text-align:left;padding:6px;font-size:10px;color:var(--text3);text-transform:uppercase">Start</th>
+          <th style="text-align:left;padding:6px;font-size:10px;color:var(--text3);text-transform:uppercase">End</th>
+          <th style="text-align:right;padding:6px;font-size:10px;color:var(--text3);text-transform:uppercase">Trans</th>
+          <th style="text-align:right;padding:6px;font-size:10px;color:var(--text3);text-transform:uppercase">Revenue</th>
+          <th style="text-align:center;padding:6px;font-size:10px;color:var(--text3);text-transform:uppercase">Save?</th>
+          <th></th>
+        </tr></thead>
+        <tbody>${rows.map((r, i) => _backfillRowHtml(r, i)).join('')}</tbody>
+      </table>
+      <div style="margin-top:10px">
+        <button class="btn btn-xs" onclick="CRM.backfillAddRow()"><i class="ti ti-plus"></i> Add Row</button>
+        <span style="font-size:10px;color:var(--text3);margin-left:10px">Tip: paste a multi-row date column into the first Date cell to auto-fill.</span>
+      </div>`;
+    // Attach paste handler to first date input
+    const firstDate = document.getElementById('bf-date-0');
+    if (firstDate) firstDate.addEventListener('paste', _backfillPasteHandler);
+  }
+
+  function _backfillRowHtml(r, i) {
+    const existingBadge = r._existing
+      ? '<span class="cat-chip" style="font-size:8px;background:var(--amber-bg);color:var(--amber);margin-left:4px" title="A visit already exists for this date/truck and will be REPLACED">REPLACE</span>'
+      : '';
+    const fetchedCells = r._fetched
+      ? `<td style="padding:6px;text-align:right;font-weight:700">${r._result?.transactionCount ?? 0}</td>
+         <td style="padding:6px;text-align:right;font-weight:700;color:var(--accent)">$${(r._result?.totalRevenue || 0).toFixed(2)}${existingBadge}</td>
+         <td style="padding:6px;text-align:center"><input type="checkbox" ${r._selected ? 'checked' : ''} onchange="CRM.backfillToggleSelect(${i}, this.checked)"></td>`
+      : `<td style="padding:6px;text-align:right;color:var(--text3);font-style:italic">—</td>
+         <td style="padding:6px;text-align:right;color:var(--text3);font-style:italic">—</td>
+         <td style="padding:6px;text-align:center">—</td>`;
+    return `<tr style="border-bottom:1px solid rgba(132,79,6,.08)">
+      <td style="padding:6px"><input type="date" id="bf-date-${i}" value="${r.date || ''}" onchange="CRM.backfillUpdateRow(${i},'date',this.value)" style="width:140px;padding:5px;border:1px solid var(--border);border-radius:4px;font-size:12px"></td>
+      <td style="padding:6px"><select onchange="CRM.backfillUpdateRow(${i},'truck',parseInt(this.value,10))" style="padding:5px;border:1px solid var(--border);border-radius:4px;font-size:12px"><option value="1" ${r.truck===1?'selected':''}>1</option><option value="2" ${r.truck===2?'selected':''}>2</option></select></td>
+      <td style="padding:6px"><input type="time" value="${r.start || ''}" onchange="CRM.backfillUpdateRow(${i},'start',this.value)" style="width:110px;padding:5px;border:1px solid var(--border);border-radius:4px;font-size:12px"></td>
+      <td style="padding:6px"><input type="time" value="${r.end || ''}" onchange="CRM.backfillUpdateRow(${i},'end',this.value)" style="width:110px;padding:5px;border:1px solid var(--border);border-radius:4px;font-size:12px"></td>
+      ${fetchedCells}
+      <td style="padding:6px"><button class="btn btn-xs" onclick="CRM.backfillRemoveRow(${i})" title="Remove row"><i class="ti ti-x"></i></button></td>
+    </tr>`;
+  }
+
+  function backfillUpdateRow(i, field, value) {
+    state._backfillRows[i][field] = value;
+    // Editing invalidates a previous fetch
+    state._backfillRows[i]._fetched = false;
+    state._backfillRows[i]._selected = false;
+    state._backfillRows[i]._result = null;
+    state._backfillRows[i]._existing = null;
+  }
+
+  function backfillAddRow() {
+    const last = state._backfillRows[state._backfillRows.length - 1] || {};
+    state._backfillRows.push({ date: '', truck: last.truck || 1, start: last.start || '11:00', end: last.end || '14:00' });
+    renderBackfillRows();
+  }
+
+  function backfillRemoveRow(i) {
+    state._backfillRows.splice(i, 1);
+    if (!state._backfillRows.length) state._backfillRows.push({ date: '', truck: 1, start: '11:00', end: '14:00' });
+    renderBackfillRows();
+  }
+
+  function backfillToggleSelect(i, checked) {
+    state._backfillRows[i]._selected = checked;
+    updateBackfillStatus();
+  }
+
+  // Paste handler: if user pastes a column of dates into the first date cell, fan them out across rows
+  function _backfillPasteHandler(e) {
+    const text = (e.clipboardData || window.clipboardData).getData('text');
+    if (!text) return;
+    const lines = text.split(/[\r\n]+/).map(s => s.trim()).filter(Boolean);
+    if (lines.length <= 1) return; // Single value — let default paste happen
+    e.preventDefault();
+    // Normalize to YYYY-MM-DD (accept common formats)
+    const dates = lines.map(s => {
+      // Already ISO?
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      // MM/DD/YYYY or M/D/YYYY
+      const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+      if (m) {
+        const yr = m[3].length === 2 ? '20' + m[3] : m[3];
+        return `${yr}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;
+      }
+      // Try Date parse fallback
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+      return null;
+    }).filter(Boolean);
+    if (!dates.length) return;
+    // Grow rows array if needed
+    const template = { truck: state._backfillRows[0]?.truck || 1, start: state._backfillRows[0]?.start || '11:00', end: state._backfillRows[0]?.end || '14:00' };
+    state._backfillRows = dates.map(d => ({ date: d, ...template }));
+    renderBackfillRows();
+  }
+
+  async function backfillFetchAll() {
+    const rows = state._backfillRows.filter(r => r.date && r.start && r.end);
+    if (!rows.length) { alert('Add at least one row with date/start/end.'); return; }
+    const btn = document.getElementById('backfill-fetch-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Fetching...'; }
+    const status = document.getElementById('backfill-status');
+    const workerUrl = (window.S?.workerUrl || '').replace(/\/$/, '');
+    const deviceMap = state.settings.truck_device_map || {};
+    let ok = 0, fail = 0;
+
+    for (let i = 0; i < state._backfillRows.length; i++) {
+      const r = state._backfillRows[i];
+      if (!r.date || !r.start || !r.end) continue;
+      const device = deviceMap[String(r.truck)];
+      if (!device) { fail++; continue; }
+      // Build ISO timestamps in local timezone (matches how existing attribution code does it)
+      const startTs = new Date(`${r.date}T${r.start}:00`).toISOString();
+      const endTs = new Date(`${r.date}T${r.end}:00`).toISOString();
+      if (status) status.textContent = `Fetching ${i + 1} of ${state._backfillRows.length}...`;
+      try {
+        const url = `${workerUrl}/sales/window?device=${encodeURIComponent(device)}&from=${encodeURIComponent(startTs)}&to=${encodeURIComponent(endTs)}`;
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`Worker ${resp.status}`);
+        const data = await resp.json();
+        r._result = {
+          transactionCount: data.transactionCount || 0,
+          totalRevenue: data.totalRevenue || 0,
+          items: data.items || [],
+          _startTs: startTs,
+          _endTs: endTs
+        };
+        r._fetched = true;
+        // Check if an existing visit collides on (location_id, visit_date, truck)
+        const collision = state.visits.find(v =>
+          v.location_id === state._backfillLocId &&
+          v.visit_date === r.date &&
+          v.truck === r.truck
+        );
+        r._existing = collision || null;
+        // Default select: skip rows with $0 (nothing to save anyway), check the rest
+        r._selected = r._result.totalRevenue > 0 || r._result.transactionCount > 0;
+        ok++;
+      } catch (e) {
+        console.error('[backfill] fetch failed for row', i, e);
+        r._fetched = true;
+        r._result = { transactionCount: 0, totalRevenue: 0, items: [], _error: e.message };
+        r._selected = false;
+        fail++;
+      }
+      renderBackfillRows(); // progressive update
+    }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Re-fetch'; }
+    const saveBtn = document.getElementById('backfill-save-btn');
+    if (saveBtn) saveBtn.style.display = '';
+    if (status) status.textContent = `Fetched ${ok} window${ok===1?'':'s'}${fail?` (${fail} failed)`:''}. Review the numbers below, then Save.`;
+  }
+
+  function updateBackfillStatus() {
+    const status = document.getElementById('backfill-status');
+    if (!status) return;
+    const selected = state._backfillRows.filter(r => r._selected).length;
+    const replace = state._backfillRows.filter(r => r._selected && r._existing).length;
+    status.textContent = `${selected} row${selected===1?'':'s'} will save${replace ? ` (${replace} will replace existing)` : ''}.`;
+  }
+
+  async function backfillSave() {
+    const selected = state._backfillRows.filter(r => r._selected && r._fetched && r._result);
+    if (!selected.length) { alert('Nothing selected to save.'); return; }
+    const replaceCount = selected.filter(r => r._existing).length;
+    if (!confirm(`Save ${selected.length} visit${selected.length===1?'':'s'} to this customer?${replaceCount ? `\n\n${replaceCount} will REPLACE existing visit row${replaceCount===1?'':'s'} on the same date/truck.` : ''}`)) return;
+
+    const payload = selected.map(r => ({
+      visit_date: r.date,
+      truck: r.truck,
+      start_datetime: r._result._startTs,
+      end_datetime: r._result._endTs,
+      transaction_count: r._result.transactionCount,
+      total_revenue: r._result.totalRevenue,
+      items_sold: r._result.items
+    }));
+
+    try {
+      const { data, error } = await sb.rpc('crm_backfill_visits', {
+        p_location_id: state._backfillLocId,
+        p_visits: payload
+      });
+      if (error) throw error;
+      closeMergeModal();
+      await loadAll();
+      renderCurrent();
+      alert(`Saved. ${data.inserted} new, ${data.replaced} replaced.`);
+    } catch (e) {
+      console.error('[backfill] save failed', e);
+      alert('Save failed: ' + (e.message || e));
     }
   }
 
@@ -5727,12 +6026,14 @@ window.CRM = (function(){
     editOpenEvent, deleteOpenEvent, viewClosedSession, closeReviewView,
     openLiveGpsTrail,
     // Cleanup (delete / merge / recover)
-    renderCleanup, confirmDelete, restoreLocation, bulkDeleteOrphans, toggleAllOrphans, dismissDupRow, clearFlag,
+    renderCleanup, confirmDelete, restoreLocation, bulkDeleteOrphans, toggleAllOrphans, dismissDupRow, clearFlag, confirmWipeHistory,
     openMergeFor, openMergePicker, openMergeReview, executeMerge, closeMergeModal, filterMergePicker,
     // Visit reassign / delete (per-row sales-history actions)
     openReassignVisit, filterReassignPicker, confirmReassign, _submitReassignConflict, confirmDeleteVisit,
     // Manual visit entry (gated by setting)
     openAddManualVisit, saveManualVisit,
+    // Square backfill tool (gated by same setting)
+    openSquareBackfill, backfillFetchAll, backfillSave, backfillAddRow, backfillRemoveRow, backfillUpdateRow, backfillToggleSelect,
     // Mobile
     renderMobCustomers, filterMobCustomers, renderMobCustomerList,
     openMobProfile, renderMobProfile,
