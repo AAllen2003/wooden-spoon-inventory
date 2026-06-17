@@ -2391,6 +2391,15 @@ window.CRM = (function(){
       ? `<button class="btn btn-sm" onclick="CRM.confirmWipeHistory(${l.id})" data-admin-only style="background:var(--red);color:#fff" title="Delete all visits, all stops, and clear seed numbers for this customer"><i class="ti ti-eraser"></i> Wipe History</button>`
       : '';
 
+    // Live metrics computed from this customer's visits
+    const _myVisits = state.visits.filter(v => v.location_id === l.id);
+    const _visitCount = _myVisits.length;
+    const _totalSales = _myVisits.reduce((s, v) => s + (Number(v.total_revenue) || 0), 0);
+    const _avgPerVisit = _visitCount > 0 ? _totalSales / _visitCount : 0;
+    const _lastVisit = _myVisits.length
+      ? _myVisits.map(v => v.visit_date).sort().slice(-1)[0]
+      : null;
+
     return `${flagBox}
     <div style="display:flex;justify-content:flex-end;margin-bottom:12px;gap:8px;flex-wrap:wrap">
       <button class="btn btn-sm" onclick="CRM.startEdit()" data-admin-only><i class="ti ti-edit"></i> Edit</button>
@@ -2427,14 +2436,13 @@ window.CRM = (function(){
       </div>
     </div>
     <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
-      <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:10px">Historical Sales (pre-CRM seed data)</div>
+      <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:10px">Historical Sales</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
-        <div class="metric"><div class="metric-label">Avg / Visit</div><div class="metric-value">${l.seed_avg_per_visit?fmtMoney(l.seed_avg_per_visit):'—'}</div></div>
-        <div class="metric"><div class="metric-label">Total Sales</div><div class="metric-value">${l.seed_total_sales?fmtMoney(l.seed_total_sales):'—'}</div></div>
-        <div class="metric"><div class="metric-label">Historical Visits</div><div class="metric-value">${l.seed_visit_count||'—'}</div></div>
-        <div class="metric"><div class="metric-label">Last Visit</div><div class="metric-value" style="font-size:14px;margin-top:6px">${l.seed_last_visit?fmtDate(l.seed_last_visit):'—'}</div></div>
+        <div class="metric"><div class="metric-label">Avg / Visit</div><div class="metric-value">${_avgPerVisit?fmtMoney(_avgPerVisit):'—'}</div></div>
+        <div class="metric"><div class="metric-label">Total Sales</div><div class="metric-value">${_totalSales?fmtMoney(_totalSales):'—'}</div></div>
+        <div class="metric"><div class="metric-label">Historical Visits</div><div class="metric-value">${_visitCount||'—'}</div></div>
+        <div class="metric"><div class="metric-label">Last Visit</div><div class="metric-value" style="font-size:14px;margin-top:6px">${_lastVisit?fmtDate(_lastVisit):'—'}</div></div>
       </div>
-      <div style="font-size:11px;color:var(--text3);margin-top:8px;font-style:italic">These values are imported from the spreadsheet and will be superseded by live visit data as it accumulates.</div>
     </div>`;
   }
 
