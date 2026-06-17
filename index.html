@@ -5462,7 +5462,7 @@ window.CRM = (function(){
       alert('Backfill tool is gated by Settings → CRM Tools → Manual visit entry. Turn it on first.');
       return;
     }
-    if (!window.S?.workerUrl) {
+    if (!S?.workerUrl) {
       alert('Worker URL not configured. Set it in Settings → Square Sync.');
       return;
     }
@@ -5615,7 +5615,7 @@ window.CRM = (function(){
     const btn = document.getElementById('backfill-fetch-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Fetching...'; }
     const status = document.getElementById('backfill-status');
-    const workerUrl = (window.S?.workerUrl || '').replace(/\/$/, '');
+    const workerUrl = (S?.workerUrl || '').replace(/\/$/, '');
     const deviceMap = state.settings.truck_device_map || {};
     let ok = 0, fail = 0;
 
