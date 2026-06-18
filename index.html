@@ -621,7 +621,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
         <div class="acc-header" onclick="toggleAcc('acc-truck-devices')"><div class="acc-header-left"><span class="acc-icon">&#x1F4F1;</span><div><div class="acc-title">Truck Devices</div><div class="acc-subtitle">Physical Square reader IDs per truck</div></div></div><span class="acc-chevron" id="chv-acc-truck-devices">&#x25BC;</span></div>
         <div class="acc-body" id="acc-truck-devices">
           <div style="padding-top:14px">
-            <p style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.5">Square device installation IDs for each truck's reader. Used by the backfill tool to filter sales by physical device — important for historical dates when both trucks rang under one location. A truck can have multiple devices (e.g., lost-and-replaced).</p>
+            <p style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.5">Square device names <em>or</em> installation IDs for each truck's reader, one per line. Used by the backfill tool to filter sales by physical device — important for historical dates when both trucks rang under one location. Device names are easier to find in the Square dashboard. Use the "Inspect Devices" button in any backfill window to see what your payments report.</p>
             <div id="truck-devices-editor"></div>
             <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="saveTruckDevices()">Save Devices</button>
           </div>
@@ -1525,7 +1525,7 @@ function renderTruckDevicesEditor() {
   root.innerHTML = ['1', '2'].map(t => `
     <div style="margin-bottom:14px;padding:10px 12px;background:var(--bg2);border-radius:6px">
       <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:6px">Truck ${t} — Device IDs (one per line)</div>
-      <textarea id="td-truck-${t}" rows="3" placeholder="Paste Square device installation IDs here, one per line" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:4px;font-family:monospace;font-size:12px;resize:vertical">${(map[t]||[]).join('\n')}</textarea>
+      <textarea id="td-truck-${t}" rows="3" placeholder="One device name or installation ID per line" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:4px;font-family:monospace;font-size:12px;resize:vertical">${(map[t]||[]).join('\n')}</textarea>
       <div style="font-size:10px;color:var(--text3);margin-top:4px">${(map[t]||[]).length} device${(map[t]||[]).length===1?'':'s'} configured</div>
     </div>`).join('');
 }
