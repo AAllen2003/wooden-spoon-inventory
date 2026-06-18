@@ -1514,8 +1514,12 @@ async function toggleManualVisitEntry(on) {
 function renderTruckDevicesEditor() {
   const root = document.getElementById('truck-devices-editor');
   if (!root) return;
+  // Don't blow away in-progress edits: if either textarea is focused, leave it alone.
+  // The 45-sec background refresh and realtime events both call this; we don't want
+  // typing to disappear mid-keystroke.
+  const active = document.activeElement;
+  if (active && (active.id === 'td-truck-1' || active.id === 'td-truck-2')) return;
   const map = (window.CRM && CRM._state?.settings?.truck_devices) || { '1': [], '2': [] };
-  // Ensure both trucks exist as keys
   if (!map['1']) map['1'] = [];
   if (!map['2']) map['2'] = [];
   root.innerHTML = ['1', '2'].map(t => `
