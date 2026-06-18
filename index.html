@@ -2370,7 +2370,7 @@ window.CRM = (function(){
     if (tier) rows = rows.filter(l => l.tier === tier);
     if (flag === 'flagged') rows = rows.filter(l => l.internal_flags);
 
-    rows.sort((a,b) => (b.seed_avg_per_visit||0) - (a.seed_avg_per_visit||0));
+    rows.sort((a,b) => (a.location_name||'').localeCompare(b.location_name||'', 'en', { sensitivity: 'base' }));
 
     if (!rows.length) {
       list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-style:italic">No locations match.</div>';
@@ -4212,7 +4212,7 @@ window.CRM = (function(){
       root.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">No customer data found. Pull to refresh or check Settings.</div>';
       return;
     }
-    const rows = state.locations.slice().sort((a,b)=>(b.seed_avg_per_visit||0)-(a.seed_avg_per_visit||0));
+    const rows = state.locations.slice().sort((a,b)=>(a.location_name||'').localeCompare(b.location_name||'','en',{sensitivity:'base'}));
     const total = state.locations.length;
     const flagged = state.locations.filter(l=>l.internal_flags).length;
     root.innerHTML = `
@@ -4242,7 +4242,7 @@ window.CRM = (function(){
       (l.location_name||'').toLowerCase().includes(q) ||
       (l.point_of_contact||'').toLowerCase().includes(q) ||
       (l.city||'').toLowerCase().includes(q));
-    rows.sort((a,b)=>(b.seed_avg_per_visit||0)-(a.seed_avg_per_visit||0));
+    rows.sort((a,b)=>(a.location_name||'').localeCompare(b.location_name||'','en',{sensitivity:'base'}));
     renderMobCustomerList(rows);
   }
   function openMobProfile(id){
