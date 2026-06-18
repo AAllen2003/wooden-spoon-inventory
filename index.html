@@ -5572,6 +5572,7 @@ window.CRM = (function(){
           <div style="font-size:11px;color:var(--text3)" id="backfill-status"></div>
           <div style="display:flex;gap:8px">
             <button class="btn btn-sm" onclick="CRM.closeMergeModal()">Close</button>
+            <button class="btn btn-sm" id="backfill-inspect-btn" onclick="CRM.backfillInspect()" title="Show all device IDs that appear in the first row's window (no filter, no save)"><i class="ti ti-list-search"></i> Inspect Devices</button>
             <button class="btn btn-sm" id="backfill-fetch-btn" onclick="CRM.backfillFetchAll()"><i class="ti ti-download"></i> Fetch from Square</button>
             <button class="btn btn-sm btn-accent" id="backfill-save-btn" onclick="CRM.backfillSave()" style="display:none"><i class="ti ti-check"></i> Save Selected</button>
           </div>
@@ -5686,6 +5687,53 @@ window.CRM = (function(){
     const template = { truck: state._backfillRows[0]?.truck || 1, start: state._backfillRows[0]?.start || '11:00', end: state._backfillRows[0]?.end || '14:00' };
     state._backfillRows = dates.map(d => ({ date: d, ...template }));
     renderBackfillRows();
+  }
+
+  // Diagnostic: inspect the first valid row's window without filtering. Surfaces
+  // every device_installation_id that appears in Square's payments for that
+  // location + window. Used to discover correct device IDs to put in Settings.
+  async function backfillInspect() {
+    const r = state._backfillRows.find(x => x.date && x.start && x.end);
+    if (!r) { alert('Fill in at least one row (date / start / end) first.'); return; }
+    const workerUrl = (S?.workerUrl || '').replace(/\/$/, '');
+    const locMap = state.settings.truck_device_map || {};
+    const location = locMap[String(r.truck)];
+    if (!location) { alert(`Truck ${r.truck} has no Square location ID configured.`); return; }
+    const startTs = new Date(`${r.date}T${r.start}:00`).toISOString();
+    const endTs = new Date(`${r.date}T${r.end}:00`).toISOString();
+    const status = document.getElementById('backfill-status');
+    const btn = document.getElementById('backfill-inspect-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> Inspecting...'; }
+    if (status) status.textContent = `Inspecting ${r.date} ${r.start}–${r.end} on Truck ${r.truck}'s location...`;
+    try {
+      const url = `${workerUrl}/sales/window/inspect?location=${encodeURIComponent(location)}&from=${encodeURIComponent(startTs)}&to=${encodeURIComponent(endTs)}`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`Worker ${resp.status}`);
+      const data = await resp.json();
+      _showInspectResults(data, r);
+    } catch (e) {
+      console.error('[backfill inspect]', e);
+      alert('Inspect failed: ' + (e.message || e));
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-list-search"></i> Inspect Devices'; }
+      if (status) status.textContent = '';
+    }
+  }
+
+  function _showInspectResults(data, r) {
+    const devs = data.devices_seen || [];
+    if (!devs.length) {
+      alert(`No payments found at this location in the window ${r.date} ${r.start}–${r.end} (Truck ${r.truck}).\n\nEither there were no sales in this window, or the location ID in Settings → Square Location IDs is wrong.`);
+      return;
+    }
+    const lines = devs.map(d => {
+      const name = d.device_name ? ` (${d.device_name})` : '';
+      return `• ${d.device_installation_id}${name}\n    ${d.payment_count} payment${d.payment_count===1?'':'s'}, $${d.revenue.toFixed(2)}`;
+    }).join('\n\n');
+    const msg = `Devices seen in this window (${data.total_payments} total payments):\n\n${lines}\n\n` +
+      `If you see "(none)" above, those payments have no device info attached (e.g., manual entries).\n\n` +
+      `Copy the IDs that correspond to Truck ${r.truck} into Settings → Truck Devices, then Save and re-Fetch.`;
+    alert(msg);
   }
 
   async function backfillFetchAll() {
@@ -6118,7 +6166,7 @@ window.CRM = (function(){
     // Manual visit entry (gated by setting)
     openAddManualVisit, saveManualVisit,
     // Square backfill tool (gated by same setting)
-    openSquareBackfill, backfillFetchAll, backfillSave, backfillAddRow, backfillRemoveRow, backfillUpdateRow, backfillToggleSelect,
+    openSquareBackfill, backfillFetchAll, backfillSave, backfillAddRow, backfillRemoveRow, backfillUpdateRow, backfillToggleSelect, backfillInspect,
     // Mobile
     renderMobCustomers, filterMobCustomers, renderMobCustomerList,
     openMobProfile, renderMobProfile,
