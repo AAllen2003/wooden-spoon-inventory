@@ -618,6 +618,16 @@ body.staff-mode [data-admin-only]{display:none !important;}
         </div>
       </div>
       <div class="acc-section" data-admin-only>
+        <div class="acc-header" onclick="toggleAcc('acc-truck-devices')"><div class="acc-header-left"><span class="acc-icon">&#x1F4F1;</span><div><div class="acc-title">Truck Devices</div><div class="acc-subtitle">Physical Square reader IDs per truck</div></div></div><span class="acc-chevron" id="chv-acc-truck-devices">&#x25BC;</span></div>
+        <div class="acc-body" id="acc-truck-devices">
+          <div style="padding-top:14px">
+            <p style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.5">Square device installation IDs for each truck's reader. Used by the backfill tool to filter sales by physical device — important for historical dates when both trucks rang under one location. A truck can have multiple devices (e.g., lost-and-replaced).</p>
+            <div id="truck-devices-editor"></div>
+            <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="saveTruckDevices()">Save Devices</button>
+          </div>
+        </div>
+      </div>
+      <div class="acc-section" data-admin-only>
         <div class="acc-header" onclick="toggleAcc('acc-items')"><div class="acc-header-left"><span class="acc-icon">&#x1F4E6;</span><div><div class="acc-title">Items</div><div class="acc-subtitle" id="items-subtitle">28 items</div></div></div><span class="acc-chevron" id="chv-acc-items">&#x25BC;</span></div>
         <div class="acc-body" id="acc-items">
           <div style="padding-top:14px"><div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn btn-sm btn-primary" onclick="addItem()"><i class="ti ti-plus"></i> Add Item</button></div><div id="items-list"></div></div>
@@ -1479,6 +1489,8 @@ function renderSettings(){
     const status = document.getElementById('manual-visit-toggle-status');
     if (status) status.textContent = mvT.checked ? 'Currently ON — "Add Past Visit" button visible on customer Sales History.' : 'Currently OFF.';
   }
+  // Render truck devices editor
+  renderTruckDevicesEditor();
 }
 
 async function toggleManualVisitEntry(on) {
@@ -1493,9 +1505,44 @@ async function toggleManualVisitEntry(on) {
   } catch (e) {
     console.error('toggleManualVisitEntry:', e);
     alert('Failed to save setting: ' + (e.message || e));
-    // Revert toggle visual
     const mvT = document.getElementById('set-manual-visit-toggle');
     if (mvT) mvT.checked = !on;
+  }
+}
+
+// Render the truck-devices editor: for each truck, a textarea (one device ID per line)
+function renderTruckDevicesEditor() {
+  const root = document.getElementById('truck-devices-editor');
+  if (!root) return;
+  const map = (window.CRM && CRM._state?.settings?.truck_devices) || { '1': [], '2': [] };
+  // Ensure both trucks exist as keys
+  if (!map['1']) map['1'] = [];
+  if (!map['2']) map['2'] = [];
+  root.innerHTML = ['1', '2'].map(t => `
+    <div style="margin-bottom:14px;padding:10px 12px;background:var(--bg2);border-radius:6px">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:6px">Truck ${t} — Device IDs (one per line)</div>
+      <textarea id="td-truck-${t}" rows="3" placeholder="Paste Square device installation IDs here, one per line" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:4px;font-family:monospace;font-size:12px;resize:vertical">${(map[t]||[]).join('\n')}</textarea>
+      <div style="font-size:10px;color:var(--text3);margin-top:4px">${(map[t]||[]).length} device${(map[t]||[]).length===1?'':'s'} configured</div>
+    </div>`).join('');
+}
+
+async function saveTruckDevices() {
+  const out = { '1': [], '2': [] };
+  for (const t of ['1', '2']) {
+    const ta = document.getElementById(`td-truck-${t}`);
+    if (!ta) continue;
+    out[t] = ta.value.split(/[\r\n]+/).map(s => s.trim()).filter(Boolean);
+  }
+  try {
+    await sb.from('app_settings').upsert({ key: 'crm_truck_devices', value: JSON.stringify(out) });
+    if (window.CRM && CRM._state) {
+      CRM._state.settings.truck_devices = out;
+    }
+    renderTruckDevicesEditor();
+    alert(`Saved. Truck 1: ${out['1'].length} device${out['1'].length===1?'':'s'}, Truck 2: ${out['2'].length} device${out['2'].length===1?'':'s'}.`);
+  } catch (e) {
+    console.error('saveTruckDevices:', e);
+    alert('Failed to save: ' + (e.message || e));
   }
 }
 
@@ -2050,7 +2097,7 @@ window.CRM = (function(){
         fetchAll('crm_locations', 'location_name', true),
         fetchAll('crm_stops', 'scheduled_date', true),
         fetchAll('crm_visits', 'visit_date', false),
-        sb.from('app_settings').select('*').in('key', ['crm_buffer_minutes','crm_truck_device_map','crm_manual_visit_entry_enabled']),
+        sb.from('app_settings').select('*').in('key', ['crm_buffer_minutes','crm_truck_device_map','crm_manual_visit_entry_enabled','crm_truck_devices']),
         sb.from('crm_dup_dismissed').select('loc_a_id, loc_b_id')
       ]);
 
@@ -2085,6 +2132,10 @@ window.CRM = (function(){
             const parsed = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
             state.settings.manual_visit_entry_enabled = !!(parsed && parsed.enabled);
           } catch(e) { state.settings.manual_visit_entry_enabled = false; }
+        }
+        if (r.key === 'crm_truck_devices') {
+          try { state.settings.truck_devices = typeof r.value === 'string' ? JSON.parse(r.value) : r.value; }
+          catch(e){ state.settings.truck_devices = r.value || {}; }
         }
       });
       state.loaded = true;
@@ -5485,8 +5536,14 @@ window.CRM = (function(){
       return;
     }
     if (!state.settings?.truck_device_map?.['1'] || !state.settings?.truck_device_map?.['2']) {
-      alert('Truck device IDs not configured. Check Settings → Square Location IDs.');
+      alert('Square Location IDs not configured. Check Settings → Square Location IDs.');
       return;
+    }
+    const devMap = state.settings?.truck_devices || {};
+    const t1devs = (devMap['1'] || []).length;
+    const t2devs = (devMap['2'] || []).length;
+    if (!t1devs && !t2devs) {
+      if (!confirm('No truck devices configured in Settings → Truck Devices. Sales will be pulled by LOCATION only, which may include both trucks if they shared a location historically. Continue anyway?')) return;
     }
     state._backfillLocId = locId;
     state._backfillRows = []; // each row: {date, truck, start, end, _fetched?, _result?, _existing?, _selected?}
@@ -5634,20 +5691,26 @@ window.CRM = (function(){
     if (btn) { btn.disabled = true; btn.textContent = 'Fetching...'; }
     const status = document.getElementById('backfill-status');
     const workerUrl = (S?.workerUrl || '').replace(/\/$/, '');
-    const deviceMap = state.settings.truck_device_map || {};
+    const locMap = state.settings.truck_device_map || {};   // misnamed: holds LOCATION IDs
+    const deviceMap = state.settings.truck_devices || {};   // truck → [device_installation_id, ...]
     let ok = 0, fail = 0;
 
     for (let i = 0; i < state._backfillRows.length; i++) {
       const r = state._backfillRows[i];
       if (!r.date || !r.start || !r.end) continue;
-      const device = deviceMap[String(r.truck)];
-      if (!device) { fail++; continue; }
+      const location = locMap[String(r.truck)];
+      if (!location) { fail++; continue; }
+      const devices = deviceMap[String(r.truck)] || [];
       // Build ISO timestamps in local timezone (matches how existing attribution code does it)
       const startTs = new Date(`${r.date}T${r.start}:00`).toISOString();
       const endTs = new Date(`${r.date}T${r.end}:00`).toISOString();
       if (status) status.textContent = `Fetching ${i + 1} of ${state._backfillRows.length}...`;
       try {
-        const url = `${workerUrl}/sales/window?device=${encodeURIComponent(device)}&from=${encodeURIComponent(startTs)}&to=${encodeURIComponent(endTs)}`;
+        // Build URL: location is required, devices is optional comma-separated list
+        let url = `${workerUrl}/sales/window?location=${encodeURIComponent(location)}&from=${encodeURIComponent(startTs)}&to=${encodeURIComponent(endTs)}`;
+        if (devices.length) {
+          url += `&devices=${encodeURIComponent(devices.join(','))}`;
+        }
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(`Worker ${resp.status}`);
         const data = await resp.json();
