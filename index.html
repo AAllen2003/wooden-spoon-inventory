@@ -618,6 +618,28 @@ body.staff-mode [data-admin-only]{display:none !important;}
         </div>
       </div>
       <div class="acc-section" data-admin-only>
+        <div class="acc-header" onclick="toggleAcc('acc-legacy-cutover')"><div class="acc-header-left"><span class="acc-icon">&#x1F551;</span><div><div class="acc-title">Legacy Sales Cutover</div><div class="acc-subtitle">Before this date, all sales were under one Square location</div></div></div><span class="acc-chevron" id="chv-acc-legacy-cutover">&#x25BC;</span></div>
+        <div class="acc-body" id="acc-legacy-cutover">
+          <div style="padding-top:14px">
+            <p style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.5">Until the cutover date, both trucks rang sales under a single Square location. After it, each truck has its own location. The backfill tool uses this to query the right location for any given date, then filters by device.</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+              <div>
+                <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Cutover Date</label>
+                <input type="date" id="legacy-cutover-date" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:4px;font-family:var(--font-body);font-size:13px">
+                <div style="font-size:10px;color:var(--text3);margin-top:3px">Sales on or before this date use the legacy location.</div>
+              </div>
+              <div>
+                <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Legacy Location ID</label>
+                <input type="text" id="legacy-cutover-loc" placeholder="The Square location ID used historically" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:4px;font-family:monospace;font-size:12px">
+                <div style="font-size:10px;color:var(--text3);margin-top:3px">Usually the same as Truck 1's location now.</div>
+              </div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="saveLegacyCutover()">Save Cutover</button>
+            <div id="legacy-cutover-status" style="font-size:11px;color:var(--text3);font-style:italic;margin-top:8px"></div>
+          </div>
+        </div>
+      </div>
+      <div class="acc-section" data-admin-only>
         <div class="acc-header" onclick="toggleAcc('acc-truck-devices')"><div class="acc-header-left"><span class="acc-icon">&#x1F4F1;</span><div><div class="acc-title">Truck Devices</div><div class="acc-subtitle">Physical Square reader IDs per truck</div></div></div><span class="acc-chevron" id="chv-acc-truck-devices">&#x25BC;</span></div>
         <div class="acc-body" id="acc-truck-devices">
           <div style="padding-top:14px">
@@ -1491,6 +1513,16 @@ function renderSettings(){
   }
   // Render truck devices editor
   renderTruckDevicesEditor();
+  // Sync legacy cutover inputs
+  const cut = (window.CRM && CRM._state?.settings?.legacy_cutover) || {};
+  const dEl = document.getElementById('legacy-cutover-date');
+  const lEl = document.getElementById('legacy-cutover-loc');
+  if (dEl && document.activeElement !== dEl) dEl.value = cut.cutover_date || '';
+  if (lEl && document.activeElement !== lEl) lEl.value = cut.legacy_location_id || '';
+  const cutStatus = document.getElementById('legacy-cutover-status');
+  if (cutStatus) cutStatus.textContent = cut.cutover_date
+    ? `Active: sales on or before ${cut.cutover_date} query location ${cut.legacy_location_id}.`
+    : 'No cutover active — each truck queries its own location for all dates.';
 }
 
 async function toggleManualVisitEntry(on) {
@@ -1507,6 +1539,31 @@ async function toggleManualVisitEntry(on) {
     alert('Failed to save setting: ' + (e.message || e));
     const mvT = document.getElementById('set-manual-visit-toggle');
     if (mvT) mvT.checked = !on;
+  }
+}
+
+async function saveLegacyCutover() {
+  const date = document.getElementById('legacy-cutover-date')?.value || null;
+  const loc = (document.getElementById('legacy-cutover-loc')?.value || '').trim() || null;
+  if ((date && !loc) || (!date && loc)) {
+    alert('Either fill in both Cutover Date and Legacy Location ID, or clear both.');
+    return;
+  }
+  try {
+    await sb.from('app_settings').upsert({
+      key: 'crm_sales_legacy_cutover',
+      value: JSON.stringify({ cutover_date: date, legacy_location_id: loc })
+    });
+    if (window.CRM && CRM._state) {
+      CRM._state.settings.legacy_cutover = { cutover_date: date, legacy_location_id: loc };
+    }
+    const status = document.getElementById('legacy-cutover-status');
+    if (status) status.textContent = date
+      ? `Saved. Sales on or before ${date} will be queried from location ${loc}.`
+      : 'Saved. No legacy cutover active.';
+  } catch (e) {
+    console.error('saveLegacyCutover:', e);
+    alert('Failed to save: ' + (e.message || e));
   }
 }
 
@@ -2101,7 +2158,7 @@ window.CRM = (function(){
         fetchAll('crm_locations', 'location_name', true),
         fetchAll('crm_stops', 'scheduled_date', true),
         fetchAll('crm_visits', 'visit_date', false),
-        sb.from('app_settings').select('*').in('key', ['crm_buffer_minutes','crm_truck_device_map','crm_manual_visit_entry_enabled','crm_truck_devices']),
+        sb.from('app_settings').select('*').in('key', ['crm_buffer_minutes','crm_truck_device_map','crm_manual_visit_entry_enabled','crm_truck_devices','crm_sales_legacy_cutover']),
         sb.from('crm_dup_dismissed').select('loc_a_id, loc_b_id')
       ]);
 
@@ -2140,6 +2197,12 @@ window.CRM = (function(){
         if (r.key === 'crm_truck_devices') {
           try { state.settings.truck_devices = typeof r.value === 'string' ? JSON.parse(r.value) : r.value; }
           catch(e){ state.settings.truck_devices = r.value || {}; }
+        }
+        if (r.key === 'crm_sales_legacy_cutover') {
+          try {
+            const parsed = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
+            state.settings.legacy_cutover = parsed || { cutover_date: null, legacy_location_id: null };
+          } catch(e) { state.settings.legacy_cutover = { cutover_date: null, legacy_location_id: null }; }
         }
       });
       state.loaded = true;
@@ -5617,9 +5680,28 @@ window.CRM = (function(){
     const existingBadge = r._existing
       ? '<span class="cat-chip" style="font-size:8px;background:var(--amber-bg);color:var(--amber);margin-left:4px" title="A visit already exists for this date/truck and will be REPLACED">REPLACE</span>'
       : '';
+    // Build a diagnostic hint when the row fetched but returned zero
+    let diagBadge = '';
+    if (r._fetched && r._result && (r._result.transactionCount || 0) === 0) {
+      const d = r._result._diag;
+      if (d) {
+        let why = '';
+        if (d.orders_fetched === 0) {
+          why = 'No payments at this location in this window';
+        } else if (d.filter_active && d.skipped_device_mismatch > 0) {
+          const seen = (d.devices_seen_in_window || []).join(', ') || 'none';
+          why = `${d.skipped_device_mismatch} payment(s) filtered out by device. Devices seen: ${seen}. Your filter: ${(d.filter_values||[]).join(', ')}`;
+        } else if (d.skipped_online > 0) {
+          why = `${d.skipped_online} online order(s) skipped (in-person only)`;
+        } else {
+          why = `Orders fetched: ${d.orders_fetched}`;
+        }
+        diagBadge = `<span class="cat-chip" style="font-size:8px;background:var(--bg2);color:var(--text3);margin-left:4px;cursor:help" title="${esc(why)}">WHY?</span>`;
+      }
+    }
     const fetchedCells = r._fetched
       ? `<td style="padding:6px;text-align:right;font-weight:700">${r._result?.transactionCount ?? 0}</td>
-         <td style="padding:6px;text-align:right;font-weight:700;color:var(--accent)">$${(r._result?.totalRevenue || 0).toFixed(2)}${existingBadge}</td>
+         <td style="padding:6px;text-align:right;font-weight:700;color:var(--accent)">$${(r._result?.totalRevenue || 0).toFixed(2)}${existingBadge}${diagBadge}</td>
          <td style="padding:6px;text-align:center"><input type="checkbox" ${r._selected ? 'checked' : ''} onchange="CRM.backfillToggleSelect(${i}, this.checked)"></td>`
       : `<td style="padding:6px;text-align:right;color:var(--text3);font-style:italic">—</td>
          <td style="padding:6px;text-align:right;color:var(--text3);font-style:italic">—</td>
@@ -5696,9 +5778,8 @@ window.CRM = (function(){
     const r = state._backfillRows.find(x => x.date && x.start && x.end);
     if (!r) { alert('Fill in at least one row (date / start / end) first.'); return; }
     const workerUrl = (S?.workerUrl || '').replace(/\/$/, '');
-    const locMap = state.settings.truck_device_map || {};
-    const location = locMap[String(r.truck)];
-    if (!location) { alert(`Truck ${r.truck} has no Square location ID configured.`); return; }
+    const location = resolveLocationForWindow(r.date, r.truck);
+    if (!location) { alert(`No Square location resolved for Truck ${r.truck} on ${r.date}. Check Settings → Square Location IDs and Legacy Cutover.`); return; }
     const startTs = new Date(`${r.date}T${r.start}:00`).toISOString();
     const endTs = new Date(`${r.date}T${r.end}:00`).toISOString();
     const status = document.getElementById('backfill-status');
@@ -5736,6 +5817,18 @@ window.CRM = (function(){
     alert(msg);
   }
 
+  // Pick the right Square location to query for a given (date, truck).
+  // Before the legacy cutover date, all sales were under one location regardless
+  // of physical truck — so both trucks resolve to legacy_location_id for those dates.
+  function resolveLocationForWindow(dateStr, truckNum) {
+    const locMap = state.settings?.truck_device_map || {};
+    const cut = state.settings?.legacy_cutover;
+    if (cut?.cutover_date && cut?.legacy_location_id && dateStr && dateStr <= cut.cutover_date) {
+      return cut.legacy_location_id;
+    }
+    return locMap[String(truckNum)] || null;
+  }
+
   async function backfillFetchAll() {
     const rows = state._backfillRows.filter(r => r.date && r.start && r.end);
     if (!rows.length) { alert('Add at least one row with date/start/end.'); return; }
@@ -5743,14 +5836,13 @@ window.CRM = (function(){
     if (btn) { btn.disabled = true; btn.textContent = 'Fetching...'; }
     const status = document.getElementById('backfill-status');
     const workerUrl = (S?.workerUrl || '').replace(/\/$/, '');
-    const locMap = state.settings.truck_device_map || {};   // misnamed: holds LOCATION IDs
-    const deviceMap = state.settings.truck_devices || {};   // truck → [device_installation_id, ...]
+    const deviceMap = state.settings.truck_devices || {};
     let ok = 0, fail = 0;
 
     for (let i = 0; i < state._backfillRows.length; i++) {
       const r = state._backfillRows[i];
       if (!r.date || !r.start || !r.end) continue;
-      const location = locMap[String(r.truck)];
+      const location = resolveLocationForWindow(r.date, r.truck);
       if (!location) { fail++; continue; }
       const devices = deviceMap[String(r.truck)] || [];
       // Build ISO timestamps in local timezone (matches how existing attribution code does it)
@@ -5771,7 +5863,8 @@ window.CRM = (function(){
           totalRevenue: data.totalRevenue || 0,
           items: data.items || [],
           _startTs: startTs,
-          _endTs: endTs
+          _endTs: endTs,
+          _diag: data.diag || null
         };
         r._fetched = true;
         // Check if an existing visit collides on (location_id, visit_date, truck)
