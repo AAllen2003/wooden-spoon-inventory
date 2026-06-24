@@ -4320,6 +4320,14 @@ window.CRM = (function(){
     if(!root) return;
     const l = state.locations.find(x=>x.id===state.currentLocId);
     if(!l){ root.innerHTML='<div>Not found.</div>'; return; }
+    // Live metrics computed from this customer's visits (same logic as desktop)
+    const _myVisits = state.visits.filter(v => v.location_id === l.id);
+    const _visitCount = _myVisits.length;
+    const _totalSales = _myVisits.reduce((s, v) => s + (Number(v.total_revenue) || 0), 0);
+    const _avgPerVisit = _visitCount > 0 ? _totalSales / _visitCount : 0;
+    const _lastVisit = _myVisits.length
+      ? _myVisits.map(v => v.visit_date).sort().slice(-1)[0]
+      : null;
     root.innerHTML = `
       <button class="btn btn-sm" onclick="mobShow('crm-customers',document.querySelector('.mob-tab[data-sec=\\'crm-customers\\']'))" style="margin-bottom:12px"><i class="ti ti-arrow-left"></i> Back</button>
       <div class="card">
@@ -4338,10 +4346,10 @@ window.CRM = (function(){
         </div>
         ${l.notes ? `<div style="margin-top:10px;font-size:12px;color:var(--text2);font-style:italic">"${esc(l.notes)}"</div>` : ''}
         <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div class="metric"><div class="metric-label">Avg Visit</div><div class="metric-value" style="font-size:20px">${l.seed_avg_per_visit?fmtMoney(l.seed_avg_per_visit):'—'}</div></div>
-          <div class="metric"><div class="metric-label">Total</div><div class="metric-value" style="font-size:20px">${l.seed_total_sales?fmtMoney(l.seed_total_sales):'—'}</div></div>
-          <div class="metric"><div class="metric-label">Visits</div><div class="metric-value" style="font-size:20px">${l.seed_visit_count||'—'}</div></div>
-          <div class="metric"><div class="metric-label">Last</div><div class="metric-value" style="font-size:13px;margin-top:6px">${l.seed_last_visit?fmtDate(l.seed_last_visit):'—'}</div></div>
+          <div class="metric"><div class="metric-label">Avg Visit</div><div class="metric-value" style="font-size:20px">${_avgPerVisit?fmtMoney(_avgPerVisit):'—'}</div></div>
+          <div class="metric"><div class="metric-label">Total</div><div class="metric-value" style="font-size:20px">${_totalSales?fmtMoney(_totalSales):'—'}</div></div>
+          <div class="metric"><div class="metric-label">Visits</div><div class="metric-value" style="font-size:20px">${_visitCount||'—'}</div></div>
+          <div class="metric"><div class="metric-label">Last</div><div class="metric-value" style="font-size:13px;margin-top:6px">${_lastVisit?fmtDate(_lastVisit):'—'}</div></div>
         </div>
         <div style="margin-top:14px;display:flex;gap:8px" data-admin-only>
           <button class="btn btn-sm btn-primary" onclick="alert('Use desktop to edit for now')" style="flex:1"><i class="ti ti-edit"></i> Edit</button>
