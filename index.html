@@ -323,7 +323,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
     <button class="nav-item" onclick="showSection('crm-forecast',this)"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
     <button class="nav-item" onclick="showSection('crm-relog',this)"><i class="ti ti-clipboard-text"></i> Relations Log</button>
     <button class="nav-item" onclick="showSection('crm-cleanup',this)" data-admin-only><i class="ti ti-broom"></i> Cleanup</button>
-    <button class="nav-item" onclick="showSection('crm-editlog',this)" data-admin-only><i class="ti ti-history"></i> Edit Log</button>
+    <button class="nav-item" onclick="showSection('crm-editlog',this)" data-admin-only><i class="ti ti-history"></i> Edit Log<span class="nav-badge" id="nav-editlog-badge"></span></button>
     <div class="nav-section">System</div>
     <button class="nav-item" onclick="showSection('settings',this)"><i class="ti ti-settings"></i> Settings</button>
   </nav>
@@ -702,7 +702,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
               <option value="">All locations</option>
               <option value="flagged">Needs review</option>
             </select>
-            <button class="btn btn-sm btn-accent" onclick="CRM.openAddCustomer()" data-admin-only><i class="ti ti-plus"></i> Add</button>
+            <button class="btn btn-sm btn-accent" onclick="CRM.openAddCustomer()"><i class="ti ti-plus"></i> Add</button>
           </div>
         </div>
         <p class="section-intro">Master customer database. Click a row to view full profile, edit info, view sales history, and manage scheduling preferences.</p>
@@ -724,7 +724,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
             <span id="crm-week-label" style="font-size:13px;font-weight:700;color:var(--sidebar);min-width:160px;text-align:center"></span>
             <button class="btn btn-sm" onclick="CRM.shiftWeek(1)"><i class="ti ti-chevron-right"></i></button>
             <button class="btn btn-sm btn-primary" onclick="CRM.startAutoSchedule()" data-admin-only><i class="ti ti-sparkles"></i> Auto-Schedule</button>
-            <button class="btn btn-sm btn-accent" onclick="CRM.openAddStop()" data-admin-only><i class="ti ti-plus"></i> Add Stop</button>
+            <button class="btn btn-sm btn-accent" onclick="CRM.openAddStop()"><i class="ti ti-plus"></i> Add Stop</button>
           </div>
         </div>
         <p class="section-intro">Confirmed stops from Google Calendar and recurring rules. Each stop shows live inventory readiness and sales attribution once visited.</p>
@@ -979,6 +979,7 @@ function setupRT(){
       console.log('[Periodic refresh] loading data...');
       await loadAll();
       renderAll();
+      if(window.CRM&&CRM.refreshEditLogBadge)CRM.refreshEditLogBadge();
     }catch(e){console.error('[Periodic refresh] failed:',e);}
   },45000);
 }
@@ -2221,6 +2222,7 @@ window.CRM = (function(){
       if (!state.weekStart) state.weekStart = mondayOf(new Date());
       console.log(`[CRM] loaded: ${state.locations.length} locations, ${state.stops.length} stops, ${state.visits.length} visits`);
       subscribeRealtime();
+      refreshEditLogBadge();
     } catch (e) {
       console.error('[CRM] load error', e);
     }
@@ -2533,8 +2535,8 @@ window.CRM = (function(){
 
     return `${flagBox}
     <div style="display:flex;justify-content:flex-end;margin-bottom:12px;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-sm" onclick="CRM.startEdit()" data-admin-only><i class="ti ti-edit"></i> Edit</button>
-      <button class="btn btn-sm btn-accent" onclick="CRM.scheduleStopFor(${l.id})" data-admin-only><i class="ti ti-calendar-plus"></i> Schedule Stop</button>
+      <button class="btn btn-sm" onclick="CRM.startEdit()"><i class="ti ti-edit"></i> Edit</button>
+      <button class="btn btn-sm btn-accent" onclick="CRM.scheduleStopFor(${l.id})"><i class="ti ti-calendar-plus"></i> Schedule Stop</button>
       <button class="btn btn-sm" onclick="CRM.openMergeFor(${l.id})" data-admin-only style="background:var(--bg2)"><i class="ti ti-arrows-join"></i> Merge into…</button>
       ${wipeBtn}
       <button class="btn btn-sm" onclick="CRM.confirmDelete(${l.id})" data-admin-only style="background:var(--red-bg);color:var(--red)"><i class="ti ti-trash"></i> Delete</button>
@@ -3041,11 +3043,11 @@ window.CRM = (function(){
       ${salesBadge}
       ${navBtn}
       ${isLocked?'<span class="tier-tag" style="background:var(--amber-bg);color:var(--amber)" title="Truck-locked"><i class="ti ti-lock"></i></span>':''}
-      <select onchange="CRM.reassignStopTruck(${s.id}, this.value)" onclick="event.stopPropagation()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;font-family:var(--font-body)" data-admin-only>
+      <select onchange="CRM.reassignStopTruck(${s.id}, this.value)" onclick="event.stopPropagation()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;font-family:var(--font-body)">
         <option value="1" ${s.truck===1?'selected':''}>Truck 1</option>
         <option value="2" ${s.truck===2?'selected':''}>Truck 2</option>
       </select>
-      <button class="btn btn-sm" onclick="event.stopPropagation();CRM.openEditStop(${s.id})" data-admin-only title="Edit stop"><i class="ti ti-edit"></i></button>
+      <button class="btn btn-sm" onclick="event.stopPropagation();CRM.openEditStop(${s.id})" title="Edit stop"><i class="ti ti-edit"></i></button>
       <button class="btn btn-sm" onclick="event.stopPropagation();CRM.deleteStop(${s.id})" data-admin-only title="Delete stop"><i class="ti ti-trash"></i></button>
     </div>`;
   }
@@ -5392,6 +5394,26 @@ window.CRM = (function(){
   };
   const _EDIT_LOG_IGNORE = new Set(['updated_at', 'created_at', 'lat', 'lng', 'geocoded_at', 'geocode_status', 'deleted_at', 'deleted_by', 'merged_into_id']);
 
+  // Refresh the nav badge that shows how many staff edits haven't been reviewed yet.
+  // Called on initial load, after staff edits propagate via realtime, and on a slow interval.
+  async function refreshEditLogBadge() {
+    if (!isAdmin()) return;
+    try {
+      const { count, error } = await sb.from('crm_edit_log')
+        .select('id', { count: 'exact', head: true })
+        .is('reverted_at', null);
+      if (error) return;
+      const badge = document.getElementById('nav-editlog-badge');
+      if (!badge) return;
+      if (count && count > 0) {
+        badge.textContent = count > 99 ? '99+' : String(count);
+        badge.style.display = 'inline-block';
+      } else {
+        badge.style.display = 'none';
+      }
+    } catch (e) { /* swallow */ }
+  }
+
   async function renderEditLog() {
     const root = document.getElementById('crm-editlog-content');
     if (!root) return;
@@ -5494,6 +5516,7 @@ window.CRM = (function(){
       if (error) throw error;
       await loadAll();
       renderEditLog();
+      refreshEditLogBadge();
     } catch (e) {
       console.error('[CRM] revert failed', e);
       alert('Revert failed: ' + (e.message || e));
@@ -6411,7 +6434,7 @@ window.CRM = (function(){
     // Cleanup (delete / merge / recover)
     renderCleanup, confirmDelete, restoreLocation, bulkDeleteOrphans, toggleAllOrphans, dismissDupRow, clearFlag, confirmWipeHistory,
     // Staff edit log (admin-only audit + revert)
-    renderEditLog, revertEdit, purgeEditLog,
+    renderEditLog, revertEdit, purgeEditLog, refreshEditLogBadge,
     openMergeFor, openMergePicker, openMergeReview, executeMerge, closeMergeModal, filterMergePicker,
     // Visit reassign / delete (per-row sales-history actions)
     openReassignVisit, filterReassignPicker, confirmReassign, _submitReassignConflict, confirmDeleteVisit,
