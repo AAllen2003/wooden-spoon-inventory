@@ -3099,8 +3099,8 @@ window.CRM = (function(){
           ${editField('Notes','add-notes','',true)}
         </div>
         <div>
-          ${editField('Start time (HH:MM)','add-start','09:00')}
-          ${editField('End time (HH:MM)','add-end','10:00')}
+          ${editField('Start time','add-start','09:00')}
+          ${editField('End time','add-end','10:00')}
           ${selField('Truck','add-truck','<option value="1">Truck 1</option><option value="2">Truck 2</option>')}
           ${selField('Recurrence','add-rule',['one-time','weekly','biweekly','every_6_weeks','quarterly','manual_only','locked'].map(r=>`<option value="${r}">${r}</option>`).join(''))}
         </div>
@@ -3111,6 +3111,8 @@ window.CRM = (function(){
       </div>
     </div>`;
     document.getElementById('add-date').type = 'date';
+    document.getElementById('add-start').type = 'time';
+    document.getElementById('add-end').type = 'time';
     if (locIdPreset) document.getElementById('add-loc').value = locIdPreset;
   }
 
@@ -3173,8 +3175,8 @@ window.CRM = (function(){
           ${editField('Notes','edit-notes',s.notes || '',true)}
         </div>
         <div>
-          ${editField('Start time (HH:MM)','edit-start',s.start_time || '09:00')}
-          ${editField('End time (HH:MM)','edit-end',s.end_time || '10:00')}
+          ${editField('Start time','edit-start',s.start_time || '09:00')}
+          ${editField('End time','edit-end',s.end_time || '10:00')}
           ${selField('Truck','edit-truck',truckOptions)}
           ${selField('Recurrence','edit-rule',ruleOptions)}
         </div>
@@ -3185,6 +3187,8 @@ window.CRM = (function(){
       </div>
     </div>`;
     document.getElementById('edit-date').type = 'date';
+    document.getElementById('edit-start').type = 'time';
+    document.getElementById('edit-end').type = 'time';
   }
 
   async function saveEditStop() {
