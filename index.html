@@ -323,6 +323,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
     <button class="nav-item" onclick="showSection('crm-forecast',this)"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
     <button class="nav-item" onclick="showSection('crm-relog',this)"><i class="ti ti-clipboard-text"></i> Relations Log</button>
     <button class="nav-item" onclick="showSection('crm-cleanup',this)" data-admin-only><i class="ti ti-broom"></i> Cleanup</button>
+    <button class="nav-item" onclick="showSection('crm-editlog',this)" data-admin-only><i class="ti ti-history"></i> Edit Log</button>
     <div class="nav-section">System</div>
     <button class="nav-item" onclick="showSection('settings',this)"><i class="ti ti-settings"></i> Settings</button>
   </nav>
@@ -768,6 +769,16 @@ body.staff-mode [data-admin-only]{display:none !important;}
       </div>
     </div>
 
+    <div class="section" id="sec-crm-editlog">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Staff Edit Log</span>
+        </div>
+        <p class="section-intro">All changes staff members make to customer info and stops are recorded here. Click an entry to see what changed, and revert if needed. Your own edits as admin are not logged.</p>
+        <div id="crm-editlog-content"></div>
+      </div>
+    </div>
+
   </div>
 </main>
 
@@ -1022,7 +1033,7 @@ function openMoreDrawer(){document.getElementById('more-overlay').classList.add(
 function closeMoreDrawer(){document.getElementById('more-overlay').classList.remove('open');document.getElementById('more-drawer').classList.remove('open');}
 
 // ── NAV ───────────────────────────────────────────────────────────
-const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer Profile','crm-schedule':'Schedule','crm-forecast':'Manufacturing Forecast','crm-relog':'Customer Relations Log','crm-cleanup':'Customer Data Cleanup'};
+const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer Profile','crm-schedule':'Schedule','crm-forecast':'Manufacturing Forecast','crm-relog':'Customer Relations Log','crm-cleanup':'Customer Data Cleanup','crm-editlog':'Staff Edit Log'};
 function showSection(name,btn){
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
@@ -1043,6 +1054,7 @@ function showSection(name,btn){
   if(name==='crm-forecast')CRM.renderForecast();
   if(name==='crm-relog')CRM.renderRelog();
   if(name==='crm-cleanup')CRM.renderCleanup();
+  if(name==='crm-editlog')CRM.renderEditLog();
   applyPermissions();
 }
 function openLocDetail(loc){currentLoc=loc;document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.getElementById('sec-loc-detail').classList.add('active');document.getElementById('page-title').textContent=loc;document.getElementById('back-btn').style.display='inline-flex';document.getElementById('loc-detail-cat-filter').value='';renderLocDetail();applyPermissions();}
@@ -2395,6 +2407,7 @@ window.CRM = (function(){
     else if (id === 'sec-crm-forecast') renderForecast();
     else if (id === 'sec-crm-relog') renderRelog();
     else if (id === 'sec-crm-cleanup') renderCleanup();
+    else if (id === 'sec-crm-editlog') renderEditLog();
   }
 
   // ─── Customers list ────────────────────────────────────────────────
@@ -5364,6 +5377,142 @@ window.CRM = (function(){
     }
   }
 
+  // ═════════════════════════════════════════════════════════════════
+  // STAFF EDIT LOG — admin reviews and reverts staff changes
+  // ═════════════════════════════════════════════════════════════════
+
+  const _EDIT_LOG_FIELD_LABELS = {
+    location_name: 'Name', full_address: 'Address', city: 'City', state: 'State', zip: 'ZIP',
+    region: 'Region', point_of_contact: 'Contact', phone: 'Phone', email: 'Email',
+    scheduling_preference: 'Scheduling pref', preferred_truck: 'Preferred truck',
+    truck_lock: 'Truck locked', status: 'Status', tier: 'Tier',
+    notes: 'Notes', internal_flags: 'Flags',
+    location_id: 'Customer', truck: 'Truck', scheduled_date: 'Date',
+    start_time: 'Start', end_time: 'End', recurrence_rule: 'Recurrence', source: 'Source'
+  };
+  const _EDIT_LOG_IGNORE = new Set(['updated_at', 'created_at', 'lat', 'lng', 'geocoded_at', 'geocode_status', 'deleted_at', 'deleted_by', 'merged_into_id']);
+
+  async function renderEditLog() {
+    const root = document.getElementById('crm-editlog-content');
+    if (!root) return;
+    if (!isAdmin()) {
+      root.innerHTML = '<div class="alert-bar alert-info"><i class="ti ti-info-circle"></i> Only admins can view the edit log.</div>';
+      return;
+    }
+    root.innerHTML = '<p style="color:var(--text3);font-style:italic;padding:12px 0">Loading edit log...</p>';
+    try {
+      const { data, error } = await sb.from('crm_edit_log')
+        .select('*')
+        .order('changed_at', { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      _renderEditLogContent(data || []);
+    } catch (e) {
+      console.error('[CRM] edit log load failed', e);
+      root.innerHTML = `<div class="alert-bar alert-warn">Failed to load edit log: ${esc(e.message || String(e))}</div>`;
+    }
+  }
+
+  function _renderEditLogContent(entries) {
+    const root = document.getElementById('crm-editlog-content');
+    if (!root) return;
+    if (!entries.length) {
+      root.innerHTML = '<p style="color:var(--text3);font-style:italic;padding:12px 0">No staff edits recorded yet.</p>';
+      return;
+    }
+    const pending = entries.filter(e => !e.reverted_at);
+    const reverted = entries.filter(e => e.reverted_at);
+    root.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:18px">
+        <div style="background:var(--bg2);padding:12px;border-radius:6px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--sidebar)">${entries.length}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Total Entries</div></div>
+        <div style="background:var(--bg2);padding:12px;border-radius:6px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--amber)">${pending.length}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Not Yet Reviewed</div></div>
+        <div style="background:var(--bg2);padding:12px;border-radius:6px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--text3)">${reverted.length}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Reverted</div></div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;border-bottom:1px solid var(--border)">
+          <th style="padding:6px">When</th><th style="padding:6px">Who</th><th style="padding:6px">What</th><th style="padding:6px">Changed</th><th style="padding:6px"></th>
+        </tr></thead>
+        <tbody>${entries.map(e => _editLogRow(e)).join('')}</tbody>
+      </table>
+      <div style="margin-top:18px;text-align:right">
+        <button class="btn btn-sm" onclick="CRM.purgeEditLog()" style="background:var(--bg2)" title="Permanently delete log entries older than 90 days"><i class="ti ti-trash"></i> Purge old entries (>90 days)</button>
+      </div>`;
+  }
+
+  function _editLogRow(e) {
+    const target = e.table_name === 'crm_locations'
+      ? (state.locations.find(l => l.id === e.row_id)?.location_name || state.deletedLocations?.find(l => l.id === e.row_id)?.location_name || `#${e.row_id}`)
+      : `Stop #${e.row_id}`;
+    const summary = _editLogSummary(e);
+    const reverted = e.reverted_at;
+    const rowStyle = reverted ? 'opacity:0.55' : '';
+    return `<tr style="border-bottom:1px solid rgba(132,79,6,.08);${rowStyle}">
+      <td style="padding:8px 6px;font-size:11px;color:var(--text3);white-space:nowrap">${_relativeTime(e.changed_at)}</td>
+      <td style="padding:8px 6px;font-size:11px">${esc(e.changed_by_email || '—')}</td>
+      <td style="padding:8px 6px;font-size:11px">${e.action==='delete'?'🗑️ Deleted ':'✏️ Edited '}<strong>${esc(target)}</strong><div style="font-size:10px;color:var(--text3)">${e.table_name === 'crm_locations' ? 'Customer' : 'Stop'}</div></td>
+      <td style="padding:8px 6px;font-size:11px">${summary}</td>
+      <td style="padding:8px 6px;text-align:right;white-space:nowrap">
+        ${reverted
+          ? `<span class="cat-chip" style="font-size:9px;background:var(--bg2);color:var(--text3)" title="Reverted ${_relativeTime(e.reverted_at)}">REVERTED</span>`
+          : `<button class="btn btn-xs" onclick="CRM.revertEdit(${e.id})" title="Restore the previous values"><i class="ti ti-arrow-back-up"></i> Revert</button>`}
+      </td>
+    </tr>`;
+  }
+
+  function _editLogSummary(e) {
+    if (e.action === 'delete') return '<em style="color:var(--red)">Entire row deleted</em>';
+    const before = e.before_row || {}, after = e.after_row || {};
+    const changes = [];
+    for (const key of Object.keys({ ...before, ...after })) {
+      if (_EDIT_LOG_IGNORE.has(key)) continue;
+      const b = before[key], a = after[key];
+      if (JSON.stringify(b) === JSON.stringify(a)) continue;
+      const label = _EDIT_LOG_FIELD_LABELS[key] || key;
+      const bStr = b == null || b === '' ? '∅' : String(b).slice(0, 30);
+      const aStr = a == null || a === '' ? '∅' : String(a).slice(0, 30);
+      changes.push(`<div><strong>${esc(label)}:</strong> <span style="color:var(--text3);text-decoration:line-through">${esc(bStr)}</span> → <span style="color:var(--accent)">${esc(aStr)}</span></div>`);
+    }
+    if (!changes.length) return '<em style="color:var(--text3)">No user-visible field changes</em>';
+    return changes.join('');
+  }
+
+  function _relativeTime(ts) {
+    if (!ts) return '—';
+    const then = new Date(ts), now = new Date();
+    const sec = Math.floor((now - then) / 1000);
+    if (sec < 60) return `${sec}s ago`;
+    if (sec < 3600) return `${Math.floor(sec/60)}m ago`;
+    if (sec < 86400) return `${Math.floor(sec/3600)}h ago`;
+    if (sec < 86400*7) return `${Math.floor(sec/86400)}d ago`;
+    return then.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  }
+
+  async function revertEdit(logId) {
+    if (!confirm('Revert this edit? The previous values will be restored.')) return;
+    try {
+      const { data, error } = await sb.rpc('crm_revert_edit', { p_log_id: logId });
+      if (error) throw error;
+      await loadAll();
+      renderEditLog();
+    } catch (e) {
+      console.error('[CRM] revert failed', e);
+      alert('Revert failed: ' + (e.message || e));
+    }
+  }
+
+  async function purgeEditLog() {
+    if (!confirm('Permanently delete all edit log entries older than 90 days?\n\nThis cannot be undone.')) return;
+    try {
+      const { data, error } = await sb.rpc('crm_purge_edit_log', { p_older_than_days: 90 });
+      if (error) throw error;
+      renderEditLog();
+      alert(`Purged ${data.purged} log entr${data.purged === 1 ? 'y' : 'ies'}.`);
+    } catch (e) {
+      console.error('[CRM] purge failed', e);
+      alert('Purge failed: ' + (e.message || e));
+    }
+  }
+
   // Clear the "needs review" flag from a customer (admin-only)
   async function clearFlag(locId) {
     const l = state.locations.find(x => x.id === locId);
@@ -6261,6 +6410,8 @@ window.CRM = (function(){
     openLiveGpsTrail,
     // Cleanup (delete / merge / recover)
     renderCleanup, confirmDelete, restoreLocation, bulkDeleteOrphans, toggleAllOrphans, dismissDupRow, clearFlag, confirmWipeHistory,
+    // Staff edit log (admin-only audit + revert)
+    renderEditLog, revertEdit, purgeEditLog,
     openMergeFor, openMergePicker, openMergeReview, executeMerge, closeMergeModal, filterMergePicker,
     // Visit reassign / delete (per-row sales-history actions)
     openReassignVisit, filterReassignPicker, confirmReassign, _submitReassignConflict, confirmDeleteVisit,
