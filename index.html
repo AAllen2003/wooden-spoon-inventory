@@ -318,7 +318,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
     <button class="nav-item" onclick="showSection('production',this)"><i class="ti ti-tool"></i> Production</button>
     <button class="nav-item" onclick="showSection('sales',this)"><i class="ti ti-currency-dollar"></i> Sales</button>
     <div class="nav-section">CRM</div>
-    <button class="nav-item" onclick="showSection('crm-customers',this)"><i class="ti ti-building-store"></i> Customers</button>
+    <button class="nav-item" onclick="showSection('crm-customers',this)"><i class="ti ti-building-store"></i> Stops</button>
     <button class="nav-item" onclick="showSection('crm-schedule',this)"><i class="ti ti-calendar"></i> Schedule</button>
     <button class="nav-item" onclick="showSection('crm-forecast',this)"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
     <button class="nav-item" onclick="showSection('crm-relog',this)"><i class="ti ti-clipboard-text"></i> Relations Log</button>
@@ -688,7 +688,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
     <div class="section" id="sec-crm-customers">
       <div class="card">
         <div class="card-header">
-          <span class="card-title">Customers</span>
+          <span class="card-title">Stops</span>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
             <input type="text" id="crm-search" placeholder="Search name, contact, city..." oninput="CRM.filterCustomers()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;min-width:220px">
             <select id="crm-tier-filter" onchange="CRM.filterCustomers()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
@@ -800,7 +800,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
     <button class="more-item" onclick="showSection('alerts',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-bell"></i> Alerts</button>
     <button class="more-item" onclick="showSection('transfers',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-arrows-exchange"></i> Transfers</button>
     <hr class="more-divider">
-    <button class="more-item" onclick="showSection('crm-customers',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-building-store"></i> Customers</button>
+    <button class="more-item" onclick="showSection('crm-customers',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-building-store"></i> Stops</button>
     <button class="more-item" onclick="showSection('crm-schedule',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-calendar"></i> Schedule</button>
     <button class="more-item" onclick="showSection('crm-forecast',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
     <button class="more-item" onclick="showSection('crm-relog',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-clipboard-text"></i> Relations Log</button>
@@ -1033,7 +1033,7 @@ function openMoreDrawer(){document.getElementById('more-overlay').classList.add(
 function closeMoreDrawer(){document.getElementById('more-overlay').classList.remove('open');document.getElementById('more-drawer').classList.remove('open');}
 
 // ── NAV ───────────────────────────────────────────────────────────
-const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer Profile','crm-schedule':'Schedule','crm-forecast':'Manufacturing Forecast','crm-relog':'Customer Relations Log','crm-cleanup':'Customer Data Cleanup','crm-editlog':'Staff Edit Log'};
+const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop Profile','crm-schedule':'Schedule','crm-forecast':'Manufacturing Forecast','crm-relog':'Customer Relations Log','crm-cleanup':'Customer Data Cleanup','crm-editlog':'Staff Edit Log'};
 function showSection(name,btn){
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
@@ -1733,7 +1733,7 @@ const MOB_SECTION_META = {
   transfers:       { icon:'ti-arrows-exchange',  label:'Transfers' },
   production:      { icon:'ti-tool',             label:'Production' },
   sales:           { icon:'ti-currency-dollar',  label:'Sales' },
-  'crm-customers': { icon:'ti-building-store',   label:'Customers' },
+  'crm-customers': { icon:'ti-building-store',   label:'Stops' },
   'crm-schedule':  { icon:'ti-calendar',         label:'Schedule' },
   'crm-forecast':  { icon:'ti-trending-up',      label:'Mfg Forecast' },
   'crm-relog':     { icon:'ti-clipboard-text',   label:'Relations Log' },
@@ -1784,7 +1784,7 @@ function rebuildMobTabs(){
 }
 
 function syncMobTitle(){
-  const titles={home:'Home',overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',settings:'Settings','crm-customers':'Customers','crm-profile':'Customer','crm-schedule':'Schedule','crm-forecast':'Mfg Forecast','crm-relog':'Relations Log'};
+  const titles={home:'Home',overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop','crm-schedule':'Schedule','crm-forecast':'Mfg Forecast','crm-relog':'Relations Log'};
   const titleEl = document.getElementById('mob-title');
   if(titleEl) titleEl.textContent = titles[mobSection] || mobSection;
   // Show/hide the home button: visible whenever we're not on the home screen
