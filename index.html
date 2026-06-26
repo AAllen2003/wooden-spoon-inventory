@@ -233,6 +233,7 @@ body.staff-mode .m-par-inp{
   user-select:none !important;
 }
 body.staff-mode [data-admin-only]{display:none !important;}
+body.staff-mode.relog-hidden .relog-nav{display:none !important;}
 
 /* CRM Customer Tile Grid */
 .crm-tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;}
@@ -321,7 +322,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
     <button class="nav-item" onclick="showSection('crm-customers',this)"><i class="ti ti-building-store"></i> Stops</button>
     <button class="nav-item" onclick="showSection('crm-schedule',this)"><i class="ti ti-calendar"></i> Schedule</button>
     <button class="nav-item" onclick="showSection('crm-forecast',this)"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
-    <button class="nav-item" onclick="showSection('crm-relog',this)"><i class="ti ti-clipboard-text"></i> Relations Log</button>
+    <button class="nav-item relog-nav" onclick="showSection('crm-relog',this)"><i class="ti ti-clipboard-text"></i> Relations Log</button>
     <button class="nav-item" onclick="showSection('crm-cleanup',this)" data-admin-only><i class="ti ti-broom"></i> Cleanup</button>
     <button class="nav-item" onclick="showSection('crm-editlog',this)" data-admin-only><i class="ti ti-history"></i> Edit Log<span class="nav-badge" id="nav-editlog-badge"></span></button>
     <div class="nav-section">System</div>
@@ -600,6 +601,17 @@ body.staff-mode [data-admin-only]{display:none !important;}
               </label>
             </div>
             <div id="manual-visit-toggle-status" style="font-size:11px;color:var(--text3);font-style:italic"></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);margin-top:14px;margin-bottom:8px">
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:700;color:var(--text)">Relations Log visible to staff</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:3px">When OFF (default), the Relations Log nav item is hidden from non-admin accounts. Admins always see it. Turn ON when staff are ready to start logging visits.</div>
+              </div>
+              <label class="switch-toggle">
+                <input type="checkbox" id="set-relog-staff-toggle" onchange="toggleRelogVisibleToStaff(this.checked)">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+            <div id="relog-staff-toggle-status" style="font-size:11px;color:var(--text3);font-style:italic"></div>
           </div>
         </div>
       </div>
@@ -803,7 +815,7 @@ body.staff-mode [data-admin-only]{display:none !important;}
     <button class="more-item" onclick="showSection('crm-customers',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-building-store"></i> Stops</button>
     <button class="more-item" onclick="showSection('crm-schedule',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-calendar"></i> Schedule</button>
     <button class="more-item" onclick="showSection('crm-forecast',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
-    <button class="more-item" onclick="showSection('crm-relog',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-clipboard-text"></i> Relations Log</button>
+    <button class="more-item relog-nav" onclick="showSection('crm-relog',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-clipboard-text"></i> Relations Log</button>
     <hr class="more-divider">
     <button class="more-item" onclick="showSection('settings',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-settings"></i> Settings</button>
     <button class="more-item" onclick="syncNow();closeMoreDrawer()"><i class="ti ti-refresh"></i> Sync Data</button>
@@ -1036,6 +1048,11 @@ function closeMoreDrawer(){document.getElementById('more-overlay').classList.rem
 // ── NAV ───────────────────────────────────────────────────────────
 const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop Profile','crm-schedule':'Schedule','crm-forecast':'Manufacturing Forecast','crm-relog':'Customer Relations Log','crm-cleanup':'Customer Data Cleanup','crm-editlog':'Staff Edit Log'};
 function showSection(name,btn){
+  // Defense in depth: if a staff user calls showSection('crm-relog') directly
+  // (e.g. via dev tools) and the setting is off, redirect them away.
+  if (name === 'crm-relog' && !isAdmin() && !(window.CRM && CRM._state?.settings?.relog_visible_to_staff)) {
+    name = 'crm-customers';
+  }
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
   document.getElementById('sec-'+name).classList.add('active');
@@ -1524,6 +1541,13 @@ function renderSettings(){
     const status = document.getElementById('manual-visit-toggle-status');
     if (status) status.textContent = mvT.checked ? 'Currently ON — "Add Past Visit" button visible on customer Sales History.' : 'Currently OFF.';
   }
+  // Sync relog-staff-visibility toggle
+  const rvT = document.getElementById('set-relog-staff-toggle');
+  if (rvT && window.CRM && CRM._state) {
+    rvT.checked = !!CRM._state.settings?.relog_visible_to_staff;
+    const status = document.getElementById('relog-staff-toggle-status');
+    if (status) status.textContent = rvT.checked ? 'Currently ON — staff can see Relations Log.' : 'Currently OFF — staff cannot see Relations Log.';
+  }
   // Render truck devices editor
   renderTruckDevicesEditor();
   // Sync legacy cutover inputs
@@ -1577,6 +1601,26 @@ async function saveLegacyCutover() {
   } catch (e) {
     console.error('saveLegacyCutover:', e);
     alert('Failed to save: ' + (e.message || e));
+  }
+}
+
+async function toggleRelogVisibleToStaff(on) {
+  try {
+    await sb.from('app_settings').upsert({ key: 'crm_relog_visible_to_staff', value: JSON.stringify({ enabled: !!on }) });
+    if (window.CRM && CRM._state) {
+      CRM._state.settings = CRM._state.settings || {};
+      CRM._state.settings.relog_visible_to_staff = !!on;
+    }
+    // Re-apply permission gating so nav items show/hide immediately
+    if (typeof applyPermissions === 'function') applyPermissions();
+    if (typeof rebuildMobTabs === 'function') rebuildMobTabs();
+    const status = document.getElementById('relog-staff-toggle-status');
+    if (status) status.textContent = on ? 'ON — staff accounts can now see Relations Log.' : 'OFF — Relations Log hidden from staff.';
+  } catch (e) {
+    console.error('toggleRelogVisibleToStaff:', e);
+    alert('Failed to save setting: ' + (e.message || e));
+    const t = document.getElementById('set-relog-staff-toggle');
+    if (t) t.checked = !on;
   }
 }
 
@@ -1683,6 +1727,10 @@ function applyPermissions(){
   const admin=isAdmin();
   // Toggle body class for CSS-based lockdown (survives re-renders, can't be bypassed)
   document.body.classList.toggle('staff-mode',!admin);
+  // Relations Log visibility for staff is gated by a setting (default: hidden).
+  // Admins always see it; staff see it only if the setting is on.
+  const relogOn = !!(window.CRM && CRM._state?.settings?.relog_visible_to_staff);
+  document.body.classList.toggle('relog-hidden', !admin && !relogOn);
   // Hide/show admin-only DOM elements
   document.querySelectorAll('[data-admin-only]').forEach(el=>{
     el.style.display=admin?'':'none';
@@ -1774,7 +1822,13 @@ function rebuildMobTabs(){
     return;
   }
   strip.style.display = '';
-  const sections = MOB_CATEGORIES[mobCategory] || [];
+  let sections = MOB_CATEGORIES[mobCategory] || [];
+  // Hide Relations Log from staff unless admin enabled it
+  const admin = (typeof isAdmin === 'function') ? isAdmin() : true;
+  const relogOn = !!(window.CRM && CRM._state?.settings?.relog_visible_to_staff);
+  if (!admin && !relogOn) {
+    sections = sections.filter(s => s !== 'crm-relog');
+  }
   strip.innerHTML = sections.map(sec=>{
     const meta = MOB_SECTION_META[sec];
     if(!meta) return '';
@@ -2171,7 +2225,7 @@ window.CRM = (function(){
         fetchAll('crm_locations', 'location_name', true),
         fetchAll('crm_stops', 'scheduled_date', true),
         fetchAll('crm_visits', 'visit_date', false),
-        sb.from('app_settings').select('*').in('key', ['crm_buffer_minutes','crm_truck_device_map','crm_manual_visit_entry_enabled','crm_truck_devices','crm_sales_legacy_cutover']),
+        sb.from('app_settings').select('*').in('key', ['crm_buffer_minutes','crm_truck_device_map','crm_manual_visit_entry_enabled','crm_truck_devices','crm_sales_legacy_cutover','crm_relog_visible_to_staff']),
         sb.from('crm_dup_dismissed').select('loc_a_id, loc_b_id')
       ]);
 
@@ -2216,6 +2270,12 @@ window.CRM = (function(){
             const parsed = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
             state.settings.legacy_cutover = parsed || { cutover_date: null, legacy_location_id: null };
           } catch(e) { state.settings.legacy_cutover = { cutover_date: null, legacy_location_id: null }; }
+        }
+        if (r.key === 'crm_relog_visible_to_staff') {
+          try {
+            const parsed = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
+            state.settings.relog_visible_to_staff = !!(parsed && parsed.enabled);
+          } catch(e) { state.settings.relog_visible_to_staff = false; }
         }
       });
       state.loaded = true;
