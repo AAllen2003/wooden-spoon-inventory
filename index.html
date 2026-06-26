@@ -1151,7 +1151,9 @@ async function saveBatchYields(){
   const btn=document.querySelector('button[onclick="saveBatchYields()"]');if(btn){btn.innerHTML='<i class="ti ti-circle-check"></i> Saved!';setTimeout(()=>btn.innerHTML='<i class="ti ti-device-floppy"></i> Save Yields',1500);}
 }
 function checkAlerts(){
-  const na=[];S.items.forEach(item=>{LOCS.forEach(loc=>{const qty=(S.inventory[item]||{})[loc]||0,par=(S.par[item]||{})[loc]||0,key=item+'||'+loc;if(par>0&&qty<=par){const ex=S.alerts.find(a=>a.key===key);if(!ex)na.push({key,item,loc,qty,par,time:new Date().toLocaleTimeString(),type:qty===0?'out':'low'});else{ex.qty=qty;ex.type=qty===0?'out':'low';}}else S.alerts=S.alerts.filter(a=>a.key!==key);});});S.alerts=[...S.alerts,...na];
+  // Alert fires when stock drops to 80% of par (i.e., 20% below par) or hits zero.
+  // Threshold uses Math.floor so a par of 5 fires at qty <= 4, not 4.000001.
+  const na=[];S.items.forEach(item=>{LOCS.forEach(loc=>{const qty=(S.inventory[item]||{})[loc]||0,par=(S.par[item]||{})[loc]||0,key=item+'||'+loc;const threshold=Math.floor(par*0.8);if(par>0&&qty<=threshold){const ex=S.alerts.find(a=>a.key===key);if(!ex)na.push({key,item,loc,qty,par,time:new Date().toLocaleTimeString(),type:qty===0?'out':'low'});else{ex.qty=qty;ex.type=qty===0?'out':'low';}}else S.alerts=S.alerts.filter(a=>a.key!==key);});});S.alerts=[...S.alerts,...na];
 }
 function dismissAlert(key){S.alerts=S.alerts.filter(a=>a.key!==key);renderAll();}
 function dismissAllAlerts(){S.alerts=[];renderAll();}
