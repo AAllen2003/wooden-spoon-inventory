@@ -2994,8 +2994,14 @@ window.CRM = (function(){
 
   function scheduleStopFor(locId) {
     state.weekStart = mondayOf(new Date());
-    showSection('crm-schedule');
-    openAddStop(locId);
+    const onMobile = typeof isMob === 'function' && isMob();
+    if (onMobile) {
+      // openAddStop handles mobile routing itself
+      openAddStop(locId);
+    } else {
+      showSection('crm-schedule');
+      openAddStop(locId);
+    }
   }
 
   // ─── Schedule (truck by truck) ─────────────────────────────────────
@@ -3144,7 +3150,17 @@ window.CRM = (function(){
   }
 
   function openAddStop(locIdPreset) {
-    const root = document.getElementById('crm-schedule-content');
+    // Route to the right container based on which view is active.
+    // On mobile, we render the form into the mobile schedule section and
+    // switch to that section so the user sees it.
+    const onMobile = typeof isMob === 'function' && isMob();
+    let root;
+    if (onMobile) {
+      if (typeof mobShow === 'function') mobShow('crm-schedule', document.querySelector('.mob-tab[data-sec="crm-schedule"]'));
+      root = document.getElementById('crm-schedule-mob');
+    } else {
+      root = document.getElementById('crm-schedule-content');
+    }
     if (!root) return;
     const today = isoDate(new Date());
     const locOptions = state.locations
@@ -3207,7 +3223,9 @@ window.CRM = (function(){
       const { data: ins, error } = await sb.from('crm_stops').insert(data).select().single();
       if (error) throw error;
       if (!state.stops.some(s => s.id === ins.id)) state.stops.push(ins);
-      renderSchedule();
+      const onMobile = typeof isMob === 'function' && isMob();
+      if (onMobile) renderMobSchedule();
+      else renderSchedule();
     } catch (e) { alert('Failed: '+e.message); }
   }
 
@@ -3293,9 +3311,17 @@ window.CRM = (function(){
 
   function openAddCustomer() {
     state.currentLocId = null;
-    showSection('crm-profile');
-    document.getElementById('page-title').textContent = 'New Customer';
-    const root = document.getElementById('crm-profile-content');
+    const onMobile = typeof isMob === 'function' && isMob();
+    let root;
+    if (onMobile) {
+      if (typeof mobShow === 'function') mobShow('crm-profile', null);
+      root = document.getElementById('crm-profile-mob');
+    } else {
+      showSection('crm-profile');
+      document.getElementById('page-title').textContent = 'New Customer';
+      root = document.getElementById('crm-profile-content');
+    }
+    if (!root) return;
     root.innerHTML = `<div class="card">
       <div class="card-header"><span class="card-title">New Customer</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -3343,7 +3369,9 @@ window.CRM = (function(){
       const { data: ins, error } = await sb.from('crm_locations').insert(data).select().single();
       if (error) throw error;
       if (!state.locations.some(l => l.id === ins.id)) state.locations.push(ins);
-      openProfile(ins.id);
+      const onMobile = typeof isMob === 'function' && isMob();
+      if (onMobile) openMobProfile(ins.id);
+      else openProfile(ins.id);
       // If address was provided, kick off geocode in background
       if (data.full_address) {
         const workerUrl = (typeof S !== 'undefined' && S.workerUrl) ? S.workerUrl : null;
