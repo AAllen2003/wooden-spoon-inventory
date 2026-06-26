@@ -318,10 +318,10 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
     <button class="nav-item" onclick="showSection('transfers',this)"><i class="ti ti-arrows-exchange"></i> Transfers</button>
     <button class="nav-item" onclick="showSection('production',this)"><i class="ti ti-tool"></i> Production</button>
     <button class="nav-item" onclick="showSection('sales',this)"><i class="ti ti-currency-dollar"></i> Sales</button>
+    <button class="nav-item" onclick="showSection('crm-forecast',this)"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
     <div class="nav-section">CRM</div>
     <button class="nav-item" onclick="showSection('crm-customers',this)"><i class="ti ti-building-store"></i> Stops</button>
     <button class="nav-item" onclick="showSection('crm-schedule',this)"><i class="ti ti-calendar"></i> Schedule</button>
-    <button class="nav-item" onclick="showSection('crm-forecast',this)"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
     <button class="nav-item relog-nav" onclick="showSection('crm-relog',this)"><i class="ti ti-clipboard-text"></i> Relations Log</button>
     <button class="nav-item" onclick="showSection('crm-cleanup',this)" data-admin-only><i class="ti ti-broom"></i> Cleanup</button>
     <button class="nav-item" onclick="showSection('crm-editlog',this)" data-admin-only><i class="ti ti-history"></i> Edit Log<span class="nav-badge" id="nav-editlog-badge"></span></button>
@@ -731,10 +731,16 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
       <div class="card">
         <div class="card-header">
           <span class="card-title">Schedule</span>
-          <div style="display:flex;gap:8px;align-items:center">
-            <button class="btn btn-sm" onclick="CRM.shiftWeek(-1)"><i class="ti ti-chevron-left"></i></button>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <!-- View mode toggle: day vs week -->
+            <div style="display:inline-flex;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+              <button class="btn btn-sm" id="sched-view-day"  onclick="CRM.setScheduleView('day')"  style="border-radius:0;border:none">Day</button>
+              <button class="btn btn-sm" id="sched-view-week" onclick="CRM.setScheduleView('week')" style="border-radius:0;border:none;border-left:1px solid var(--border)">Week</button>
+            </div>
+            <button class="btn btn-sm" onclick="CRM.shiftWeek(-1)" title="Previous"><i class="ti ti-chevron-left"></i></button>
             <span id="crm-week-label" style="font-size:13px;font-weight:700;color:var(--sidebar);min-width:160px;text-align:center"></span>
-            <button class="btn btn-sm" onclick="CRM.shiftWeek(1)"><i class="ti ti-chevron-right"></i></button>
+            <button class="btn btn-sm" onclick="CRM.shiftWeek(1)" title="Next"><i class="ti ti-chevron-right"></i></button>
+            <input type="date" id="sched-date-picker" onchange="CRM.pickScheduleDate(this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px" title="Jump to date">
             <button class="btn btn-sm btn-primary" onclick="CRM.startAutoSchedule()" data-admin-only><i class="ti ti-sparkles"></i> Auto-Schedule</button>
             <button class="btn btn-sm btn-accent" onclick="CRM.openAddStop()"><i class="ti ti-plus"></i> Add Stop</button>
           </div>
@@ -811,10 +817,10 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
     <button class="more-item" onclick="showSection('par',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-target"></i> Par Levels</button>
     <button class="more-item" onclick="showSection('alerts',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-bell"></i> Alerts</button>
     <button class="more-item" onclick="showSection('transfers',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-arrows-exchange"></i> Transfers</button>
+    <button class="more-item" onclick="showSection('crm-forecast',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
     <hr class="more-divider">
     <button class="more-item" onclick="showSection('crm-customers',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-building-store"></i> Stops</button>
     <button class="more-item" onclick="showSection('crm-schedule',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-calendar"></i> Schedule</button>
-    <button class="more-item" onclick="showSection('crm-forecast',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
     <button class="more-item relog-nav" onclick="showSection('crm-relog',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-clipboard-text"></i> Relations Log</button>
     <hr class="more-divider">
     <button class="more-item" onclick="showSection('settings',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-settings"></i> Settings</button>
@@ -1117,6 +1123,25 @@ function loadTodaySales(){salesViewData=null;salesViewDate=null;const p=document
 async function saveWorkerUrl(){const url=document.getElementById('worker-url').value.trim().replace(/\/+$/,'');if(!url)return;const st=document.getElementById('worker-status');st.style.display='block';st.className='worker-status';st.textContent='Testing...';try{const r=await fetch(url+'/health',{mode:'cors'});if(r.ok){S.workerUrl=url;await dbSet('worker_url',url);st.className='worker-status ok';st.textContent='✓ Connected!';setStatus('Worker connected',true);}else{st.className='worker-status err';st.textContent='✗ Error '+r.status;}}catch(e){st.className='worker-status err';st.textContent='✗ Cannot reach Worker';}}
 function saveToken(){const t=document.getElementById('sq-token').value.trim();if(!t)return;S.token=t;localStorage.setItem('ws_sq_token',t);alert('Token saved!');}
 function saveLocations(){S.locationIds.Warehouse=document.getElementById('loc-wh').value.trim();S.locationIds.Restaurant=document.getElementById('loc-rs').value.trim();S.locationIds['Truck 1']=document.getElementById('loc-t1').value.trim();S.locationIds['Truck 2']=document.getElementById('loc-t2').value.trim();S.locationIds['Truck 3']=document.getElementById('loc-t3').value.trim();dbSet('location_ids',S.locationIds);alert('Locations saved!');}
+async function toggleItemCategory(item){
+  if(!S.items.includes(item))return;
+  if(typeof isAdmin==='function' && !isAdmin()){alert('Only admins can change item categories.');return;}
+  const current = S.categories[item]||'';
+  const next = current==='Frozen Desserts' ? 'Frozen Foods' : 'Frozen Desserts';
+  S.categories[item]=next;
+  try {
+    if(sb){
+      await sb.from('items').update({category:next}).eq('name',item);
+    }
+    renderAll();
+  } catch(e){
+    console.error('toggleItemCategory failed:',e);
+    alert('Failed to save category change: '+(e.message||e));
+    S.categories[item]=current; // revert in memory
+    renderAll();
+  }
+}
+
 async function addItem(){const name=prompt('Item name:');if(!name||!name.trim())return;const n=name.trim();if(S.items.includes(n)){alert('Already exists.');return;}S.items.push(n);S.inventory[n]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};S.par[n]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};S.batchYields[n]=0;S.sales[n]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};S.salesBaseline[n]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};await dbItem({name:n,category:DC[n]||'',price:DP[n]||0,batch_yield:0},S.items.length-1);renderAll();}
 async function removeItem(name){if(!confirm('Remove '+name+'?'))return;S.items=S.items.filter(i=>i!==name);delete S.inventory[name];delete S.par[name];delete S.batchYields[name];delete S.sales[name];delete S.salesBaseline[name];S.alerts=S.alerts.filter(a=>a.item!==name);await dbDelItem(name);renderAll();}
 
@@ -1535,7 +1560,7 @@ function renderSettings(){
       return`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg2);border-radius:6px;margin-bottom:6px"><span style="font-size:13px;font-weight:700">${em}${isMe?' <span style="font-size:10px;color:var(--text3);font-weight:400">(you)</span>':''}</span>${canRemove?`<button class="btn btn-sm" style="background:#A82020;color:#fff" onclick="removeAdminEmail('${em.replace(/'/g,"&#39;")}')">Remove</button>`:''}</div>`;
     }).join('')||'<p style="font-size:12px;color:var(--text3);font-style:italic">No admins set yet.</p>';
   }
-  const wu=document.getElementById('worker-url');if(wu&&S.workerUrl)wu.value=S.workerUrl;const sqt=document.getElementById('sq-token');if(sqt&&S.token)sqt.value=S.token;['loc-wh','loc-rs','loc-t1','loc-t2','loc-t3'].forEach((id,i)=>{const el=document.getElementById(id);if(el)el.value=Object.values(S.locationIds)[i]||'';});if(S.workerUrl)setStatus('Worker configured',true);const sub=document.getElementById('items-subtitle');if(sub)sub.textContent=S.items.length+' items';document.getElementById('items-list').innerHTML=S.items.map(item=>`<div class="item-row"><span style="flex:1;font-weight:700">${item}</span><span style="font-size:12px;font-weight:700;color:var(--green)">${fmt(S.prices[item])}</span><span class="cat-chip ${(S.categories[item]||'')==='Frozen Foods'?'cc-food':'cc-dessert'}">${(S.categories[item]||'')==='Frozen Foods'?'Food':'Dessert'}</span><button class="btn btn-xs btn-danger" onclick="removeItem('${esc(item)}')">Remove</button></div>`).join('');
+  const wu=document.getElementById('worker-url');if(wu&&S.workerUrl)wu.value=S.workerUrl;const sqt=document.getElementById('sq-token');if(sqt&&S.token)sqt.value=S.token;['loc-wh','loc-rs','loc-t1','loc-t2','loc-t3'].forEach((id,i)=>{const el=document.getElementById(id);if(el)el.value=Object.values(S.locationIds)[i]||'';});if(S.workerUrl)setStatus('Worker configured',true);const sub=document.getElementById('items-subtitle');if(sub)sub.textContent=S.items.length+' items';document.getElementById('items-list').innerHTML=S.items.map(item=>{const cat=S.categories[item]||'';const isDessert=cat==='Frozen Desserts';const chipClass=isDessert?'cc-dessert':'cc-food';const chipText=isDessert?'Dessert':'Food';return `<div class="item-row"><span style="flex:1;font-weight:700">${item}</span><span style="font-size:12px;font-weight:700;color:var(--green)">${fmt(S.prices[item])}</span><span class="cat-chip ${chipClass}" onclick="toggleItemCategory('${esc(item)}')" style="cursor:pointer" title="Click to change category">${chipText}</span><button class="btn btn-xs btn-danger" data-admin-only onclick="removeItem('${esc(item)}')">Remove</button></div>`;}).join('');
   // Sync manual-visit-entry toggle with CRM state
   const mvT = document.getElementById('set-manual-visit-toggle');
   if (mvT && window.CRM && CRM._state) {
@@ -1769,8 +1794,8 @@ let mobParLoc='Warehouse';
 
 // Category → ordered list of section keys (used to build the tab strip dynamically)
 const MOB_CATEGORIES = {
-  inventory: ['overview','inventory','locations','par','alerts','picklist','transfers','production','sales'],
-  crm:       ['crm-customers','crm-schedule','crm-forecast','crm-relog'],
+  inventory: ['overview','inventory','locations','par','alerts','picklist','transfers','production','sales','crm-forecast'],
+  crm:       ['crm-customers','crm-schedule','crm-relog'],
 };
 
 // Section icon + label for the tab strip
@@ -3006,8 +3031,35 @@ window.CRM = (function(){
 
   // ─── Schedule (truck by truck) ─────────────────────────────────────
   function shiftWeek(delta) {
-    state.weekStart = addDays(state.weekStart || mondayOf(new Date()), delta * 7);
-    renderSchedule();
+    // In day-view the prev/next arrows shift by ±1 day; in week-view by ±7
+    const onMobile = typeof isMob === 'function' && isMob();
+    if (state.scheduleView === 'day') {
+      state.dayDate = addDays(state.dayDate || new Date(), delta);
+    } else {
+      state.weekStart = addDays(state.weekStart || mondayOf(new Date()), delta * 7);
+    }
+    if (onMobile) renderMobSchedule();
+    else renderSchedule();
+  }
+
+  function setScheduleView(mode) {
+    if (mode !== 'day' && mode !== 'week') return;
+    state.scheduleView = mode;
+    const onMobile = typeof isMob === 'function' && isMob();
+    if (onMobile) renderMobSchedule();
+    else renderSchedule();
+  }
+
+  // Date picker handler: per spec, picking a date switches to day-view automatically
+  function pickScheduleDate(isoStr) {
+    if (!isoStr) return;
+    // Build a local date (don't let it slip a day from UTC parsing)
+    const [y, m, d] = isoStr.split('-').map(Number);
+    state.dayDate = new Date(y, m - 1, d);
+    state.scheduleView = 'day';
+    const onMobile = typeof isMob === 'function' && isMob();
+    if (onMobile) renderMobSchedule();
+    else renderSchedule();
   }
 
   function setScheduleTruck(t) {
@@ -3019,14 +3071,43 @@ window.CRM = (function(){
     const root = document.getElementById('crm-schedule-content');
     const label = document.getElementById('crm-week-label');
     if (!root) return;
-    if (!state.weekStart) state.weekStart = mondayOf(new Date());
-    const weekEnd = addDays(state.weekStart, 6);
-    if (label) label.textContent = `${fmtDateShort(state.weekStart)} – ${fmtDateShort(weekEnd)}`;
 
-    const fromISO = isoDate(state.weekStart);
-    const toISO = isoDate(weekEnd);
+    // Default view + dates
+    if (!state.scheduleView) state.scheduleView = 'week';
+    if (!state.weekStart) state.weekStart = mondayOf(new Date());
+    if (!state.dayDate)   state.dayDate   = new Date();
+
+    // Compute window depending on view mode
+    let rangeStart, rangeEnd, labelText;
+    if (state.scheduleView === 'day') {
+      rangeStart = new Date(state.dayDate);
+      rangeEnd   = new Date(state.dayDate);
+      labelText  = state.dayDate.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+    } else {
+      rangeStart = state.weekStart;
+      rangeEnd   = addDays(state.weekStart, 6);
+      labelText  = `${fmtDateShort(rangeStart)} – ${fmtDateShort(rangeEnd)}`;
+    }
+    if (label) label.textContent = labelText;
+
+    // Sync the day/week toggle button highlight
+    const dayBtn  = document.getElementById('sched-view-day');
+    const weekBtn = document.getElementById('sched-view-week');
+    if (dayBtn && weekBtn) {
+      const active = 'background:var(--accent);color:#fff;';
+      const inactive = 'background:var(--surface);color:var(--text);';
+      dayBtn.setAttribute('style',  'border-radius:0;border:none;' + (state.scheduleView==='day'  ? active : inactive));
+      weekBtn.setAttribute('style', 'border-radius:0;border:none;border-left:1px solid var(--border);' + (state.scheduleView==='week' ? active : inactive));
+    }
+    // Sync date picker
+    const dp = document.getElementById('sched-date-picker');
+    if (dp) dp.value = isoDate(state.scheduleView === 'day' ? state.dayDate : state.weekStart);
+
+    const fromISO = isoDate(rangeStart);
+    const toISO = isoDate(rangeEnd);
     const stops = state.stops.filter(s => s.scheduled_date >= fromISO && s.scheduled_date <= toISO);
 
+    const periodLabel = state.scheduleView === 'day' ? 'today' : 'this week';
     const truckTabs = `<div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--border)">
       ${[1,2].map(t => `<div onclick="CRM.setScheduleTruck(${t})" style="padding:8px 16px;cursor:pointer;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid ${state.currentTruck===t?'var(--accent)':'transparent'};margin-bottom:-1px;color:${state.currentTruck===t?'var(--accent)':'var(--text3)'}">Truck ${t} <span style="font-weight:400;font-size:11px;color:var(--text3)">(${stops.filter(s=>s.truck===t).length})</span></div>`).join('')}
     </div>`;
@@ -3038,7 +3119,7 @@ window.CRM = (function(){
 
     let body;
     if (!truckStops.length) {
-      body = `<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">No stops scheduled for Truck ${state.currentTruck} this week.</div>`;
+      body = `<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">No stops scheduled for Truck ${state.currentTruck} ${periodLabel}.</div>`;
     } else {
       const byDay = {};
       truckStops.forEach(s => { (byDay[s.scheduled_date] = byDay[s.scheduled_date] || []).push(s); });
@@ -3055,8 +3136,6 @@ window.CRM = (function(){
 
     root.innerHTML = truckTabs + body;
     applyPermissions();
-    // Auto-fetch sales for past stops, throttled: sequentially, cap at 10 per view render
-    // to avoid overwhelming the Worker subrequest budget.
     const pastStops = truckStops.filter(s => isStopPast(s)).slice(0, 10);
     (async () => {
       for (const s of pastStops) {
@@ -4570,24 +4649,55 @@ window.CRM = (function(){
   function renderMobSchedule(){
     const root = document.getElementById('crm-schedule-mob');
     if(!root) return;
-    if(!state.weekStart) state.weekStart = mondayOf(new Date());
-    const weekEnd = addDays(state.weekStart, 6);
-    const fromISO = isoDate(state.weekStart), toISO = isoDate(weekEnd);
+    if (!state.scheduleView) state.scheduleView = 'week';
+    if (!state.weekStart)    state.weekStart    = mondayOf(new Date());
+    if (!state.dayDate)      state.dayDate      = new Date();
+
+    // Compute window depending on mode
+    let rangeStart, rangeEnd, labelText, pickerValue;
+    if (state.scheduleView === 'day') {
+      rangeStart = new Date(state.dayDate);
+      rangeEnd   = new Date(state.dayDate);
+      labelText  = state.dayDate.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+      pickerValue = isoDate(state.dayDate);
+    } else {
+      rangeStart = state.weekStart;
+      rangeEnd   = addDays(state.weekStart, 6);
+      labelText  = `${fmtDateShort(rangeStart)} – ${fmtDateShort(rangeEnd)}`;
+      pickerValue = isoDate(state.weekStart);
+    }
+
+    const fromISO = isoDate(rangeStart), toISO = isoDate(rangeEnd);
     const stops = state.stops.filter(s => s.scheduled_date >= fromISO && s.scheduled_date <= toISO);
     const tabsHtml = `<div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--border)">
       ${[1,2].map(t=>`<div onclick="CRM.setMobScheduleTruck(${t})" style="padding:8px 14px;cursor:pointer;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid ${state.currentTruck===t?'var(--accent)':'transparent'};color:${state.currentTruck===t?'var(--accent)':'var(--text3)'}">Truck ${t} <span style="font-weight:400;color:var(--text3)">(${stops.filter(s=>s.truck===t).length})</span></div>`).join('')}
     </div>`;
+
+    const dayActive  = state.scheduleView === 'day'
+      ? 'background:var(--accent);color:#fff' : 'background:var(--surface);color:var(--text)';
+    const weekActive = state.scheduleView === 'week'
+      ? 'background:var(--accent);color:#fff' : 'background:var(--surface);color:var(--text)';
+
     const headerHtml = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px">
-        <button class="btn btn-sm" onclick="CRM.shiftWeek(-1)"><i class="ti ti-chevron-left"></i></button>
-        <span style="font-size:13px;font-weight:700;color:var(--sidebar);flex:1;text-align:center">${fmtDateShort(state.weekStart)} – ${fmtDateShort(weekEnd)}</span>
-        <button class="btn btn-sm" onclick="CRM.shiftWeek(1)"><i class="ti ti-chevron-right"></i></button>
+      <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center;flex-wrap:wrap">
+        <div style="display:inline-flex;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+          <button class="btn btn-sm" onclick="CRM.setScheduleView('day')"  style="border-radius:0;border:none;${dayActive}">Day</button>
+          <button class="btn btn-sm" onclick="CRM.setScheduleView('week')" style="border-radius:0;border:none;border-left:1px solid var(--border);${weekActive}">Week</button>
+        </div>
+        <input type="date" value="${pickerValue}" onchange="CRM.pickScheduleDate(this.value)" style="flex:1;min-width:120px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
         <button class="btn btn-sm btn-accent" onclick="CRM.openAddStop()" title="Add Stop"><i class="ti ti-plus"></i></button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px">
+        <button class="btn btn-sm" onclick="CRM.shiftWeek(-1)"><i class="ti ti-chevron-left"></i></button>
+        <span style="font-size:13px;font-weight:700;color:var(--sidebar);flex:1;text-align:center">${labelText}</span>
+        <button class="btn btn-sm" onclick="CRM.shiftWeek(1)"><i class="ti ti-chevron-right"></i></button>
       </div>`;
+
+    const periodLabel = state.scheduleView === 'day' ? 'today' : 'this week';
     const truckStops = stops.filter(s => s.truck === state.currentTruck).sort((a,b)=>{if(a.scheduled_date!==b.scheduled_date) return a.scheduled_date<b.scheduled_date?-1:1; return a.start_time<b.start_time?-1:1;});
     let body;
     if(!truckStops.length){
-      body = `<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">No stops scheduled for Truck ${state.currentTruck} this week.</div>`;
+      body = `<div style="padding:30px;text-align:center;color:var(--text3);font-style:italic">No stops scheduled for Truck ${state.currentTruck} ${periodLabel}.</div>`;
     } else {
       const byDay = {};
       truckStops.forEach(s=>{(byDay[s.scheduled_date]=byDay[s.scheduled_date]||[]).push(s);});
@@ -6617,7 +6727,7 @@ window.CRM = (function(){
     init: loadAll,
     renderCustomers, filterCustomers,
     openProfile, setProfileTab, startEdit, cancelEdit, saveEdit,
-    renderSchedule, shiftWeek, setScheduleTruck, reassignStopTruck, deleteStop,
+    renderSchedule, shiftWeek, setScheduleTruck, setScheduleView, pickScheduleDate, reassignStopTruck, deleteStop,
     openAddStop, saveNewStop, scheduleStopFor, openEditStop, saveEditStop, closeAddStop,
     openAddCustomer, saveNewCustomer, closeAddCustomer,
     renderForecast,
