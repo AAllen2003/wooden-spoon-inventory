@@ -1709,19 +1709,34 @@ function isAdmin(){
 
 async function loadAdminEmails(){
   if(!sb)return;
+  // Default to empty (= no admin). isAdmin() will return false until a real
+  // value loads from the database. We do NOT auto-promote anyone — silently
+  // making the current user an admin if the fetch came back empty was the
+  // source of a security bug. If there's truly no admin set, fix it directly
+  // in Supabase (table_editor → app_settings → 'admin_emails').
+  S.adminEmails=[];
   try{
-    const {data}=await sb.from('app_settings').select('value').eq('key','admin_emails').maybeSingle();
-    let raw=data?.value;
-    // Handle both jsonb (array) and text (JSON-stringified) storage
-    if(typeof raw==='string'){
-      try{raw=JSON.parse(raw);}catch(e){raw=[];}
+    const {data,error}=await sb.from('app_settings').select('value').eq('key','admin_emails').maybeSingle();
+    if(error){
+      // Hard error reading the table — log loudly and stay locked-down.
+      console.error('[admin] loadAdminEmails fetch error:',error);
+      return;
     }
-    if(!Array.isArray(raw))raw=[];
+    let raw=data?.value;
+    if(typeof raw==='string'){
+      try{raw=JSON.parse(raw);}catch(e){
+        console.error('[admin] admin_emails value is invalid JSON:',raw);
+        return;
+      }
+    }
+    if(!Array.isArray(raw)){
+      console.warn('[admin] admin_emails not found or not an array; treating as empty.');
+      return;
+    }
     S.adminEmails=raw.map(e=>String(e).trim().toLowerCase()).filter(Boolean);
-  }catch(e){S.adminEmails=[];console.error('loadAdminEmails error:',e);}
-  if(S.adminEmails.length===0 && currentUser?.email){
-    S.adminEmails=[currentUser.email.toLowerCase()];
-    try{await sb.from('app_settings').upsert({key:'admin_emails',value:JSON.stringify(S.adminEmails)});}catch(e){console.error('admin bootstrap save:',e);}
+  }catch(e){
+    console.error('[admin] loadAdminEmails threw:',e);
+    // S.adminEmails stays empty — fail closed.
   }
 }
 
