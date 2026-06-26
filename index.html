@@ -4360,8 +4360,9 @@ window.CRM = (function(){
     const total = state.locations.length;
     const flagged = state.locations.filter(l=>l.internal_flags).length;
     root.innerHTML = `
-      <div style="margin-bottom:12px">
-        <input type="text" id="crm-mob-search" placeholder="Search..." oninput="CRM.filterMobCustomers()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box">
+      <div style="margin-bottom:12px;display:flex;gap:8px">
+        <input type="text" id="crm-mob-search" placeholder="Search..." oninput="CRM.filterMobCustomers()" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box">
+        <button class="btn btn-sm btn-accent" onclick="CRM.openAddCustomer()" style="white-space:nowrap"><i class="ti ti-plus"></i> Add</button>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:12px;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.05em">
         <span>${total} locations</span><span>·</span><span>${flagged} need review</span>
@@ -4409,6 +4410,23 @@ window.CRM = (function(){
     const _lastVisit = _myVisits.length
       ? _myVisits.map(v => v.visit_date).sort().slice(-1)[0]
       : null;
+    const isEditing = !!state.profileEditing;
+    if (isEditing) {
+      // Reuse the desktop edit form — its field IDs (f-name etc.) and save flow
+      // are independent of where it's rendered.
+      root.innerHTML = `
+        <button class="btn btn-sm" onclick="CRM.cancelMobEdit()" style="margin-bottom:12px"><i class="ti ti-arrow-left"></i> Cancel</button>
+        <div class="card">
+          <div style="font-family:var(--font-display);font-size:18px;color:var(--sidebar);margin-bottom:10px">Edit ${esc(l.location_name)}</div>
+          ${_renderOverviewEditInline(l)}
+          <div style="display:flex;gap:8px;margin-top:14px">
+            <button class="btn btn-sm" onclick="CRM.cancelMobEdit()" style="flex:1">Cancel</button>
+            <button class="btn btn-sm btn-primary" onclick="CRM.saveMobEdit()" style="flex:1"><i class="ti ti-check"></i> Save</button>
+          </div>
+        </div>`;
+      applyPermissions();
+      return;
+    }
     root.innerHTML = `
       <button class="btn btn-sm" onclick="mobShow('crm-customers',document.querySelector('.mob-tab[data-sec=\\'crm-customers\\']'))" style="margin-bottom:12px"><i class="ti ti-arrow-left"></i> Back</button>
       <div class="card">
@@ -4432,11 +4450,29 @@ window.CRM = (function(){
           <div class="metric"><div class="metric-label">Visits</div><div class="metric-value" style="font-size:20px">${_visitCount||'—'}</div></div>
           <div class="metric"><div class="metric-label">Last</div><div class="metric-value" style="font-size:13px;margin-top:6px">${_lastVisit?fmtDate(_lastVisit):'—'}</div></div>
         </div>
-        <div style="margin-top:14px;display:flex;gap:8px" data-admin-only>
-          <button class="btn btn-sm btn-primary" onclick="alert('Use desktop to edit for now')" style="flex:1"><i class="ti ti-edit"></i> Edit</button>
+        <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-sm btn-primary" onclick="CRM.startMobEdit()" style="flex:1;min-width:130px"><i class="ti ti-edit"></i> Edit</button>
+          <button class="btn btn-sm btn-accent" onclick="CRM.scheduleStopFor(${l.id})" style="flex:1;min-width:130px"><i class="ti ti-calendar-plus"></i> Schedule Stop</button>
         </div>
       </div>`;
     applyPermissions();
+  }
+
+  // Mobile edit-mode entry/exit — same backing flag as desktop
+  function startMobEdit() { state.profileEditing = true; renderMobProfile(); }
+  function cancelMobEdit() { state.profileEditing = false; renderMobProfile(); }
+  // Saving mobile reuses saveEdit (reads same IDs) but re-renders the mobile view
+  async function saveMobEdit() {
+    await saveEdit();
+    // saveEdit triggers a desktop renderProfile; for mobile we need to also
+    // re-render mobile and exit edit mode (saveEdit already flips the flag off)
+    renderMobProfile();
+  }
+
+  // Inline wrapper — calls the existing desktop edit form HTML generator
+  function _renderOverviewEditInline(l) {
+    // renderOverviewEdit is module-private; access it via the closure
+    return renderOverviewEdit(l);
   }
   function renderMobSchedule(){
     const root = document.getElementById('crm-schedule-mob');
@@ -4449,10 +4485,11 @@ window.CRM = (function(){
       ${[1,2].map(t=>`<div onclick="CRM.setMobScheduleTruck(${t})" style="padding:8px 14px;cursor:pointer;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid ${state.currentTruck===t?'var(--accent)':'transparent'};color:${state.currentTruck===t?'var(--accent)':'var(--text3)'}">Truck ${t} <span style="font-weight:400;color:var(--text3)">(${stops.filter(s=>s.truck===t).length})</span></div>`).join('')}
     </div>`;
     const headerHtml = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px">
         <button class="btn btn-sm" onclick="CRM.shiftWeek(-1)"><i class="ti ti-chevron-left"></i></button>
-        <span style="font-size:13px;font-weight:700;color:var(--sidebar)">${fmtDateShort(state.weekStart)} – ${fmtDateShort(weekEnd)}</span>
+        <span style="font-size:13px;font-weight:700;color:var(--sidebar);flex:1;text-align:center">${fmtDateShort(state.weekStart)} – ${fmtDateShort(weekEnd)}</span>
         <button class="btn btn-sm" onclick="CRM.shiftWeek(1)"><i class="ti ti-chevron-right"></i></button>
+        <button class="btn btn-sm btn-accent" onclick="CRM.openAddStop()" title="Add Stop"><i class="ti ti-plus"></i></button>
       </div>`;
     const truckStops = stops.filter(s => s.truck === state.currentTruck).sort((a,b)=>{if(a.scheduled_date!==b.scheduled_date) return a.scheduled_date<b.scheduled_date?-1:1; return a.start_time<b.start_time?-1:1;});
     let body;
@@ -6510,7 +6547,7 @@ window.CRM = (function(){
     openSquareBackfill, backfillFetchAll, backfillSave, backfillAddRow, backfillRemoveRow, backfillUpdateRow, backfillToggleSelect, backfillInspect,
     // Mobile
     renderMobCustomers, filterMobCustomers, renderMobCustomerList,
-    openMobProfile, renderMobProfile,
+    openMobProfile, renderMobProfile, startMobEdit, cancelMobEdit, saveMobEdit,
     renderMobSchedule, setMobScheduleTruck,
     renderMobForecast,
     renderMobRelog,
