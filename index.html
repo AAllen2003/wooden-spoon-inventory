@@ -3342,41 +3342,70 @@ window.CRM = (function(){
   }
 
   function openAddCustomer() {
-    state.currentLocId = null;
     const onMobile = typeof isMob === 'function' && isMob();
-    let root;
+
+    // Build the field block once (shared between desktop layout and mobile modal)
+    const fieldsHtml = (twoCol) => {
+      const colsStyle = twoCol ? 'display:grid;grid-template-columns:1fr 1fr;gap:16px' : 'display:flex;flex-direction:column';
+      return `
+        <div style="${colsStyle}">
+          <div>
+            ${editField('Name *','new-name','')}
+            ${editField('Address','new-addr','')}
+            ${editField('City','new-city','')}
+            ${editField('State','new-state','AR')}
+            ${editField('ZIP','new-zip','')}
+          </div>
+          <div>
+            ${editField('Point of Contact','new-poc','')}
+            ${editField('Phone','new-phone','')}
+            ${editField('Email','new-email','')}
+            ${editField('Scheduling preference','new-sched','')}
+            ${editField('Notes','new-notes','',true)}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+          <button class="btn btn-sm" onclick="CRM.closeAddCustomer()">Cancel</button>
+          <button class="btn btn-sm btn-primary" onclick="CRM.saveNewCustomer()"><i class="ti ti-check"></i> Save Customer</button>
+        </div>`;
+    };
+
     if (onMobile) {
-      if (typeof mobShow === 'function') mobShow('crm-profile', null);
-      root = document.getElementById('crm-profile-mob');
-    } else {
-      showSection('crm-profile');
-      document.getElementById('page-title').textContent = 'New Customer';
-      root = document.getElementById('crm-profile-content');
+      // Render as overlay so the mobile renderer's "Not Found" flash and the
+      // background refresh both stay out of our way
+      closeMergeModal();
+      const modal = document.createElement('div');
+      modal.id = 'merge-modal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;overflow-y:auto;-webkit-overflow-scrolling:touch';
+      modal.innerHTML = `
+        <div style="background:var(--surface);min-height:100vh;padding:18px 16px;box-sizing:border-box">
+          <div style="font-family:var(--font-display);font-size:20px;color:var(--sidebar);margin-bottom:14px">New Customer</div>
+          ${fieldsHtml(false)}
+        </div>`;
+      document.body.appendChild(modal);
+      setTimeout(() => document.getElementById('new-name')?.focus(), 0);
+      return;
     }
+
+    // Desktop: inline render into the profile area as before
+    state.currentLocId = null;
+    showSection('crm-profile');
+    document.getElementById('page-title').textContent = 'New Customer';
+    const root = document.getElementById('crm-profile-content');
     if (!root) return;
     root.innerHTML = `<div class="card">
       <div class="card-header"><span class="card-title">New Customer</span></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <div>
-          ${editField('Name *','new-name','')}
-          ${editField('Address','new-addr','')}
-          ${editField('City','new-city','')}
-          ${editField('State','new-state','AR')}
-          ${editField('ZIP','new-zip','')}
-        </div>
-        <div>
-          ${editField('Contact','new-poc','')}
-          ${editField('Phone','new-phone','')}
-          ${editField('Email','new-email','')}
-          ${editField('Scheduling Preference','new-sched','')}
-          ${editField('Notes','new-notes','',true)}
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
-        <button class="btn btn-sm" onclick="showSection('crm-customers',document.querySelector('.nav-item[onclick*=customers]'))">Cancel</button>
-        <button class="btn btn-sm btn-primary" onclick="CRM.saveNewCustomer()"><i class="ti ti-check"></i> Save</button>
-      </div>
+      ${fieldsHtml(true)}
     </div>`;
+  }
+
+  function closeAddCustomer() {
+    const onMobile = typeof isMob === 'function' && isMob();
+    if (onMobile) closeMergeModal();
+    else {
+      // Desktop: go back to the customers list
+      showSection('crm-customers', document.querySelector('.nav-item[onclick*="crm-customers"]'));
+    }
   }
 
   async function saveNewCustomer() {
@@ -3402,8 +3431,12 @@ window.CRM = (function(){
       if (error) throw error;
       if (!state.locations.some(l => l.id === ins.id)) state.locations.push(ins);
       const onMobile = typeof isMob === 'function' && isMob();
-      if (onMobile) openMobProfile(ins.id);
-      else openProfile(ins.id);
+      if (onMobile) {
+        closeMergeModal();
+        openMobProfile(ins.id);
+      } else {
+        openProfile(ins.id);
+      }
       // If address was provided, kick off geocode in background
       if (data.full_address) {
         const workerUrl = (typeof S !== 'undefined' && S.workerUrl) ? S.workerUrl : null;
@@ -6586,7 +6619,7 @@ window.CRM = (function(){
     openProfile, setProfileTab, startEdit, cancelEdit, saveEdit,
     renderSchedule, shiftWeek, setScheduleTruck, reassignStopTruck, deleteStop,
     openAddStop, saveNewStop, scheduleStopFor, openEditStop, saveEditStop, closeAddStop,
-    openAddCustomer, saveNewCustomer,
+    openAddCustomer, saveNewCustomer, closeAddCustomer,
     renderForecast,
     // Auto-scheduler
     startAutoSchedule, toggleProposal, toggleAllProposals, editProposal, cancelProposals, approveProposals,
