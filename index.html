@@ -3150,27 +3150,18 @@ window.CRM = (function(){
   }
 
   function openAddStop(locIdPreset) {
-    // Route to the right container based on which view is active.
-    // On mobile, we render the form into the mobile schedule section and
-    // switch to that section so the user sees it.
     const onMobile = typeof isMob === 'function' && isMob();
-    let root;
-    if (onMobile) {
-      if (typeof mobShow === 'function') mobShow('crm-schedule', document.querySelector('.mob-tab[data-sec="crm-schedule"]'));
-      root = document.getElementById('crm-schedule-mob');
-    } else {
-      root = document.getElementById('crm-schedule-content');
-    }
-    if (!root) return;
     const today = isoDate(new Date());
     const locOptions = state.locations
       .filter(l => l.status === 'active')
       .sort((a,b) => a.location_name.localeCompare(b.location_name))
       .map(l => `<option value="${l.id}" ${locIdPreset===l.id?'selected':''}>${esc(l.location_name)}</option>`)
       .join('');
-    root.innerHTML = `<div class="card" style="background:var(--bg)">
-      <div class="card-header"><span class="card-title">New Stop</span></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+    const ruleOpts = ['one-time','weekly','biweekly','every_6_weeks','quarterly','manual_only','locked'].map(r=>`<option value="${r}">${r}</option>`).join('');
+    // Two-column on desktop, single-column on mobile so fields don't squish
+    const colsStyle = onMobile ? 'display:flex;flex-direction:column' : 'display:grid;grid-template-columns:1fr 1fr;gap:14px';
+    const formInner = `
+      <div style="${colsStyle}">
         <div>
           ${selField('Location','add-loc',locOptions)}
           ${editField('Date','add-date',today)}
@@ -3180,18 +3171,52 @@ window.CRM = (function(){
           ${editField('Start time','add-start','09:00')}
           ${editField('End time','add-end','10:00')}
           ${selField('Truck','add-truck','<option value="1">Truck 1</option><option value="2">Truck 2</option>')}
-          ${selField('Recurrence','add-rule',['one-time','weekly','biweekly','every_6_weeks','quarterly','manual_only','locked'].map(r=>`<option value="${r}">${r}</option>`).join(''))}
+          ${selField('Recurrence','add-rule',ruleOpts)}
         </div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
-        <button class="btn btn-sm" onclick="CRM.renderSchedule()">Cancel</button>
+        <button class="btn btn-sm" onclick="CRM.closeAddStop()">Cancel</button>
         <button class="btn btn-sm btn-primary" onclick="CRM.saveNewStop()"><i class="ti ti-check"></i> Save</button>
-      </div>
+      </div>`;
+
+    if (onMobile) {
+      // Render as a fixed-position overlay. This avoids two problems:
+      //  - the schedule's background refresh would otherwise clobber the form
+      //  - rendering into the schedule div was producing visual overlap
+      closeMergeModal(); // reuse the same modal slot for cleanup
+      const modal = document.createElement('div');
+      modal.id = 'merge-modal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;overflow-y:auto;-webkit-overflow-scrolling:touch';
+      modal.innerHTML = `
+        <div style="background:var(--surface);min-height:100vh;padding:18px 16px;box-sizing:border-box">
+          <div style="font-family:var(--font-display);font-size:20px;color:var(--sidebar);margin-bottom:14px">New Stop</div>
+          ${formInner}
+        </div>`;
+      document.body.appendChild(modal);
+      document.getElementById('add-date').type = 'date';
+      document.getElementById('add-start').type = 'time';
+      document.getElementById('add-end').type = 'time';
+      if (locIdPreset) document.getElementById('add-loc').value = locIdPreset;
+      return;
+    }
+
+    // Desktop: inline render into the schedule content area
+    const root = document.getElementById('crm-schedule-content');
+    if (!root) return;
+    root.innerHTML = `<div class="card" style="background:var(--bg)">
+      <div class="card-header"><span class="card-title">New Stop</span></div>
+      ${formInner}
     </div>`;
     document.getElementById('add-date').type = 'date';
     document.getElementById('add-start').type = 'time';
     document.getElementById('add-end').type = 'time';
     if (locIdPreset) document.getElementById('add-loc').value = locIdPreset;
+  }
+
+  function closeAddStop() {
+    const onMobile = typeof isMob === 'function' && isMob();
+    if (onMobile) closeMergeModal();
+    else renderSchedule();
   }
 
   function selField(label, id, optsHtml) {
@@ -3224,8 +3249,15 @@ window.CRM = (function(){
       if (error) throw error;
       if (!state.stops.some(s => s.id === ins.id)) state.stops.push(ins);
       const onMobile = typeof isMob === 'function' && isMob();
-      if (onMobile) renderMobSchedule();
-      else renderSchedule();
+      if (onMobile) {
+        closeMergeModal();
+        // Switch to the schedule tab so the user sees the new stop in context
+        if (typeof mobShow === 'function') {
+          mobShow('crm-schedule', document.querySelector('.mob-tab[data-sec="crm-schedule"]'));
+        }
+      } else {
+        renderSchedule();
+      }
     } catch (e) { alert('Failed: '+e.message); }
   }
 
@@ -6553,7 +6585,7 @@ window.CRM = (function(){
     renderCustomers, filterCustomers,
     openProfile, setProfileTab, startEdit, cancelEdit, saveEdit,
     renderSchedule, shiftWeek, setScheduleTruck, reassignStopTruck, deleteStop,
-    openAddStop, saveNewStop, scheduleStopFor, openEditStop, saveEditStop,
+    openAddStop, saveNewStop, scheduleStopFor, openEditStop, saveEditStop, closeAddStop,
     openAddCustomer, saveNewCustomer,
     renderForecast,
     // Auto-scheduler
