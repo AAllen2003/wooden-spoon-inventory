@@ -1560,7 +1560,33 @@ function renderSettings(){
       return`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg2);border-radius:6px;margin-bottom:6px"><span style="font-size:13px;font-weight:700">${em}${isMe?' <span style="font-size:10px;color:var(--text3);font-weight:400">(you)</span>':''}</span>${canRemove?`<button class="btn btn-sm" style="background:#A82020;color:#fff" onclick="removeAdminEmail('${em.replace(/'/g,"&#39;")}')">Remove</button>`:''}</div>`;
     }).join('')||'<p style="font-size:12px;color:var(--text3);font-style:italic">No admins set yet.</p>';
   }
-  const wu=document.getElementById('worker-url');if(wu&&S.workerUrl)wu.value=S.workerUrl;const sqt=document.getElementById('sq-token');if(sqt&&S.token)sqt.value=S.token;['loc-wh','loc-rs','loc-t1','loc-t2','loc-t3'].forEach((id,i)=>{const el=document.getElementById(id);if(el)el.value=Object.values(S.locationIds)[i]||'';});if(S.workerUrl)setStatus('Worker configured',true);const sub=document.getElementById('items-subtitle');if(sub)sub.textContent=S.items.length+' items';document.getElementById('items-list').innerHTML=S.items.map(item=>{const cat=S.categories[item]||'';const isDessert=cat==='Frozen Desserts';const chipClass=isDessert?'cc-dessert':'cc-food';const chipText=isDessert?'Dessert':'Food';return `<div class="item-row"><span style="flex:1;font-weight:700">${item}</span><span style="font-size:12px;font-weight:700;color:var(--green)">${fmt(S.prices[item])}</span><span class="cat-chip ${chipClass}" onclick="toggleItemCategory('${esc(item)}')" style="cursor:pointer" title="Click to change category">${chipText}</span><button class="btn btn-xs btn-danger" data-admin-only onclick="removeItem('${esc(item)}')">Remove</button></div>`;}).join('');
+  const wu=document.getElementById('worker-url');if(wu&&S.workerUrl)wu.value=S.workerUrl;const sqt=document.getElementById('sq-token');if(sqt&&S.token)sqt.value=S.token;['loc-wh','loc-rs','loc-t1','loc-t2','loc-t3'].forEach((id,i)=>{const el=document.getElementById(id);if(el)el.value=Object.values(S.locationIds)[i]||'';});if(S.workerUrl)setStatus('Worker configured',true);const sub=document.getElementById('items-subtitle');if(sub)sub.textContent=S.items.length+' items';document.getElementById('items-list').innerHTML=S.items.map((item,idx)=>{const cat=S.categories[item]||'';const isDessert=cat==='Frozen Desserts';const chipClass=isDessert?'cc-dessert':'cc-food';return `<div class="item-row"><span style="flex:1;font-weight:700">${item}</span><span style="font-size:12px;font-weight:700;color:var(--green)">${fmt(S.prices[item])}</span><select class="item-cat-sel cat-chip ${chipClass}" data-item-idx="${idx}" style="border:none;cursor:pointer;font-family:inherit;-webkit-appearance:none;-moz-appearance:none;appearance:none;padding-right:18px"><option value="Frozen Foods" ${!isDessert?'selected':''}>Food</option><option value="Frozen Desserts" ${isDessert?'selected':''}>Dessert</option></select><button class="btn btn-xs btn-danger" data-admin-only onclick="removeItem('${esc(item)}')">Remove</button></div>`;}).join('');
+  // Wire the category-change selects with event delegation (safer than inline onclick for items with special chars)
+  document.querySelectorAll('#items-list .item-cat-sel').forEach(sel=>{
+    sel.onchange = async function(){
+      const idx=parseInt(this.dataset.itemIdx,10);
+      const item=S.items[idx];
+      if(!item)return;
+      const next=this.value;
+      const prev=S.categories[item]||'';
+      if(typeof isAdmin==='function' && !isAdmin()){alert('Only admins can change item categories.');this.value=prev;return;}
+      S.categories[item]=next;
+      try{
+        if(sb){const {error}=await sb.from('items').update({category:next}).eq('name',item);if(error)throw error;}
+        // Update badge class on this select to reflect new color
+        this.classList.remove('cc-food','cc-dessert');
+        this.classList.add(next==='Frozen Desserts'?'cc-dessert':'cc-food');
+        // Re-render dependent views (inventory tables etc.) but NOT the whole settings page
+        // (avoid wiping the select the user just touched)
+        renderInventory();if(currentLoc)renderLocDetail();renderProduction();
+      }catch(e){
+        console.error('toggleItemCategory failed:',e);
+        alert('Save failed: '+(e.message||e));
+        S.categories[item]=prev;
+        this.value=prev;
+      }
+    };
+  });
   // Sync manual-visit-entry toggle with CRM state
   const mvT = document.getElementById('set-manual-visit-toggle');
   if (mvT && window.CRM && CRM._state) {
