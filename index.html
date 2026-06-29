@@ -443,7 +443,7 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
         <div class="transfer-grid">
           <div class="fg"><label>Item</label><select id="xfr-item"></select></div>
           <div class="fg"><label>From</label><select id="xfr-from"><option>Warehouse</option><option>Restaurant</option><option>Truck 1</option><option>Truck 2</option><option>Truck 3</option></select></div>
-          <div class="fg"><label>To</label><select id="xfr-to"><option>Restaurant</option><option>Warehouse</option><option>Truck 1</option><option>Truck 2</option><option>Truck 3</option></select></div>
+          <div class="fg"><label>To</label><select id="xfr-to"><option>Truck 1</option><option>Warehouse</option><option>Restaurant</option><option>Truck 2</option><option>Truck 3</option></select></div>
           <div class="fg"><label>Qty</label><input type="number" id="xfr-qty" value="1" min="1" style="width:72px"></div>
           <div class="fg"><label>&nbsp;</label><button class="btn btn-primary" onclick="doTransfer()"><i class="ti ti-arrow-right"></i> Transfer</button></div>
         </div>
@@ -1652,7 +1652,23 @@ function renderLocDetail(){if(!currentLoc)return;const li=LOCS.indexOf(currentLo
 function renderInventory(){const filter=document.getElementById('inv-cat-filter')?.value||'';const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;document.getElementById('inv-table').innerHTML=items.map(item=>{const cols=LOCS.map(loc=>{const qty=(S.inventory[item]||{})[loc]||0,par=(S.par[item]||{})[loc]||0;const cls=qty===0?'stock-out':par>0&&qty<=par?'stock-low':'stock-ok';const pn=par>0?`<span class="qty-par">par ${par}</span>`:'';return`<td class="qty-cell"><span class="${cls}">${qty}</span>${pn}</td>`;}).join('');const total=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0),cat=S.categories[item]||'';return`<tr><td style="font-weight:700">${item}</td><td><span class="cat-chip ${cat==='Frozen Foods'?'cc-food':'cc-dessert'}">${cat==='Frozen Foods'?'Food':'Dessert'}</span></td><td style="font-weight:700;color:var(--green)">${fmt(S.prices[item])}</td>${cols}<td class="qty-cell" style="font-weight:700">${total}</td></tr>`;}).join('');}
 function renderPar(){document.getElementById('par-table-body').innerHTML=S.items.map(item=>{const cols=LOCS.map(loc=>`<td class="par-cell"><input type="number" class="par-input" id="par-${sl(item)}-${sl(loc)}" value="${(S.par[item]||{})[loc]||0}" min="0" onchange="savePar1('${esc(item)}','${loc}',this.value)"></td>`).join('');return`<tr><td style="font-weight:700;white-space:nowrap;padding-right:16px">${item}</td>${cols}</tr>`;}).join('');}
 function renderAlerts(){document.getElementById('alerts-list').innerHTML=S.alerts.length?S.alerts.map(a=>{const li=LOCS.indexOf(a.loc),cls=a.type==='out'?'danger':'warn';return`<div class="alert-bar ${cls}"><div class="alert-body"><div class="alert-title">${a.type==='out'?'Out of stock':'Below par'}: ${a.item} @ <span class="loc-chip ${LC[li]}">${a.loc}</span></div><div class="alert-sub">Current: ${a.qty} &middot; Par: ${a.par} &middot; ${a.time}</div></div><button class="alert-dismiss" onclick="dismissAlert('${esc(a.key)}')">&#x00D7;</button></div>`;}).join(''):'<div class="empty-state"><i class="ti ti-circle-check" style="font-size:48px;display:block;margin-bottom:12px;color:var(--green)"></i>All locations are at or above par</div>';}
-function renderTransfers(){document.getElementById('xfr-item').innerHTML=S.items.map(i=>`<option>${i}</option>`).join('');document.getElementById('xfr-log').innerHTML=S.transfers.length?S.transfers.map(t=>{const fi=LOCS.indexOf(t.from),ti=LOCS.indexOf(t.to);return`<tr><td style="color:var(--text3);font-size:12px">${t.time}</td><td style="font-weight:700">${t.item}</td><td><span class="loc-chip ${LC[fi]}">${t.from}</span></td><td><span class="loc-chip ${LC[ti]}">${t.to}</span></td><td style="font-weight:700">${t.qty}</td><td style="font-size:11px;color:var(--text3)">${t.by||''}</td></tr>`;}).join(''):'<tr><td colspan="6" style="color:var(--text3);text-align:center;padding:24px;font-style:italic">No transfers yet.</td></tr>';}
+function renderTransfers(){
+  const itemSel = document.getElementById('xfr-item');
+  if (itemSel) {
+    // Only rebuild the item dropdown if the items list has actually changed.
+    // The 45-second background refresh re-renders this section, and unconditionally
+    // rebuilding the <select> would discard whatever the user had selected — making
+    // it impossible to fill out the form if they paused for more than a few seconds.
+    const desired = S.items.join('||');
+    if (itemSel.dataset.builtFor !== desired) {
+      const prevValue = itemSel.value; // preserve current selection across rebuild
+      itemSel.innerHTML = S.items.map(i=>`<option>${i}</option>`).join('');
+      if (prevValue && S.items.includes(prevValue)) itemSel.value = prevValue;
+      itemSel.dataset.builtFor = desired;
+    }
+  }
+  document.getElementById('xfr-log').innerHTML=S.transfers.length?S.transfers.map(t=>{const fi=LOCS.indexOf(t.from),ti=LOCS.indexOf(t.to);return`<tr><td style="color:var(--text3);font-size:12px">${t.time}</td><td style="font-weight:700">${t.item}</td><td><span class="loc-chip ${LC[fi]}">${t.from}</span></td><td><span class="loc-chip ${LC[ti]}">${t.to}</span></td><td style="font-weight:700">${t.qty}</td><td style="font-size:11px;color:var(--text3)">${t.by||''}</td></tr>`;}).join(''):'<tr><td colspan="6" style="color:var(--text3);text-align:center;padding:24px;font-style:italic">No transfers yet.</td></tr>';
+}
 function renderProduction(){
   const cf=document.getElementById('prod-cat-filter')?.value||'',sf=document.getElementById('prod-status-filter')?.value||'';
   let items=cf?S.items.filter(i=>S.categories[i]===cf):S.items;
@@ -2484,7 +2500,23 @@ function mobXfrHTML(){
   const itemOpts=S.items.map(i=>`<option>${i}</option>`).join('');
   const locOpts=LOCS.map(l=>`<option>${l}</option>`).join('');
   const log=S.transfers.slice(0,10).map(t=>`<div class="m-xfr-log-row"><div class="m-xfr-item">${t.item} &mdash; ${t.qty} units</div><div class="m-xfr-detail">${t.from} &rarr; ${t.to} &middot; ${t.time}</div></div>`).join('');
-  return`<div class="m-card"><div class="m-xfr-grid"><div class="m-xfr-field"><label>Item</label><select id="mxfr-item">${itemOpts}</select></div><div class="m-xfr-field"><label>From</label><select id="mxfr-from">${locOpts}</select></div><div class="m-xfr-field"><label>To</label><select id="mxfr-to">${LOCS.map((l,i)=>`<option${i===1?' selected':''}>` +l+'</option>').join('')}</select></div><div class="m-xfr-field"><label>Quantity</label><input type="number" id="mxfr-qty" value="1" min="1"></div></div><button class="m-btn" onclick="mobDoXfr()">Transfer</button></div>${log?`<div style="margin-top:12px"><div class="m-slbl" style="margin-top:0">Recent Transfers</div><div class="m-card"><div class="m-sale-list">${log}</div></div></div>`:''}`;
+  // Snapshot any existing form values BEFORE rebuilding so the background
+  // refresh doesn't wipe out what the user has been typing.
+  const prevItem = document.getElementById('mxfr-item')?.value;
+  const prevFrom = document.getElementById('mxfr-from')?.value;
+  const prevTo   = document.getElementById('mxfr-to')?.value;
+  const prevQty  = document.getElementById('mxfr-qty')?.value;
+  const html = `<div class="m-card"><div class="m-xfr-grid"><div class="m-xfr-field"><label>Item</label><select id="mxfr-item">${itemOpts}</select></div><div class="m-xfr-field"><label>From</label><select id="mxfr-from">${locOpts}</select></div><div class="m-xfr-field"><label>To</label><select id="mxfr-to">${LOCS.map((l,i)=>`<option${i===2?' selected':''}>` +l+'</option>').join('')}</select></div><div class="m-xfr-field"><label>Quantity</label><input type="number" id="mxfr-qty" value="1" min="1"></div></div><button class="m-btn" onclick="mobDoXfr()">Transfer</button></div>${log?`<div style="margin-top:12px"><div class="m-slbl" style="margin-top:0">Recent Transfers</div><div class="m-card"><div class="m-sale-list">${log}</div></div></div>`:''}`;
+  // After the new HTML is inserted into the DOM, restore previous values.
+  // mobRender writes our return value to el.innerHTML, so we defer the restore
+  // to the next microtask, by which time the new elements exist.
+  setTimeout(() => {
+    if (prevItem !== undefined) { const e=document.getElementById('mxfr-item'); if(e && S.items.includes(prevItem)) e.value = prevItem; }
+    if (prevFrom !== undefined) { const e=document.getElementById('mxfr-from'); if(e) e.value = prevFrom; }
+    if (prevTo   !== undefined) { const e=document.getElementById('mxfr-to');   if(e) e.value = prevTo; }
+    if (prevQty  !== undefined && prevQty !== '1') { const e=document.getElementById('mxfr-qty'); if(e) e.value = prevQty; }
+  }, 0);
+  return html;
 }
 async function mobDoXfr(){
   const item=document.getElementById('mxfr-item').value;
