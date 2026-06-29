@@ -6508,7 +6508,10 @@ window.CRM = (function(){
       }
       list.innerHTML = orders.map(o => {
         const when = new Date(o.created_at).toLocaleDateString('en-US', {month:'short',day:'numeric'});
-        const itemsHtml = o.items.map(i => `${esc(i.name)} ×${i.qty}`).join(', ');
+        // Same filter as _pickUnfulfilled — only show real inventory items in the preview
+        const knownItems = new Set(S.items);
+        const realItems = (o.items || []).filter(i => knownItems.has(i.name));
+        const itemsHtml = realItems.map(i => `${esc(i.name)} ×${i.qty}`).join(', ') || '<em style="color:var(--text3)">no recognized items — fill in manually</em>';
         return `<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;cursor:pointer" onclick="CRM._pickUnfulfilled('${esc(o.order_id)}')">
           <div style="display:flex;justify-content:space-between;font-size:12px"><strong>${esc(o.customer_name || 'No name')}</strong><span style="color:var(--text3)">${when}</span></div>
           ${o.customer_address ? `<div style="font-size:11px;color:var(--text3);margin-top:2px">${esc(o.customer_address)}</div>` : ''}
@@ -6525,7 +6528,21 @@ window.CRM = (function(){
   function _pickUnfulfilled(orderId) {
     const order = state.unfulfilled.find(o => o.order_id === orderId);
     if (!order) return;
-    _renderLogDeliveryStep2(order);
+    // Defensive: filter out any line items whose names don't match a real
+    // item in our inventory. This guards against Square sending delivery
+    // charges, service fees, or adjustments that the Worker couldn't
+    // resolve to a real catalog item. Anything we don't recognize gets
+    // dropped here rather than auto-substituted.
+    const knownItems = new Set(S.items);
+    const filteredOrder = {
+      ...order,
+      items: (order.items || []).filter(it => knownItems.has(it.name)),
+    };
+    if (!filteredOrder.items.length) {
+      // Edge case: every line item was a fee/adjustment. Let the driver fill in manually.
+      filteredOrder.items = [{ name: '', qty: 1 }];
+    }
+    _renderLogDeliveryStep2(filteredOrder);
   }
 
   function _renderLogDeliveryFreeform() {
@@ -6576,9 +6593,13 @@ window.CRM = (function(){
   }
 
   function _deliveryItemRowHtml(idx, name, qty) {
+    // If name is empty/unknown, show a placeholder so we don't silently default
+    // to the alphabetically-first inventory item.
+    const showPlaceholder = !name || !S.items.includes(name);
+    const placeholderOpt = `<option value="" ${showPlaceholder?'selected':''} disabled>— Pick item —</option>`;
     const opts = S.items.slice().sort().map(i => `<option value="${esc(i)}" ${i===name?'selected':''}>${esc(i)}</option>`).join('');
     return `<div class="del-item-row" data-idx="${idx}" style="display:flex;gap:6px;margin-bottom:4px">
-      <select class="del-item-name" style="flex:1;padding:6px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">${opts}</select>
+      <select class="del-item-name" style="flex:1;padding:6px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">${placeholderOpt}${opts}</select>
       <input type="number" class="del-item-qty" value="${qty}" min="1" step="1" style="width:70px;padding:6px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;text-align:right">
       <button class="btn btn-xs" onclick="this.closest('.del-item-row').remove()" title="Remove" style="background:var(--red-bg);color:var(--red)"><i class="ti ti-x"></i></button>
     </div>`;
