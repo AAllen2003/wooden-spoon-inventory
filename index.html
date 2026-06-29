@@ -384,6 +384,9 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
             <span style="display:inline-block;width:6px;height:6px;background:#90ee90;border-radius:50%;margin-right:6px;animation:pulse 2s ease-in-out infinite"></span>
             <span id="webhook-live-text">Live</span>
           </span>
+          <span id="toast-live-badge" style="display:none;font-size:11px;padding:4px 10px;border-radius:12px;background:#9f7014;color:#fff;font-weight:700;white-space:nowrap">
+            <i class="ti ti-soup" style="margin-right:4px"></i><span id="toast-live-text">Toast</span>
+          </span>
         </div>
         <div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Category</th><th>Price</th><th class="qty-cell">Online</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total</th></tr></thead><tbody id="inv-table"></tbody></table></div>
       </div>
@@ -910,7 +913,7 @@ async function init(){setTimeout(()=>{try{document.getElementById('loading').cla
     await loadAll();
     if(await needsMig()){hideLo();showScreen('migration');return;}
     setupRT();hideLo();showScreen('app');
-    applyAC(S.colors);applyAB(S.badges);syncCI(S.colors);syncBI(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();startWebhookLiveBadge();startSalesLiveBadge();if(typeof refreshDisplay==="function")refreshDisplay({quiet:true}).catch(()=>{});
+    applyAC(S.colors);applyAB(S.badges);syncCI(S.colors);syncBI(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();startWebhookLiveBadge();startSalesLiveBadge();startToastLiveBadge();if(typeof refreshDisplay==="function")refreshDisplay({quiet:true}).catch(()=>{});
     // Initialize CRM module now that sb is ready and user is authenticated
     try{ await CRM.init(); }catch(e){console.error('CRM init failed',e);}
   }catch(e){console.error(e);hideLo();showScreen('login');}
@@ -939,7 +942,7 @@ async function doLogin(){
   document.getElementById('loading').classList.remove('hidden');
   await loadAll();
   if(await needsMig()){hideLo();showScreen('migration');return;}
-  setupRT();hideLo();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();sb=sb;startWebhookLiveBadge();startSalesLiveBadge();if(typeof refreshDisplay==="function")refreshDisplay({quiet:true}).catch(()=>{});
+  setupRT();hideLo();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();sb=sb;startWebhookLiveBadge();startSalesLiveBadge();startToastLiveBadge();if(typeof refreshDisplay==="function")refreshDisplay({quiet:true}).catch(()=>{});
 }
 async function doSignOut(){if(sb)await sb.auth.signOut();showScreen('login');document.getElementById('login-email').value='';document.getElementById('login-pw').value='';}
 function updateUserUI(){const e=currentUser?.email||'';['sidebar-user','account-email','account-subtitle'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=e;});}
@@ -982,14 +985,14 @@ async function doMigration(){
     await sb.from('par_levels').upsert(pr);
     if(sv.transfers?.length)await sb.from('transfers').insert(sv.transfers.slice(0,100).map(t=>({item_name:t.item,from_location:t.from,to_location:t.to,quantity:t.qty,transferred_by:currentUser.email})));
     const sr=[];if(sv.workerUrl)sr.push({key:'worker_url',value:sv.workerUrl});if(sv.colors)sr.push({key:'colors',value:JSON.stringify(sv.colors)});if(sv.badges)sr.push({key:'badges',value:JSON.stringify(sv.badges)});if(sr.length)await sb.from('app_settings').upsert(sr);
-    await loadAll();setupRT();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();startWebhookLiveBadge();startSalesLiveBadge();if(typeof refreshDisplay==="function")refreshDisplay({quiet:true}).catch(()=>{});
+    await loadAll();setupRT();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();startWebhookLiveBadge();startSalesLiveBadge();startToastLiveBadge();if(typeof refreshDisplay==="function")refreshDisplay({quiet:true}).catch(()=>{});
   }catch(e){document.getElementById('migrate-err').textContent='Migration failed: '+e.message;document.getElementById('migrate-err').style.display='block';btn.textContent='Migrate My Data to Cloud';btn.disabled=false;}
 }
 async function skipMigration(){
   await sb.from('items').upsert(DI.map((name,i)=>({name,sort_order:i,category:DC[name]||'',price:DP[name]||0,batch_yield:0})));
   const ir=[];DI.forEach(name=>LOCS.forEach(loc=>ir.push({item_name:name,location:loc,quantity:0})));await sb.from('inventory').upsert(ir);
   const pr=[];DI.forEach(name=>LOCS.forEach(loc=>pr.push({item_name:name,location:loc,quantity:0})));await sb.from('par_levels').upsert(pr);
-  await loadAll();setupRT();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();startWebhookLiveBadge();startSalesLiveBadge();if(typeof refreshDisplay==="function")refreshDisplay({quiet:true}).catch(()=>{});
+  await loadAll();setupRT();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();startWebhookLiveBadge();startSalesLiveBadge();startToastLiveBadge();if(typeof refreshDisplay==="function")refreshDisplay({quiet:true}).catch(()=>{});
 }
 
 // ── REALTIME ──────────────────────────────────────────────────────
@@ -1154,71 +1157,60 @@ function setStatus(t,ok){const el=document.getElementById('conn-status');el.text
 // Sync Toast (restaurant) sales: pulls today's totals, deducts the delta
 // against the Restaurant-only baseline. Truck data in the response is used
 // for DISPLAY ONLY — not deducted (those are webhook-driven now).
+// Sync Restaurant — manual trigger for the idempotent Toast deduction.
+// The Worker's hourly cron does this automatically; this button is for
+// when the user wants immediate processing. The Worker handles the
+// idempotency (toast_processed_orders table), so repeated calls are safe.
 async function syncRestaurant(){
   const sp=document.getElementById('sync-spinner'),ts=document.getElementById('top-spinner'),sm=document.getElementById('inv-sync-msg');
   if(sp)sp.style.display='block';if(ts)ts.style.display='block';
   if(!S.workerUrl){if(sp)sp.style.display='none';if(ts)ts.style.display='none';if(sm)sm.textContent='No Worker URL configured.';return;}
-  if(sm)sm.textContent='Fetching sales data...';
-  let deducted=0;
+  if(sm)sm.textContent='Asking Worker to sync Toast...';
   try{
-    // Re-fetch the latest baseline from cloud to avoid multi-device double-deduct.
+    const res = await fetch(S.workerUrl.replace(/\/+$/, '') + '/toast/sync/run', {
+      method: 'POST', mode: 'cors',
+    });
+    if(!res.ok){
+      let errMsg='Worker returned '+res.status;
+      try{const e=await res.json();if(e.error)errMsg+=': '+e.error;}catch(_){}
+      throw new Error(errMsg);
+    }
+    const result = await res.json();
+    if(sm){
+      if(result.ordersDeducted > 0){
+        sm.textContent = `Restaurant synced — ${result.unitsDeducted} units deducted across ${result.ordersDeducted} new orders`;
+      } else if(result.ordersAlreadyProcessed > 0){
+        sm.textContent = `Restaurant synced — all ${result.ordersAlreadyProcessed} orders already processed`;
+      } else {
+        sm.textContent = 'Restaurant synced — no orders found in window';
+      }
+    }
+    S.lastSync = new Date().toLocaleString();
+    setStatus('Live', true);
+    // The Worker wrote inventory directly to Supabase, so we need to pull
+    // fresh inventory from the cloud to reflect the changes locally.
     if(sb){
       try{
-        const {data:freshBase}=await sb.from('app_settings').select('value').eq('key','sales_baseline').maybeSingle();
-        if(freshBase?.value){
-          const parsed=typeof freshBase.value==='string'?JSON.parse(freshBase.value):freshBase.value;
-          if(parsed && typeof parsed==='object') S.salesBaseline=parsed;
+        const {data: invd} = await sb.from('inventory').select('*');
+        if(invd){
+          S.items.forEach(n => { S.inventory[n] = { Warehouse:0, Restaurant:0, 'Truck 1':0, 'Truck 2':0, 'Truck 3':0 }; });
+          (invd || []).forEach(r => { if(S.inventory[r.item_name]) S.inventory[r.item_name][r.location] = r.quantity; });
         }
-      }catch(e){console.warn('[sync] could not refresh baseline:',e);}
+      }catch(e){console.warn('[sync] inventory reload failed:', e);}
     }
-    const res=await fetch(S.workerUrl+'/sales',{mode:'cors'});
-    if(!res.ok){let errMsg='Worker returned '+res.status;try{const errBody=await res.json();if(errBody.error)errMsg+=': '+errBody.error;}catch(_){}throw new Error(errMsg);}
-    const data=await res.json();
-    const cs=data.sales||{};const cso=data.salesOnline||{};const csr=data.salesRevenue||{};const csor=data.salesOnlineRevenue||{};
-    S.salesOnline=cso;S.salesRevenue=csr;S.salesOnlineRevenue=csor;S.salesTotals=data.totals||null;
-    const iu=[];
-    // KEY CHANGE: only deduct for Restaurant. Truck inventory is handled by Square webhooks.
-    S.items.forEach(item=>{
-      ['Restaurant'].forEach(loc=>{
-        const cur=(cs[item]||{})[loc]||0;
-        const base=(S.salesBaseline[item]||{})[loc]||0;
-        const delta=Math.max(0,cur-base);
-        if(delta>0){
-          S.inventory[item][loc]=Math.max(0,(S.inventory[item][loc]||0)-delta);
-          deducted+=delta;
-          iu.push({item_name:item,location:loc,quantity:S.inventory[item][loc]});
-        }
-        S.sales[item]=S.sales[item]||{};
-        S.sales[item][loc]=cur;
-      });
-      // Mirror non-Restaurant sales into S.sales for display purposes only (NO deduction)
-      LOCS.filter(l=>l!=='Restaurant').forEach(loc=>{
-        S.sales[item]=S.sales[item]||{};
-        S.sales[item][loc]=(cs[item]||{})[loc]||0;
-      });
-    });
-    // Update Restaurant baseline only; other baselines kept in sync so a future
-    // accidental call to old logic wouldn't massively re-deduct.
-    S.items.forEach(item=>{
-      LOCS.forEach(loc=>{
-        S.salesBaseline[item]=S.salesBaseline[item]||{};
-        S.salesBaseline[item][loc]=(cs[item]||{})[loc]||0;
-      });
-    });
-    S.lastSync=new Date().toLocaleString();
-    if(iu.length&&sb)await sb.from('inventory').upsert(iu);
-    await dbSet('sales_baseline',S.salesBaseline);
-    await dbSet('last_sync',S.lastSync);
-    if(sm)sm.textContent=deducted>0?`Restaurant synced — ${deducted} units deducted`:`Restaurant synced — No new sales`;
-    setStatus('Live',true);
+    // Also refresh display so Sales page shows latest
+    if(typeof refreshDisplay === 'function') await refreshDisplay({quiet: true});
+    // Update the Toast last-sync indicator
+    if(typeof updateToastLiveBadge === 'function') updateToastLiveBadge();
   }catch(e){
     const msg='Sync failed: '+e.message;
-    if(sm)sm.textContent=msg;setStatus('Sync error',false);
+    if(sm)sm.textContent=msg;
+    setStatus('Sync error', false);
     if(sp)sp.style.display='none';if(ts)ts.style.display='none';
-    alert(msg);
-    checkAlerts();renderAll();return;
+    alert(msg+'\n\nThe Worker may be down or Toast may be rate-limited. Try again in a few minutes.');
+    return;
   }
-  // Also refresh prices on this path (so Settings can pull latest)
+  // Refresh prices (so Settings shows latest) — unchanged behavior
   try{
     const pr=await fetch(S.workerUrl+'/prices',{mode:'cors'});
     if(pr.ok){const pd=await pr.json();if(pd.prices&&Object.keys(pd.prices).length){const pu=[];Object.entries(pd.prices).forEach(([item,price])=>{if(S.items.includes(item)){S.prices[item]=price;pu.push({name:item,price,category:S.categories[item]||'',batch_yield:S.batchYields[item]||0,sort_order:S.items.indexOf(item)});}});if(sb&&pu.length)await sb.from('items').upsert(pu);}}
@@ -1343,6 +1335,50 @@ function startWebhookLiveBadge(){
   if(_webhookLiveTimer) return;
   updateWebhookLiveBadge();
   _webhookLiveTimer = setInterval(updateWebhookLiveBadge, 5000);
+}
+
+// Toast last-sync badge — driven by the Worker's KV cache of "toast:last_sync"
+// (written by both the hourly cron and the manual force-run endpoint).
+let _toastLiveTimer = null;
+let _lastToastSyncCache = null;
+async function updateToastLiveBadge(){
+  const badge = document.getElementById('toast-live-badge');
+  const text = document.getElementById('toast-live-text');
+  if(!badge || !text) return;
+  if(!S.workerUrl){ badge.style.display = 'none'; return; }
+  try{
+    const res = await fetch(S.workerUrl.replace(/\/+$/, '') + '/toast/sync/status', { mode: 'cors' });
+    if(!res.ok) throw new Error('status ' + res.status);
+    const data = await res.json();
+    _lastToastSyncCache = data.last || null;
+  }catch(e){
+    // Keep showing whatever we had — don't flash an error every 5s
+  }
+  const last = _lastToastSyncCache;
+  badge.style.display = 'inline-block';
+  if(!last || !last.finishedAt){
+    badge.style.background = '#999';
+    text.textContent = 'Toast: no sync yet';
+    return;
+  }
+  const ageSec = Math.floor((Date.now() - new Date(last.finishedAt).getTime()) / 1000);
+  let label;
+  if(ageSec < 60) label = `${ageSec}s ago`;
+  else if(ageSec < 3600) label = `${Math.floor(ageSec/60)}m ago`;
+  else if(ageSec < 86400) label = `${Math.floor(ageSec/3600)}h ago`;
+  else label = `${Math.floor(ageSec/86400)}d ago`;
+  // Color reflects staleness — green within 90 min (1 hr cron + buffer), amber under a day, red beyond
+  if(ageSec < 5400) badge.style.background = '#2A6B3A';
+  else if(ageSec < 86400) badge.style.background = '#B05A00';
+  else badge.style.background = '#A82020';
+  text.textContent = `Toast: ${label}` + (last.ok === false ? ' (errors)' : '');
+}
+function startToastLiveBadge(){
+  if(_toastLiveTimer) return;
+  updateToastLiveBadge();
+  // Poll less frequently than the webhook badge — Toast cron only runs hourly
+  // so checking every 30s is plenty.
+  _toastLiveTimer = setInterval(updateToastLiveBadge, 30000);
 }
 
 
