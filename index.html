@@ -3271,7 +3271,11 @@ window.CRM = (function(){
       </div>
       <div>
         <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:10px">Scheduling</div>
-        ${editField('Preference','f-sched', l.scheduling_preference)}
+        <div style="margin-bottom:10px">
+          <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Preference</label>
+          <input type="text" id="f-sched" value="${esc(l.scheduling_preference||'')}" oninput="window.CRM&&document.getElementById('f-sched-preview')&&(document.getElementById('f-sched-preview').innerHTML=CRM.previewPreference(this.value))" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+          <div id="f-sched-preview" style="margin-top:6px;padding:8px 10px;border-radius:6px;background:var(--bg2);font-size:11px;color:var(--text3);min-height:16px">${previewPreference(l.scheduling_preference||'')}</div>
+        </div>
         ${editField('Notes','f-notes', l.notes, true)}
         ${editField('Internal Flags','f-flags', l.internal_flags, true)}
         <div style="margin-bottom:10px">
@@ -4023,7 +4027,11 @@ window.CRM = (function(){
             ${editField('Point of Contact','new-poc','')}
             ${editField('Phone','new-phone','')}
             ${editField('Email','new-email','')}
-            ${editField('Scheduling preference','new-sched','')}
+            <div style="margin-bottom:10px">
+              <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Scheduling preference</label>
+              <input type="text" id="new-sched" value="" oninput="window.CRM&&document.getElementById('new-sched-preview')&&(document.getElementById('new-sched-preview').innerHTML=CRM.previewPreference(this.value))" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+              <div id="new-sched-preview" style="margin-top:6px;padding:8px 10px;border-radius:6px;background:var(--bg2);font-size:11px;color:var(--text3);min-height:16px">${previewPreference('')}</div>
+            </div>
             ${editField('Notes','new-notes','',true)}
           </div>
         </div>
@@ -4280,6 +4288,53 @@ window.CRM = (function(){
     return out;
   }
 
+  // ─── Preview helper for the Scheduling Preference field ────────────
+  // Returns a friendly HTML string describing what the parser extracted
+  // from a given preference text. Powers the live preview under the
+  // Preference textarea on both Edit Customer and Add Customer forms.
+  function previewPreference(text) {
+    if (!text || !text.trim()) {
+      return '<em style="color:var(--text3)">Empty — auto-scheduler will use the tier default cadence.</em>';
+    }
+    // Detect "do not auto-schedule" opt-out phrases. These prevent the
+    // auto-scheduler from ever generating a proposal for this stop.
+    if (/\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|call ahead|by request|on request|appointment only|as needed)\b/i.test(text)) {
+      return '<span style="color:var(--amber);font-weight:700"><i class="ti ti-hand-stop"></i> AUTO-SCHEDULER WILL SKIP</span> — this stop will not be auto-scheduled. Schedule manually only.';
+    }
+    const p = parsePreference(text);
+    if (!p) {
+      return '<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Not understood</span> — auto-scheduler can\'t extract a rule. Will fall back to the tier default cadence. See the Scheduling Guide for accepted phrasings.';
+    }
+    // Build the description
+    const parts = [];
+    if (p.dows.length) {
+      const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      parts.push('Days: <strong>' + p.dows.map(d => dayNames[d]).join(', ') + '</strong>');
+    }
+    if (p.nthOfMonth && p.nthOfMonth.length) {
+      const ord = { 1:'1st', 2:'2nd', 3:'3rd', 4:'4th' };
+      parts.push('Of the month: <strong>' + p.nthOfMonth.map(n => ord[n] || n).join(', ') + '</strong>');
+    }
+    if (p.intervalDays) {
+      const cadenceLabel = (
+        p.intervalDays === 7 ? 'weekly' :
+        p.intervalDays === 14 ? 'every 2 weeks' :
+        p.intervalDays === 21 ? 'every 3 weeks' :
+        p.intervalDays === 28 ? 'monthly' :
+        p.intervalDays === 42 ? 'every 6 weeks' :
+        p.intervalDays === 56 ? 'every 8 weeks' :
+        p.intervalDays === 90 ? 'quarterly' :
+        `every ${p.intervalDays / 7} weeks`
+      );
+      parts.push('Cadence: <strong>' + cadenceLabel + '</strong>');
+    }
+    if (p.startTime && p.endTime) {
+      const fmt = t => { const [h,m] = t.split(':'); const hh = parseInt(h,10); const ap = hh>=12?'PM':'AM'; return ((hh%12)||12) + ':' + m + ' ' + ap; };
+      parts.push('Time: <strong>' + fmt(p.startTime) + ' \u2013 ' + fmt(p.endTime) + '</strong>');
+    }
+    return '<span style="color:var(--green);font-weight:700"><i class="ti ti-check"></i> Parsed:</span> ' + parts.join(' &middot; ');
+  }
+
   function tierCadenceDays(tier) {
     return ({ high: 14, medium: 28, low: 56, pending: 56 })[tier] || 56;
   }
@@ -4310,6 +4365,13 @@ window.CRM = (function(){
     for (const loc of state.locations) {
       if (loc.status !== 'active') continue;
       if (loc.location_name && loc.location_name.startsWith('[Personal')) continue;
+
+      // Respect opt-out: customers whose scheduling_preference contains
+      // "no auto-schedule", "manual only", "by request" etc. are skipped.
+      // Same detection used by previewPreference for the live preview.
+      if (loc.scheduling_preference && /\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|call ahead|by request|on request|appointment only|as needed)\b/i.test(loc.scheduling_preference)) {
+        continue;
+      }
 
       // Already scheduled? Skip (will be shown as an "Existing" row in the review)
       if (alreadyScheduled.has(loc.id)) continue;
@@ -7767,6 +7829,8 @@ window.CRM = (function(){
     renderCleanup, confirmDelete, restoreLocation, bulkDeleteOrphans, toggleAllOrphans, dismissDupRow, clearFlag, confirmWipeHistory,
     // Staff edit log (admin-only audit + revert)
     renderEditLog, revertEdit, purgeEditLog, refreshEditLogBadge,
+    // Scheduling preference preview (drives the live preview under the textarea)
+    previewPreference,
     // Deliveries (driver logs after physical delivery; deducts truck inventory)
     renderDeliveries, openLogDelivery, closeLogDelivery, saveDelivery,
     editDelivery, _saveEditDelivery, revertDeliveryAction,
