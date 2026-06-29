@@ -515,7 +515,14 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
           <p style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Recent Days</p>
           <div class="history-list" id="history-list"></div>
         </div>
-        <div class="sync-row"><div class="inv-spinner" id="sales-spinner"></div><span id="sales-msg">Sales reset at midnight. Use the date picker or quick buttons to view past days.</span></div>
+        <div class="sync-row" style="align-items:center;gap:14px">
+          <div class="inv-spinner" id="sales-spinner"></div>
+          <span id="sales-msg">Sales reset at midnight. Use the date picker or quick buttons to view past days.</span>
+          <span id="sales-live-badge" style="display:none;margin-left:auto;font-size:11px;padding:4px 10px;border-radius:12px;background:#2A6B3A;color:#fff;font-weight:700;white-space:nowrap">
+            <span style="display:inline-block;width:6px;height:6px;background:#90ee90;border-radius:50%;margin-right:6px;animation:pulse 2s ease-in-out infinite"></span>
+            <span id="sales-live-text">Live</span>
+          </span>
+        </div>
         <div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Price</th><th class="qty-cell">Online</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total</th><th class="qty-cell">Revenue</th></tr></thead><tbody id="sales-table"></tbody><tfoot><tr class="tfoot-row" id="sales-totals-row"></tr></tfoot></table></div>
       </div>
       <div id="sales-breakdown-panel"></div>
@@ -903,7 +910,7 @@ async function init(){setTimeout(()=>{try{document.getElementById('loading').cla
     await loadAll();
     if(await needsMig()){hideLo();showScreen('migration');return;}
     setupRT();hideLo();showScreen('app');
-    applyAC(S.colors);applyAB(S.badges);syncCI(S.colors);syncBI(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();startWebhookLiveBadge();
+    applyAC(S.colors);applyAB(S.badges);syncCI(S.colors);syncBI(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();startWebhookLiveBadge();startSalesLiveBadge();if(typeof refreshDisplay==="function")refreshDisplay({quiet:true}).catch(()=>{});
     // Initialize CRM module now that sb is ready and user is authenticated
     try{ await CRM.init(); }catch(e){console.error('CRM init failed',e);}
   }catch(e){console.error(e);hideLo();showScreen('login');}
@@ -932,7 +939,7 @@ async function doLogin(){
   document.getElementById('loading').classList.remove('hidden');
   await loadAll();
   if(await needsMig()){hideLo();showScreen('migration');return;}
-  setupRT();hideLo();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();sb=sb;
+  setupRT();hideLo();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();sb=sb;startWebhookLiveBadge();startSalesLiveBadge();if(typeof refreshDisplay==="function")refreshDisplay({quiet:true}).catch(()=>{});
 }
 async function doSignOut(){if(sb)await sb.auth.signOut();showScreen('login');document.getElementById('login-email').value='';document.getElementById('login-pw').value='';}
 function updateUserUI(){const e=currentUser?.email||'';['sidebar-user','account-email','account-subtitle'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=e;});}
@@ -975,14 +982,14 @@ async function doMigration(){
     await sb.from('par_levels').upsert(pr);
     if(sv.transfers?.length)await sb.from('transfers').insert(sv.transfers.slice(0,100).map(t=>({item_name:t.item,from_location:t.from,to_location:t.to,quantity:t.qty,transferred_by:currentUser.email})));
     const sr=[];if(sv.workerUrl)sr.push({key:'worker_url',value:sv.workerUrl});if(sv.colors)sr.push({key:'colors',value:JSON.stringify(sv.colors)});if(sv.badges)sr.push({key:'badges',value:JSON.stringify(sv.badges)});if(sr.length)await sb.from('app_settings').upsert(sr);
-    await loadAll();setupRT();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();
+    await loadAll();setupRT();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();startWebhookLiveBadge();startSalesLiveBadge();if(typeof refreshDisplay==="function")refreshDisplay({quiet:true}).catch(()=>{});
   }catch(e){document.getElementById('migrate-err').textContent='Migration failed: '+e.message;document.getElementById('migrate-err').style.display='block';btn.textContent='Migrate My Data to Cloud';btn.disabled=false;}
 }
 async function skipMigration(){
   await sb.from('items').upsert(DI.map((name,i)=>({name,sort_order:i,category:DC[name]||'',price:DP[name]||0,batch_yield:0})));
   const ir=[];DI.forEach(name=>LOCS.forEach(loc=>ir.push({item_name:name,location:loc,quantity:0})));await sb.from('inventory').upsert(ir);
   const pr=[];DI.forEach(name=>LOCS.forEach(loc=>pr.push({item_name:name,location:loc,quantity:0})));await sb.from('par_levels').upsert(pr);
-  await loadAll();setupRT();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();
+  await loadAll();setupRT();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();startWebhookLiveBadge();startSalesLiveBadge();if(typeof refreshDisplay==="function")refreshDisplay({quiet:true}).catch(()=>{});
 }
 
 // ── REALTIME ──────────────────────────────────────────────────────
@@ -1037,6 +1044,15 @@ function setupRT(){
       await loadAll();
       renderAll();
       if(window.CRM&&CRM.refreshEditLogBadge)CRM.refreshEditLogBadge();
+      // Silently refresh today's sales display every 45s so both desktop and
+      // mobile pick up new sales without anyone pressing a button. Quiet mode
+      // suppresses status-message updates.
+      if(typeof refreshDisplay==='function'){
+        refreshDisplay({quiet:true}).then(()=>{
+          // Re-render mobile if we're on it — desktop updates via renderAll above
+          if(typeof isMob==='function'&&isMob()&&typeof mobRender==='function')mobRender();
+        }).catch(()=>{});
+      }
     }catch(e){console.error('[Periodic refresh] failed:',e);}
   },45000);
 }
@@ -1212,8 +1228,12 @@ async function syncRestaurant(){
 }
 
 // Refresh sales display ONLY — does NOT modify inventory or baselines.
-async function refreshDisplay(){
-  const sm=document.getElementById('inv-sync-msg');
+// Tracks when the sales display was last successfully refreshed (Date.now())
+let _lastSalesRefresh = 0;
+
+async function refreshDisplay(opts){
+  const quiet = !!(opts && opts.quiet);
+  const sm = quiet ? null : document.getElementById('inv-sync-msg');
   if(!S.workerUrl){if(sm)sm.textContent='No Worker URL configured.';return;}
   if(sm)sm.textContent='Refreshing display...';
   try{
@@ -1232,12 +1252,48 @@ async function refreshDisplay(){
         S.sales[item][loc]=(cs[item]||{})[loc]||0;
       });
     });
+    _lastSalesRefresh = Date.now();
+    updateSalesLiveBadge();
     if(sm)sm.textContent='Display refreshed.';
     if(!salesViewDate)renderSales();
     renderOverview();
   }catch(e){
     if(sm)sm.textContent='Refresh failed: '+e.message;
+    // Don't reset _lastSalesRefresh on failure — keep showing the last good update
   }
+}
+
+// Update the sales-page "Live" badge with how long ago we last refreshed.
+// Same visual pattern as the Inventory page's webhook badge, but driven by
+// the refreshDisplay timestamp instead of webhook activity.
+let _salesLiveTimer = null;
+function updateSalesLiveBadge(){
+  const badge = document.getElementById('sales-live-badge');
+  const text  = document.getElementById('sales-live-text');
+  if(!badge || !text) return;
+  if(!_lastSalesRefresh){
+    badge.style.display='inline-block';
+    badge.style.background='#999';
+    text.textContent='Not yet refreshed';
+    return;
+  }
+  const ageSec = Math.floor((Date.now() - _lastSalesRefresh) / 1000);
+  badge.style.display='inline-block';
+  if(ageSec < 60){
+    badge.style.background='#2A6B3A';
+    text.textContent=`Live — updated ${ageSec}s ago`;
+  } else if(ageSec < 3600){
+    badge.style.background='#2A6B3A';
+    text.textContent=`Live — updated ${Math.floor(ageSec/60)}m ago`;
+  } else {
+    badge.style.background='#B05A00';
+    text.textContent=`Last update ${Math.floor(ageSec/3600)}h ago`;
+  }
+}
+function startSalesLiveBadge(){
+  if(_salesLiveTimer) return;
+  updateSalesLiveBadge();
+  _salesLiveTimer = setInterval(updateSalesLiveBadge, 5000);
 }
 
 // Legacy alias: anything still calling syncNow gets routed to the safer
@@ -2594,7 +2650,19 @@ function mobSalesHTML(){
   // Online sales total
   let onlineUnits=0;Object.values(sdOnline).forEach(locs=>{Object.values(locs||{}).forEach(q=>{onlineUnits+=q;});});
   const dateLabel=salesViewDate?new Date(salesViewDate+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'Today';
-  let h=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap"><span style="font-size:12px;font-weight:700;color:var(--sidebar)">${dateLabel}</span><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:${salesViewDate?'#9f7014':'#5e3303'};color:#fff">${salesViewDate?'Archived':'Live'}</span><input type="date" style="font-size:14px;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-family:'Lato',sans-serif;margin-left:auto" onchange="loadArchDate(this.value)"><button style="background:none;border:none;font-size:10px;color:var(--sidebar);font-weight:700;cursor:pointer;font-family:'Lato',sans-serif;text-decoration:underline" onclick="loadTodaySales();document.getElementById('mob-body').innerHTML=mobSalesHTML()">Today</button></div>`;
+  // Live badge — shows when sales data was last refreshed. Mirror the desktop version.
+  let liveBadgeHtml='';
+  if(!salesViewDate){
+    let badgeBg='#999',badgeText='Not yet refreshed';
+    if(_lastSalesRefresh){
+      const ageSec=Math.floor((Date.now()-_lastSalesRefresh)/1000);
+      if(ageSec<60){badgeBg='#2A6B3A';badgeText=`Live — ${ageSec}s ago`;}
+      else if(ageSec<3600){badgeBg='#2A6B3A';badgeText=`Live — ${Math.floor(ageSec/60)}m ago`;}
+      else{badgeBg='#B05A00';badgeText=`${Math.floor(ageSec/3600)}h ago`;}
+    }
+    liveBadgeHtml=`<div style="font-size:11px;padding:4px 10px;border-radius:12px;background:${badgeBg};color:#fff;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;margin-bottom:8px"><span style="display:inline-block;width:6px;height:6px;background:#90ee90;border-radius:50%;animation:pulse 2s ease-in-out infinite"></span>${badgeText}</div>`;
+  }
+  let h=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap"><span style="font-size:12px;font-weight:700;color:var(--sidebar)">${dateLabel}</span><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:${salesViewDate?'#9f7014':'#5e3303'};color:#fff">${salesViewDate?'Archived':'Live'}</span><input type="date" style="font-size:14px;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-family:'Lato',sans-serif;margin-left:auto" onchange="loadArchDate(this.value)"><button style="background:none;border:none;font-size:10px;color:var(--sidebar);font-weight:700;cursor:pointer;font-family:'Lato',sans-serif;text-decoration:underline" onclick="loadTodaySales();document.getElementById('mob-body').innerHTML=mobSalesHTML()">Today</button></div>${liveBadgeHtml}`;
   h+=`<div class="m-sales-sum"><div class="m-ss-i"><div class="m-ss-v">${gU}</div><div class="m-ss-l">Units Sold</div></div><div class="m-ss-i"><div class="m-ss-v">$${gR.toFixed(0)}</div><div class="m-ss-l">Revenue</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Truck 1']}</div><div class="m-ss-l">Truck 1</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Truck 2']}</div><div class="m-ss-l">Truck 2</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Truck 3']||0}</div><div class="m-ss-l">Truck 3</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Restaurant']||0}</div><div class="m-ss-l">Restaurant</div></div><div class="m-ss-i"><div class="m-ss-v">${onlineUnits}</div><div class="m-ss-l">Online</div></div></div>`;
   const rows=S.items.map(item=>{
     const p=S.prices[item]||0,total=LOCS.reduce((s,l)=>s+((sd?.[item]||{})[l]||0),0);const itemRev=LOCS.reduce((s,l)=>s+getRev(item,l,(sd?.[item]||{})[l]||0,sdRev),0);
@@ -2642,12 +2710,26 @@ async function mobSync(){
   const btn=document.getElementById('mob-sync-btn');
   if(btn){btn.style.opacity='.4';btn.style.pointerEvents='none';}
   try{
-    // Reload all data from Supabase first (picks up changes from desktop)
+    // Reload all data from Supabase first (picks up changes from other devices)
     await loadAll();
-    // Then sync Square sales
-    await syncNow();
+    // Then sync Restaurant (Toast) sales only. Truck sales are handled by
+    // Square webhooks in real time and must not be deducted here.
+    await syncRestaurant();
   }catch(e){console.error('Mobile sync error:',e);}
   renderAll();
+  if(btn){btn.style.opacity='';btn.style.pointerEvents='';}
+}
+
+// Mobile refresh-display: pulls fresh sales numbers for display only.
+// Safe to press repeatedly; never touches inventory.
+async function mobRefreshDisplay(){
+  const btn=document.getElementById('mob-refresh-btn');
+  if(btn){btn.style.opacity='.4';btn.style.pointerEvents='none';}
+  try{
+    await refreshDisplay();
+    // Re-render mobile UI if we're on the sales view
+    if(typeof mobRender==='function')mobRender();
+  }catch(e){console.error('Mobile refresh error:',e);}
   if(btn){btn.style.opacity='';btn.style.pointerEvents='';}
 }
 
@@ -7721,7 +7803,8 @@ init();
       <span id="mob-role-badge" style="display:none;font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;color:#fff;letter-spacing:.04em;text-transform:uppercase"></span>
     </div>
     <button class="mob-bar-icon" id="mob-home-btn" onclick="mobGoto('home')" title="Home" style="display:none;margin-right:8px"><i class="ti ti-home"></i></button>
-    <button class="mob-bar-icon" id="mob-sync-btn" onclick="mobSync()" title="Sync Data"><i class="ti ti-refresh"></i></button>
+    <button class="mob-bar-icon" id="mob-refresh-btn" onclick="mobRefreshDisplay()" title="Refresh Display — updates sales display, does NOT touch inventory"><i class="ti ti-eye"></i></button>
+    <button class="mob-bar-icon" id="mob-sync-btn" onclick="mobSync()" title="Sync Restaurant — pulls Toast sales and deducts from restaurant inventory only"><i class="ti ti-refresh"></i></button>
   </div>
 
   <div class="mob-tabs" id="mob-tabs" style="display:none"></div>
