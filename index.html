@@ -2388,7 +2388,10 @@ function mobRender(){
   else if(mobSection==='crm-customers'){el.innerHTML='<div id="crm-customers-mob"></div>';CRM.renderMobCustomers();}
   else if(mobSection==='crm-profile'){el.innerHTML='<div id="crm-profile-mob"></div>';CRM.renderMobProfile();}
   else if(mobSection==='crm-schedule'){el.innerHTML='<div id="crm-schedule-mob"></div>';CRM.renderMobSchedule();}
-  else if(mobSection==='crm-deliveries'){el.innerHTML='<div id="crm-deliveries-content"></div>';CRM.renderDeliveries();}
+  else if(mobSection==='crm-deliveries'){
+    el.innerHTML=`<div style="margin-bottom:14px"><button class="btn btn-sm btn-accent" onclick="CRM.openLogDelivery()" style="width:100%"><i class="ti ti-plus"></i> Log Delivery</button></div><div id="crm-deliveries-content"></div>`;
+    CRM.renderDeliveries();
+  }
   else if(mobSection==='crm-forecast'){el.innerHTML='<div id="crm-forecast-mob"></div>';CRM.renderMobForecast();}
   else if(mobSection==='crm-relog'){el.innerHTML='<div id="crm-relog-mob"></div>';CRM.renderRelog().then(()=>CRM.renderMobRelog());}
   el.scrollTop=0;
@@ -6370,19 +6373,57 @@ window.CRM = (function(){
   function _renderDeliveriesContent() {
     const root = document.getElementById('crm-deliveries-content');
     if (!root) return;
+    const onMobile = typeof isMob === 'function' && isMob();
     const active = state.deliveries.filter(d => !d.reverted_at);
     const today  = new Date().toDateString();
     const todayCount = active.filter(d => new Date(d.delivered_at).toDateString() === today).length;
     const summary = `
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px">
-        <div style="background:var(--bg2);padding:12px;border-radius:6px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--sidebar)">${todayCount}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Today</div></div>
-        <div style="background:var(--bg2);padding:12px;border-radius:6px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--sidebar)">${active.length}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Active (200 max)</div></div>
-        <div style="background:var(--bg2);padding:12px;border-radius:6px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--text3)">${state.deliveries.length - active.length}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Reverted</div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:14px">
+        <div style="background:var(--bg2);padding:10px;border-radius:6px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--sidebar)">${todayCount}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Today</div></div>
+        <div style="background:var(--bg2);padding:10px;border-radius:6px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--sidebar)">${active.length}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Active</div></div>
+        <div style="background:var(--bg2);padding:10px;border-radius:6px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--text3)">${state.deliveries.length - active.length}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Reverted</div></div>
       </div>`;
     if (!state.deliveries.length) {
-      root.innerHTML = summary + '<p style="color:var(--text3);font-style:italic;text-align:center;padding:24px">No deliveries logged yet. Click "Log Delivery" to add one.</p>';
+      root.innerHTML = summary + '<p style="color:var(--text3);font-style:italic;text-align:center;padding:24px">No deliveries logged yet. Tap "Log Delivery" to add one.</p>';
       return;
     }
+
+    if (onMobile) {
+      // Card-per-row layout for narrow screens
+      const cards = state.deliveries.map(d => {
+        const items = Array.isArray(d.items) ? d.items : [];
+        const itemsHtml = items.map(i => `${esc(i.name)} ×${i.qty}`).join(', ');
+        const when = new Date(d.delivered_at).toLocaleString('en-US', {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+        const reverted = d.reverted_at;
+        const rowStyle = reverted ? 'opacity:0.55' : '';
+        const linkBadge = d.square_order_id ? '<span class="cat-chip" style="font-size:9px;background:var(--green);color:#fff">LINKED</span>' : '<span class="cat-chip" style="font-size:9px;background:var(--bg2);color:var(--text3)">FREEFORM</span>';
+        const canEdit = _canEditDelivery(d);
+        return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;${rowStyle}">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
+            <span class="cat-chip" style="font-size:10px;background:var(--accent);color:#fff">${esc(d.truck)}</span>
+            <span style="font-size:11px;color:var(--text3)">${when}</span>
+          </div>
+          ${d.customer_name ? `<div style="font-weight:700;font-size:13px">${esc(d.customer_name)}</div>` : ''}
+          ${d.customer_address ? `<div style="font-size:11px;color:var(--text3);margin-bottom:4px">${esc(d.customer_address)}</div>` : ''}
+          <div style="font-size:12px;margin-top:6px"><strong>Items:</strong> ${itemsHtml}</div>
+          ${d.notes ? `<div style="font-size:11px;color:var(--text2);margin-top:4px;font-style:italic">"${esc(d.notes)}"</div>` : ''}
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;font-size:10px;color:var(--text3)">
+            <span>${esc(d.delivered_by_email || '—')}</span>
+            <span style="display:flex;gap:4px;align-items:center">
+              ${linkBadge}
+              ${reverted ? '<span class="cat-chip" style="font-size:9px;background:var(--bg2);color:var(--text3)">REVERTED</span>'
+                : (canEdit ? `<button class="btn btn-xs" onclick="CRM.editDelivery(${d.id})" title="Edit"><i class="ti ti-edit"></i></button>` : '') +
+                  `<button class="btn btn-xs" data-admin-only onclick="CRM.revertDeliveryAction(${d.id})" title="Revert" style="background:var(--red-bg);color:var(--red)"><i class="ti ti-arrow-back-up"></i></button>`}
+            </span>
+          </div>
+        </div>`;
+      }).join('');
+      root.innerHTML = summary + cards;
+      applyPermissions();
+      return;
+    }
+
+    // Desktop: table layout
     const rows = state.deliveries.map(d => {
       const items = Array.isArray(d.items) ? d.items : [];
       const itemsHtml = items.map(i => `${esc(i.name)} ×${i.qty}`).join(', ');
