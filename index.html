@@ -323,6 +323,7 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
     <div class="nav-section">CRM</div>
     <button class="nav-item" onclick="showSection('crm-customers',this)"><i class="ti ti-building-store"></i> Stops</button>
     <button class="nav-item" onclick="showSection('crm-schedule',this)"><i class="ti ti-calendar"></i> Schedule</button>
+    <button class="nav-item" onclick="showSection('crm-deliveries',this)"><i class="ti ti-truck-delivery"></i> Deliveries</button>
     <button class="nav-item relog-nav" onclick="showSection('crm-relog',this)"><i class="ti ti-clipboard-text"></i> Relations Log</button>
     <button class="nav-item" onclick="showSection('crm-cleanup',this)" data-admin-only><i class="ti ti-broom"></i> Cleanup</button>
     <button class="nav-item" onclick="showSection('crm-editlog',this)" data-admin-only><i class="ti ti-history"></i> Edit Log<span class="nav-badge" id="nav-editlog-badge"></span></button>
@@ -772,6 +773,19 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
       </div>
     </div>
 
+    <div class="section" id="sec-crm-deliveries">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Deliveries</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-sm btn-accent" onclick="CRM.openLogDelivery()"><i class="ti ti-plus"></i> Log Delivery</button>
+          </div>
+        </div>
+        <p class="section-intro">Online orders stay in inventory until physically delivered. Use this tab to log completed deliveries — items get deducted from the selected truck's inventory. Online orders that haven't been delivered yet show in the "Unfulfilled Online Orders" picker.</p>
+        <div id="crm-deliveries-content"></div>
+      </div>
+    </div>
+
     <div class="section" id="sec-crm-forecast">
       <div class="card">
         <div class="card-header">
@@ -844,6 +858,7 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
     <hr class="more-divider">
     <button class="more-item" onclick="showSection('crm-customers',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-building-store"></i> Stops</button>
     <button class="more-item" onclick="showSection('crm-schedule',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-calendar"></i> Schedule</button>
+    <button class="more-item" onclick="showSection('crm-deliveries',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-truck-delivery"></i> Deliveries</button>
     <button class="more-item relog-nav" onclick="showSection('crm-relog',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-clipboard-text"></i> Relations Log</button>
     <hr class="more-divider">
     <button class="more-item" onclick="showSection('settings',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-settings"></i> Settings</button>
@@ -1076,7 +1091,7 @@ function openMoreDrawer(){document.getElementById('more-overlay').classList.add(
 function closeMoreDrawer(){document.getElementById('more-overlay').classList.remove('open');document.getElementById('more-drawer').classList.remove('open');}
 
 // ── NAV ───────────────────────────────────────────────────────────
-const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',loss:'Loss Log',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop Profile','crm-schedule':'Schedule','crm-forecast':'Manufacturing Forecast','crm-relog':'Customer Relations Log','crm-cleanup':'Customer Data Cleanup','crm-editlog':'Staff Edit Log'};
+const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',loss:'Loss Log',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop Profile','crm-schedule':'Schedule','crm-deliveries':'Deliveries','crm-forecast':'Manufacturing Forecast','crm-relog':'Customer Relations Log','crm-cleanup':'Customer Data Cleanup','crm-editlog':'Staff Edit Log'};
 function showSection(name,btn){
   // Defense in depth: if a staff user calls showSection('crm-relog') directly
   // (e.g. via dev tools) and the setting is off, redirect them away.
@@ -1104,6 +1119,7 @@ function showSection(name,btn){
   if(name==='crm-relog')CRM.renderRelog();
   if(name==='crm-cleanup')CRM.renderCleanup();
   if(name==='crm-editlog')CRM.renderEditLog();
+  if(name==='crm-deliveries')CRM.renderDeliveries();
   applyPermissions();
 }
 function openLocDetail(loc){currentLoc=loc;document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.getElementById('sec-loc-detail').classList.add('active');document.getElementById('page-title').textContent=loc;document.getElementById('back-btn').style.display='inline-flex';document.getElementById('loc-detail-cat-filter').value='';renderLocDetail();applyPermissions();}
@@ -2255,7 +2271,7 @@ let mobParLoc='Warehouse';
 // Category → ordered list of section keys (used to build the tab strip dynamically)
 const MOB_CATEGORIES = {
   inventory: ['overview','inventory','locations','par','alerts','picklist','transfers','production','sales','loss','crm-forecast'],
-  crm:       ['crm-customers','crm-schedule','crm-relog'],
+  crm:       ['crm-customers','crm-schedule','crm-deliveries','crm-relog'],
 };
 
 // Section icon + label for the tab strip
@@ -2272,6 +2288,7 @@ const MOB_SECTION_META = {
   loss:            { icon:'ti-trash-x',           label:'Loss Log' },
   'crm-customers': { icon:'ti-building-store',   label:'Stops' },
   'crm-schedule':  { icon:'ti-calendar',         label:'Schedule' },
+  'crm-deliveries':{ icon:'ti-truck-delivery',   label:'Deliveries' },
   'crm-forecast':  { icon:'ti-trending-up',      label:'Mfg Forecast' },
   'crm-relog':     { icon:'ti-clipboard-text',   label:'Relations Log' },
 };
@@ -2327,7 +2344,7 @@ function rebuildMobTabs(){
 }
 
 function syncMobTitle(){
-  const titles={home:'Home',overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',loss:'Loss Log',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop','crm-schedule':'Schedule','crm-forecast':'Mfg Forecast','crm-relog':'Relations Log'};
+  const titles={home:'Home',overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',loss:'Loss Log',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop','crm-schedule':'Schedule','crm-deliveries':'Deliveries','crm-forecast':'Mfg Forecast','crm-relog':'Relations Log'};
   const titleEl = document.getElementById('mob-title');
   if(titleEl) titleEl.textContent = titles[mobSection] || mobSection;
   // Show/hide the home button: visible whenever we're not on the home screen
@@ -2371,6 +2388,7 @@ function mobRender(){
   else if(mobSection==='crm-customers'){el.innerHTML='<div id="crm-customers-mob"></div>';CRM.renderMobCustomers();}
   else if(mobSection==='crm-profile'){el.innerHTML='<div id="crm-profile-mob"></div>';CRM.renderMobProfile();}
   else if(mobSection==='crm-schedule'){el.innerHTML='<div id="crm-schedule-mob"></div>';CRM.renderMobSchedule();}
+  else if(mobSection==='crm-deliveries'){el.innerHTML='<div id="crm-deliveries-content"></div>';CRM.renderDeliveries();}
   else if(mobSection==='crm-forecast'){el.innerHTML='<div id="crm-forecast-mob"></div>';CRM.renderMobForecast();}
   else if(mobSection==='crm-relog'){el.innerHTML='<div id="crm-relog-mob"></div>';CRM.renderRelog().then(()=>CRM.renderMobRelog());}
   el.scrollTop=0;
@@ -6323,6 +6341,389 @@ window.CRM = (function(){
     }
   }
 
+  // ═════════════════════════════════════════════════════════════════
+  // DELIVERIES — drivers log delivered online orders; inventory deducts on save
+  // ═════════════════════════════════════════════════════════════════
+
+  state.deliveries = state.deliveries || [];
+  state.unfulfilled = state.unfulfilled || [];
+  state._deliveriesLoaded = false;
+
+  async function renderDeliveries() {
+    const root = document.getElementById('crm-deliveries-content');
+    if (!root) return;
+    root.innerHTML = '<p style="color:var(--text3);font-style:italic;padding:12px 0">Loading deliveries...</p>';
+    try {
+      const { data, error } = await sb.from('deliveries')
+        .select('*')
+        .order('delivered_at', { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      state.deliveries = data || [];
+      _renderDeliveriesContent();
+    } catch (e) {
+      console.error('[deliveries] load failed', e);
+      root.innerHTML = `<div class="alert-bar alert-warn">Failed to load deliveries: ${esc(e.message || String(e))}</div>`;
+    }
+  }
+
+  function _renderDeliveriesContent() {
+    const root = document.getElementById('crm-deliveries-content');
+    if (!root) return;
+    const active = state.deliveries.filter(d => !d.reverted_at);
+    const today  = new Date().toDateString();
+    const todayCount = active.filter(d => new Date(d.delivered_at).toDateString() === today).length;
+    const summary = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px">
+        <div style="background:var(--bg2);padding:12px;border-radius:6px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--sidebar)">${todayCount}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Today</div></div>
+        <div style="background:var(--bg2);padding:12px;border-radius:6px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--sidebar)">${active.length}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Active (200 max)</div></div>
+        <div style="background:var(--bg2);padding:12px;border-radius:6px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--text3)">${state.deliveries.length - active.length}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Reverted</div></div>
+      </div>`;
+    if (!state.deliveries.length) {
+      root.innerHTML = summary + '<p style="color:var(--text3);font-style:italic;text-align:center;padding:24px">No deliveries logged yet. Click "Log Delivery" to add one.</p>';
+      return;
+    }
+    const rows = state.deliveries.map(d => {
+      const items = Array.isArray(d.items) ? d.items : [];
+      const itemsHtml = items.map(i => `${esc(i.name)} ×${i.qty}`).join(', ');
+      const when = new Date(d.delivered_at).toLocaleString('en-US', {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+      const reverted = d.reverted_at;
+      const rowStyle = reverted ? 'opacity:0.5' : '';
+      const linkBadge = d.square_order_id ? '<span class="cat-chip" style="font-size:9px;background:var(--green);color:#fff">LINKED</span>' : '<span class="cat-chip" style="font-size:9px;background:var(--bg2);color:var(--text3)">FREEFORM</span>';
+      return `<tr style="border-bottom:1px solid rgba(132,79,6,.08);${rowStyle}">
+        <td style="padding:8px 6px;font-size:11px;color:var(--text3);white-space:nowrap">${when}</td>
+        <td style="padding:8px 6px"><span class="cat-chip" style="font-size:9px;background:var(--accent);color:#fff">${esc(d.truck)}</span></td>
+        <td style="padding:8px 6px;font-size:12px"><strong>${esc(d.customer_name || '—')}</strong>${d.customer_address ? `<div style="font-size:10px;color:var(--text3)">${esc(d.customer_address)}</div>` : ''}</td>
+        <td style="padding:8px 6px;font-size:11px">${itemsHtml}</td>
+        <td style="padding:8px 6px;font-size:10px;color:var(--text3)">${esc(d.delivered_by_email || '—')}</td>
+        <td style="padding:8px 6px">${linkBadge}</td>
+        <td style="padding:8px 6px;text-align:right;white-space:nowrap">
+          ${reverted
+            ? `<span class="cat-chip" style="font-size:9px;background:var(--bg2);color:var(--text3)">REVERTED</span>`
+            : (_canEditDelivery(d) ? `<button class="btn btn-xs" onclick="CRM.editDelivery(${d.id})" title="Edit"><i class="ti ti-edit"></i></button>` : '') +
+              `<button class="btn btn-xs" data-admin-only onclick="CRM.revertDeliveryAction(${d.id})" title="Revert (admin)" style="background:var(--red-bg);color:var(--red);margin-left:4px"><i class="ti ti-arrow-back-up"></i></button>`}
+        </td>
+      </tr>`;
+    }).join('');
+    root.innerHTML = summary + `
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;border-bottom:1px solid var(--border)">
+          <th style="padding:6px">When</th><th style="padding:6px">Truck</th><th style="padding:6px">Customer</th><th style="padding:6px">Items</th><th style="padding:6px">Driver</th><th style="padding:6px">Source</th><th style="padding:6px"></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    applyPermissions();
+  }
+
+  // Staff can edit their OWN delivery within 1 hour. Admin always.
+  function _canEditDelivery(d) {
+    if (isAdmin()) return true;
+    const ageMin = (Date.now() - new Date(d.delivered_at).getTime()) / 60000;
+    if (ageMin > 60) return false;
+    if (d.reverted_at) return false;
+    return d.delivered_by_email && d.delivered_by_email === (currentUser?.email || '').toLowerCase();
+  }
+
+  async function openLogDelivery(prefillFromOrder) {
+    closeMergeModal();
+    const modal = document.createElement('div');
+    modal.id = 'merge-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:flex-start;justify-content:center;padding:0;overflow-y:auto;-webkit-overflow-scrolling:touch';
+    modal.innerHTML = `
+      <div style="background:var(--surface);width:100%;max-width:560px;min-height:100vh;padding:18px 16px;box-sizing:border-box">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div style="font-family:var(--font-display);font-size:20px;color:var(--sidebar)">Log Delivery</div>
+          <button class="btn btn-sm" onclick="CRM.closeLogDelivery()">Cancel</button>
+        </div>
+        <div id="log-delivery-body"></div>
+      </div>`;
+    document.body.appendChild(modal);
+    _renderLogDeliveryStep1(prefillFromOrder);
+  }
+
+  function closeLogDelivery() { closeMergeModal(); }
+
+  // Step 1: pick an unfulfilled online order, OR start freeform
+  async function _renderLogDeliveryStep1(prefill) {
+    const body = document.getElementById('log-delivery-body');
+    if (!body) return;
+    body.innerHTML = `
+      <div style="margin-bottom:12px">
+        <button class="btn btn-sm btn-accent" onclick="CRM._renderLogDeliveryFreeform()" style="width:100%;margin-bottom:10px"><i class="ti ti-pencil"></i> Log Freeform Delivery (no Square order)</button>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin:14px 0 6px">Or pick from unfulfilled online orders:</div>
+        <div id="unfulfilled-list" style="color:var(--text3);font-style:italic;padding:12px 0">Loading...</div>
+      </div>`;
+    try {
+      const url = (S.workerUrl || '').replace(/\/+$/, '') + '/deliveries/unfulfilled-orders';
+      const res = await fetch(url, { mode: 'cors' });
+      if (!res.ok) throw new Error('Worker returned ' + res.status);
+      const data = await res.json();
+      const orders = data.orders || [];
+      state.unfulfilled = orders;
+      const list = document.getElementById('unfulfilled-list');
+      if (!orders.length) {
+        list.innerHTML = '<p style="color:var(--text3);font-style:italic">No unfulfilled online orders found in the last 14 days.</p>';
+        return;
+      }
+      list.innerHTML = orders.map(o => {
+        const when = new Date(o.created_at).toLocaleDateString('en-US', {month:'short',day:'numeric'});
+        const itemsHtml = o.items.map(i => `${esc(i.name)} ×${i.qty}`).join(', ');
+        return `<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;cursor:pointer" onclick="CRM._pickUnfulfilled('${esc(o.order_id)}')">
+          <div style="display:flex;justify-content:space-between;font-size:12px"><strong>${esc(o.customer_name || 'No name')}</strong><span style="color:var(--text3)">${when}</span></div>
+          ${o.customer_address ? `<div style="font-size:11px;color:var(--text3);margin-top:2px">${esc(o.customer_address)}</div>` : ''}
+          <div style="font-size:11px;color:var(--text2);margin-top:4px;font-style:italic">${itemsHtml}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:4px;text-transform:uppercase;letter-spacing:.04em">${esc(o.source || '')} · ${esc(o.location_name)}</div>
+        </div>`;
+      }).join('');
+    } catch (e) {
+      const list = document.getElementById('unfulfilled-list');
+      if (list) list.innerHTML = `<p style="color:var(--red);font-style:italic">Failed to load: ${esc(e.message)}</p>`;
+    }
+  }
+
+  function _pickUnfulfilled(orderId) {
+    const order = state.unfulfilled.find(o => o.order_id === orderId);
+    if (!order) return;
+    _renderLogDeliveryStep2(order);
+  }
+
+  function _renderLogDeliveryFreeform() {
+    _renderLogDeliveryStep2(null);
+  }
+
+  // Step 2: confirm/edit truck, items, customer info, save
+  function _renderLogDeliveryStep2(order) {
+    const body = document.getElementById('log-delivery-body');
+    if (!body) return;
+    const items = order ? order.items : [{ name: S.items[0] || '', qty: 1 }];
+    const cust  = order ? order.customer_name    : '';
+    const addr  = order ? order.customer_address : '';
+    const orderId = order ? order.order_id : '';
+    body.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:12px">
+        ${order ? `<div style="background:var(--amber-bg);border-left:3px solid var(--accent);padding:8px 10px;border-radius:6px;font-size:11px"><strong>Linked to Square order</strong> · ${esc(order.location_name)}<br><span style="color:var(--text3)">${esc(order.source || '')} · ${new Date(order.created_at).toLocaleDateString()}</span></div>` : ''}
+        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Truck delivering from
+          <select id="del-truck" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box">
+            <option value="Truck 1" selected>Truck 1</option>
+            <option value="Truck 2">Truck 2</option>
+            <option value="Truck 3">Truck 3</option>
+          </select>
+        </label>
+        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Customer name
+          <input type="text" id="del-cust" value="${esc(cust)}" placeholder="(optional)" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box">
+        </label>
+        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Customer address
+          <input type="text" id="del-addr" value="${esc(addr)}" placeholder="(optional)" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box">
+        </label>
+        <div>
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:6px">Items delivered</div>
+          <div id="del-items"></div>
+          <button class="btn btn-xs" onclick="CRM._addDeliveryItemRow()" style="margin-top:6px"><i class="ti ti-plus"></i> Add another item</button>
+        </div>
+        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Notes (optional)
+          <textarea id="del-notes" rows="2" placeholder="e.g. left with neighbor" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box;resize:vertical"></textarea>
+        </label>
+        <input type="hidden" id="del-order-id" value="${esc(orderId)}">
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+          <button class="btn btn-sm" onclick="CRM.closeLogDelivery()">Cancel</button>
+          <button class="btn btn-sm btn-primary" onclick="CRM.saveDelivery()"><i class="ti ti-check"></i> Save Delivery</button>
+        </div>
+      </div>`;
+    // Populate items rows
+    const itemsDiv = document.getElementById('del-items');
+    itemsDiv.innerHTML = items.map((it, i) => _deliveryItemRowHtml(i, it.name, it.qty)).join('');
+  }
+
+  function _deliveryItemRowHtml(idx, name, qty) {
+    const opts = S.items.slice().sort().map(i => `<option value="${esc(i)}" ${i===name?'selected':''}>${esc(i)}</option>`).join('');
+    return `<div class="del-item-row" data-idx="${idx}" style="display:flex;gap:6px;margin-bottom:4px">
+      <select class="del-item-name" style="flex:1;padding:6px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">${opts}</select>
+      <input type="number" class="del-item-qty" value="${qty}" min="1" step="1" style="width:70px;padding:6px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;text-align:right">
+      <button class="btn btn-xs" onclick="this.closest('.del-item-row').remove()" title="Remove" style="background:var(--red-bg);color:var(--red)"><i class="ti ti-x"></i></button>
+    </div>`;
+  }
+
+  function _addDeliveryItemRow() {
+    const itemsDiv = document.getElementById('del-items');
+    if (!itemsDiv) return;
+    const idx = itemsDiv.querySelectorAll('.del-item-row').length;
+    itemsDiv.insertAdjacentHTML('beforeend', _deliveryItemRowHtml(idx, S.items[0] || '', 1));
+  }
+
+  async function saveDelivery() {
+    const truck = document.getElementById('del-truck')?.value;
+    const cust  = (document.getElementById('del-cust')?.value || '').trim();
+    const addr  = (document.getElementById('del-addr')?.value || '').trim();
+    const notes = (document.getElementById('del-notes')?.value || '').trim();
+    const orderId = (document.getElementById('del-order-id')?.value || '').trim();
+    // Collect items
+    const rows = document.querySelectorAll('#del-items .del-item-row');
+    const items = [];
+    for (const r of rows) {
+      const name = r.querySelector('.del-item-name')?.value;
+      const qty  = Number(r.querySelector('.del-item-qty')?.value || 0);
+      if (!name || !(qty > 0)) continue;
+      items.push({ name, qty });
+    }
+    if (!truck || !items.length) {
+      alert('Please pick a truck and at least one item with quantity > 0.');
+      return;
+    }
+    // Check inventory; warn if any deduction would push negative
+    const warnings = [];
+    for (const it of items) {
+      const have = (S.inventory[it.name] || {})[truck] || 0;
+      if (it.qty > have) warnings.push(`${it.name}: ${truck} has ${have}, delivering ${it.qty}`);
+    }
+    if (warnings.length) {
+      const ok = confirm('This delivery will push inventory negative for:\n\n' + warnings.join('\n') + '\n\nContinue?');
+      if (!ok) return;
+    }
+    try {
+      // 1. Insert the delivery row
+      const insertPayload = {
+        square_order_id: orderId || null,
+        truck, items,
+        customer_name: cust || null,
+        customer_address: addr || null,
+        notes: notes || null,
+        delivered_by: currentUser?.id || null,
+        delivered_by_email: (currentUser?.email || '').toLowerCase(),
+      };
+      const { data: ins, error } = await sb.from('deliveries').insert(insertPayload).select().single();
+      if (error) throw error;
+
+      // 2. Deduct each item from the truck's inventory
+      const invUpdates = [];
+      for (const it of items) {
+        if (!S.inventory[it.name]) S.inventory[it.name] = {};
+        const have = S.inventory[it.name][truck] || 0;
+        const next = have - it.qty;
+        S.inventory[it.name][truck] = next;
+        invUpdates.push({ item_name: it.name, location: truck, quantity: next });
+      }
+      if (invUpdates.length) await sb.from('inventory').upsert(invUpdates);
+
+      // 3. Add to in-memory list, close modal, re-render
+      state.deliveries.unshift(ins);
+      closeLogDelivery();
+      _renderDeliveriesContent();
+      // Refresh dependent views
+      if (typeof renderInventory === 'function') renderInventory();
+      if (typeof renderOverview === 'function') renderOverview();
+      if (typeof checkAlerts === 'function') checkAlerts();
+    } catch (e) {
+      console.error('[deliveries] save failed', e);
+      alert('Save failed: ' + (e.message || e));
+    }
+  }
+
+  async function editDelivery(id) {
+    const d = state.deliveries.find(x => x.id === id);
+    if (!d) return;
+    if (!_canEditDelivery(d)) { alert('You can only edit your own deliveries within 1 hour of logging.'); return; }
+    // Reuse the log modal pre-populated; saveDelivery overload via state
+    state._editingDeliveryId = id;
+    openLogDelivery();
+    setTimeout(() => {
+      _renderLogDeliveryStep2({
+        order_id: d.square_order_id || '',
+        location_name: d.truck,
+        source: '',
+        created_at: d.delivered_at,
+        items: Array.isArray(d.items) ? d.items : [],
+        customer_name: d.customer_name || '',
+        customer_address: d.customer_address || '',
+      });
+      // Override save behavior
+      document.querySelector('#log-delivery-body button.btn-primary')?.setAttribute('onclick', `CRM._saveEditDelivery(${id})`);
+      // Pre-select the truck
+      const t = document.getElementById('del-truck'); if (t) t.value = d.truck;
+    }, 0);
+  }
+
+  async function _saveEditDelivery(id) {
+    const d = state.deliveries.find(x => x.id === id);
+    if (!d) return;
+    const truck = document.getElementById('del-truck')?.value;
+    const cust  = (document.getElementById('del-cust')?.value || '').trim();
+    const addr  = (document.getElementById('del-addr')?.value || '').trim();
+    const notes = (document.getElementById('del-notes')?.value || '').trim();
+    const rows = document.querySelectorAll('#del-items .del-item-row');
+    const newItems = [];
+    for (const r of rows) {
+      const name = r.querySelector('.del-item-name')?.value;
+      const qty  = Number(r.querySelector('.del-item-qty')?.value || 0);
+      if (!name || !(qty > 0)) continue;
+      newItems.push({ name, qty });
+    }
+    if (!truck || !newItems.length) { alert('Pick a truck and at least one item.'); return; }
+    try {
+      // Compute net inventory change: restore old items, deduct new items
+      const oldItems = Array.isArray(d.items) ? d.items : [];
+      const oldTruck = d.truck;
+      const invUpdates = {};  // {itemName||loc: newQty}
+      const bump = (item, loc, delta) => {
+        const key = item + '||' + loc;
+        if (!(key in invUpdates)) {
+          const have = (S.inventory[item] || {})[loc] || 0;
+          invUpdates[key] = have;
+        }
+        invUpdates[key] += delta;
+      };
+      for (const it of oldItems) bump(it.name, oldTruck, +it.qty);  // restore
+      for (const it of newItems) bump(it.name, truck, -it.qty);     // deduct
+      // Apply to in-memory + DB
+      const dbRows = [];
+      for (const key of Object.keys(invUpdates)) {
+        const [name, loc] = key.split('||');
+        if (!S.inventory[name]) S.inventory[name] = {};
+        S.inventory[name][loc] = invUpdates[key];
+        dbRows.push({ item_name: name, location: loc, quantity: invUpdates[key] });
+      }
+      const { error: invErr } = await sb.from('inventory').upsert(dbRows);
+      if (invErr) throw invErr;
+      // Update delivery row
+      const { data: upd, error } = await sb.from('deliveries').update({
+        truck, items: newItems,
+        customer_name: cust || null,
+        customer_address: addr || null,
+        notes: notes || null,
+      }).eq('id', id).select().single();
+      if (error) throw error;
+      const idx = state.deliveries.findIndex(x => x.id === id);
+      if (idx >= 0) state.deliveries[idx] = upd;
+      state._editingDeliveryId = null;
+      closeLogDelivery();
+      _renderDeliveriesContent();
+      if (typeof renderInventory === 'function') renderInventory();
+      if (typeof checkAlerts === 'function') checkAlerts();
+    } catch (e) {
+      console.error('[deliveries] edit save failed', e);
+      alert('Save failed: ' + (e.message || e));
+    }
+  }
+
+  async function revertDeliveryAction(id) {
+    if (!confirm('Revert this delivery? Inventory will be restored to the truck.')) return;
+    try {
+      const { data, error } = await sb.rpc('revert_delivery', { p_id: id });
+      if (error) throw error;
+      await renderDeliveries();
+      // Pull inventory fresh from DB so we reflect the RPC's restoration
+      const { data: invd } = await sb.from('inventory').select('*');
+      if (invd) {
+        S.items.forEach(n => { S.inventory[n] = { Warehouse:0, Restaurant:0, 'Truck 1':0, 'Truck 2':0, 'Truck 3':0 }; });
+        (invd || []).forEach(r => { if (S.inventory[r.item_name]) S.inventory[r.item_name][r.location] = r.quantity; });
+      }
+      if (typeof renderInventory === 'function') renderInventory();
+      if (typeof checkAlerts === 'function') checkAlerts();
+    } catch (e) {
+      console.error('[deliveries] revert failed', e);
+      alert('Revert failed: ' + (e.message || e));
+    }
+  }
+
   // Clear the "needs review" flag from a customer (admin-only)
   async function clearFlag(locId) {
     const l = state.locations.find(x => x.id === locId);
@@ -7222,6 +7623,10 @@ window.CRM = (function(){
     renderCleanup, confirmDelete, restoreLocation, bulkDeleteOrphans, toggleAllOrphans, dismissDupRow, clearFlag, confirmWipeHistory,
     // Staff edit log (admin-only audit + revert)
     renderEditLog, revertEdit, purgeEditLog, refreshEditLogBadge,
+    // Deliveries (driver logs after physical delivery; deducts truck inventory)
+    renderDeliveries, openLogDelivery, closeLogDelivery, saveDelivery,
+    editDelivery, _saveEditDelivery, revertDeliveryAction,
+    _renderLogDeliveryFreeform, _pickUnfulfilled, _addDeliveryItemRow,
     openMergeFor, openMergePicker, openMergeReview, executeMerge, closeMergeModal, filterMergePicker,
     // Visit reassign / delete (per-row sales-history actions)
     openReassignVisit, filterReassignPicker, confirmReassign, _submitReassignConflict, confirmDeleteVisit,
