@@ -31,7 +31,7 @@ table{width:100%;border-collapse:collapse;font-size:13px;}thead{background:var(-
 .loc-chip{display:inline-flex;padding:3px 9px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}.lc-0{background:var(--badge-warehouse-bg);color:var(--badge-warehouse-text);}.lc-1{background:var(--badge-restaurant-bg);color:var(--badge-restaurant-text);}.lc-2{background:var(--badge-truck1-bg);color:var(--badge-truck1-text);}.lc-3{background:var(--badge-truck2-bg);color:var(--badge-truck2-text);}.lc-4{background:var(--badge-truck3-bg);color:var(--badge-truck3-text);}.cat-chip{display:inline-flex;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;}.cc-food{background:var(--badge-food-bg);color:var(--badge-food-text);}.cc-dessert{background:var(--badge-dessert-bg);color:var(--badge-dessert-text);}.stock-ok{color:var(--green);font-weight:700;}.stock-low{color:var(--amber);font-weight:700;}.stock-out{color:var(--red);font-weight:700;}
 input[type=text],input[type=password],input[type=number],input[type=url],input[type=date],select{font-family:var(--font-body);font-size:13px;padding:7px 10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);color:var(--text);}input:focus,select:focus{outline:none;border-color:var(--accent);}.par-input{width:64px;text-align:center;}.par-cell,.qty-cell{text-align:center;}.qty-par{font-size:9px;color:var(--text3);display:block;font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
 .alert-bar{display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-radius:var(--radius);margin-bottom:10px;font-size:13px;border:1px solid;border-left-width:4px;}.alert-bar.danger{background:var(--red-bg);color:var(--red);border-color:var(--red);}.alert-bar.warn{background:var(--amber-bg);color:var(--amber);border-color:var(--amber);}.alert-bar.success{background:var(--green-bg);color:var(--green);border-color:var(--green);}.alert-body{flex:1;}.alert-title{font-weight:700;margin-bottom:2px;}.alert-sub{font-size:11px;opacity:.8;}.alert-dismiss{background:none;border:none;cursor:pointer;font-size:18px;color:inherit;opacity:.5;padding:0;line-height:1;margin-left:auto;}
-.spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .7s linear infinite;display:none;}.inv-spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--sidebar);border-radius:50%;animation:spin .7s linear infinite;display:none;}@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .7s linear infinite;display:none;}.inv-spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--sidebar);border-radius:50%;animation:spin .7s linear infinite;display:none;}@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .sync-row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text3);margin-bottom:14px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;}.section{display:none;}.section.active{display:block;}.section-intro{font-size:12px;color:var(--text3);margin-bottom:16px;font-style:italic;line-height:1.6;}.tbl-wrap{overflow-x:auto;}
 .transfer-grid{display:grid;grid-template-columns:1fr 1fr 1fr 80px auto;gap:10px;align-items:end;margin-bottom:16px;}.fg{display:flex;flex-direction:column;gap:5px;}.fg label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;}
 .loc-detail-header{display:flex;align-items:center;gap:16px;margin-bottom:20px;padding:20px 24px;background:var(--sidebar);border-radius:var(--radius-lg);color:#fff;}.loc-detail-icon{width:52px;height:52px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;background:rgba(255,255,255,.12);}.loc-detail-name{font-family:var(--font-display);font-size:22px;color:#fff;}.loc-detail-stats{display:flex;gap:24px;margin-top:6px;flex-wrap:wrap;}.loc-detail-stat{font-size:12px;color:rgba(255,255,255,.65);}.loc-detail-stat strong{font-weight:700;color:#fff;}
@@ -318,6 +318,7 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
     <button class="nav-item" onclick="showSection('transfers',this)"><i class="ti ti-arrows-exchange"></i> Transfers</button>
     <button class="nav-item" onclick="showSection('production',this)"><i class="ti ti-tool"></i> Production</button>
     <button class="nav-item" onclick="showSection('sales',this)"><i class="ti ti-currency-dollar"></i> Sales</button>
+    <button class="nav-item" onclick="showSection('loss',this)"><i class="ti ti-trash-x"></i> Loss Log</button>
     <button class="nav-item" onclick="showSection('crm-forecast',this)"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
     <div class="nav-section">CRM</div>
     <button class="nav-item" onclick="showSection('crm-customers',this)"><i class="ti ti-building-store"></i> Stops</button>
@@ -330,7 +331,8 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
   </nav>
   <div class="sidebar-footer">
     <div class="sidebar-user" id="sidebar-user"></div>
-    <button class="sync-btn" onclick="syncNow()"><span id="sync-spinner" class="spinner"></span><i class="ti ti-refresh"></i> Sync Data</button>
+    <button class="sync-btn" onclick="syncRestaurant()" title="Pulls Toast sales since last sync and deducts from restaurant inventory"><span id="sync-spinner" class="spinner"></span><i class="ti ti-refresh"></i> Sync Restaurant</button>
+    <button class="sync-btn" onclick="refreshDisplay()" style="background:var(--bg2);color:var(--text);margin-top:6px" title="Refreshes the Sales display only — does NOT touch inventory"><i class="ti ti-eye"></i> Refresh Display</button>
     <div class="conn-status" id="conn-status">Not connected</div>
     <button class="signout-btn" onclick="doSignOut()" style="margin-top:8px"><i class="ti ti-logout"></i> Sign Out</button>
   </div>
@@ -374,7 +376,14 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
             <button class="btn btn-sm" onclick="exportCSV('inventory')"><i class="ti ti-download"></i> Export</button>
           </div>
         </div>
-        <div class="sync-row"><div class="inv-spinner" id="inv-spinner"></div><span id="inv-sync-msg">Sales deducted on sync. Data shared live across all devices.</span></div>
+        <div class="sync-row" style="align-items:center;gap:14px">
+          <div class="inv-spinner" id="inv-spinner"></div>
+          <span id="inv-sync-msg">Sales deducted on sync. Data shared live across all devices.</span>
+          <span id="webhook-live-badge" style="display:none;margin-left:auto;font-size:11px;padding:4px 10px;border-radius:12px;background:#2A6B3A;color:#fff;font-weight:700;white-space:nowrap">
+            <span style="display:inline-block;width:6px;height:6px;background:#90ee90;border-radius:50%;margin-right:6px;animation:pulse 2s ease-in-out infinite"></span>
+            <span id="webhook-live-text">Live</span>
+          </span>
+        </div>
         <div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Category</th><th>Price</th><th class="qty-cell">Online</th><th class="qty-cell">Restaurant</th><th class="qty-cell">Truck 1</th><th class="qty-cell">Truck 2</th><th class="qty-cell">Truck 3</th><th class="qty-cell">Total</th></tr></thead><tbody id="inv-table"></tbody></table></div>
       </div>
     </div>
@@ -510,6 +519,19 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
       </div>
       <div id="sales-breakdown-panel"></div>
         <div id="online-sales-panel" style="display:none"></div>
+    </div>
+
+    <div class="section" id="sec-loss">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Loss Log</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-sm btn-accent" onclick="openLogLoss()"><i class="ti ti-plus"></i> Log Loss</button>
+          </div>
+        </div>
+        <p class="section-intro">Record inventory losses (spoilage, damage, theft, giveaways, personal use, other). Logging a loss subtracts the quantity from inventory immediately. Only admins can delete or edit existing entries.</p>
+        <div id="loss-content"></div>
+      </div>
     </div>
 
     <div class="section" id="sec-settings">
@@ -817,6 +839,7 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
     <button class="more-item" onclick="showSection('par',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-target"></i> Par Levels</button>
     <button class="more-item" onclick="showSection('alerts',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-bell"></i> Alerts</button>
     <button class="more-item" onclick="showSection('transfers',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-arrows-exchange"></i> Transfers</button>
+    <button class="more-item" onclick="showSection('loss',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-trash-x"></i> Loss Log</button>
     <button class="more-item" onclick="showSection('crm-forecast',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
     <hr class="more-divider">
     <button class="more-item" onclick="showSection('crm-customers',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-building-store"></i> Stops</button>
@@ -824,7 +847,8 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
     <button class="more-item relog-nav" onclick="showSection('crm-relog',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-clipboard-text"></i> Relations Log</button>
     <hr class="more-divider">
     <button class="more-item" onclick="showSection('settings',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-settings"></i> Settings</button>
-    <button class="more-item" onclick="syncNow();closeMoreDrawer()"><i class="ti ti-refresh"></i> Sync Data</button>
+    <button class="more-item" onclick="syncRestaurant();closeMoreDrawer()"><i class="ti ti-refresh"></i> Sync Restaurant</button>
+    <button class="more-item" onclick="refreshDisplay();closeMoreDrawer()"><i class="ti ti-eye"></i> Refresh Display</button>
     <hr class="more-divider">
     <button class="more-signout" onclick="doSignOut()"><i class="ti ti-logout"></i> Sign Out</button>
   </div>
@@ -864,7 +888,7 @@ async function init(){setTimeout(()=>{try{document.getElementById('loading').cla
     await loadAll();
     if(await needsMig()){hideLo();showScreen('migration');return;}
     setupRT();hideLo();showScreen('app');
-    applyAC(S.colors);applyAB(S.badges);syncCI(S.colors);syncBI(S.badges);await loadAdminEmails();renderAll();applyPermissions();updateUserUI();
+    applyAC(S.colors);applyAB(S.badges);syncCI(S.colors);syncBI(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();startWebhookLiveBadge();
     // Initialize CRM module now that sb is ready and user is authenticated
     try{ await CRM.init(); }catch(e){console.error('CRM init failed',e);}
   }catch(e){console.error(e);hideLo();showScreen('login');}
@@ -893,7 +917,7 @@ async function doLogin(){
   document.getElementById('loading').classList.remove('hidden');
   await loadAll();
   if(await needsMig()){hideLo();showScreen('migration');return;}
-  setupRT();hideLo();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();renderAll();applyPermissions();updateUserUI();sb=sb;
+  setupRT();hideLo();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();sb=sb;
 }
 async function doSignOut(){if(sb)await sb.auth.signOut();showScreen('login');document.getElementById('login-email').value='';document.getElementById('login-pw').value='';}
 function updateUserUI(){const e=currentUser?.email||'';['sidebar-user','account-email','account-subtitle'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=e;});}
@@ -936,14 +960,14 @@ async function doMigration(){
     await sb.from('par_levels').upsert(pr);
     if(sv.transfers?.length)await sb.from('transfers').insert(sv.transfers.slice(0,100).map(t=>({item_name:t.item,from_location:t.from,to_location:t.to,quantity:t.qty,transferred_by:currentUser.email})));
     const sr=[];if(sv.workerUrl)sr.push({key:'worker_url',value:sv.workerUrl});if(sv.colors)sr.push({key:'colors',value:JSON.stringify(sv.colors)});if(sv.badges)sr.push({key:'badges',value:JSON.stringify(sv.badges)});if(sr.length)await sb.from('app_settings').upsert(sr);
-    await loadAll();setupRT();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();renderAll();applyPermissions();updateUserUI();
+    await loadAll();setupRT();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();
   }catch(e){document.getElementById('migrate-err').textContent='Migration failed: '+e.message;document.getElementById('migrate-err').style.display='block';btn.textContent='Migrate My Data to Cloud';btn.disabled=false;}
 }
 async function skipMigration(){
   await sb.from('items').upsert(DI.map((name,i)=>({name,sort_order:i,category:DC[name]||'',price:DP[name]||0,batch_yield:0})));
   const ir=[];DI.forEach(name=>LOCS.forEach(loc=>ir.push({item_name:name,location:loc,quantity:0})));await sb.from('inventory').upsert(ir);
   const pr=[];DI.forEach(name=>LOCS.forEach(loc=>pr.push({item_name:name,location:loc,quantity:0})));await sb.from('par_levels').upsert(pr);
-  await loadAll();setupRT();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();renderAll();applyPermissions();updateUserUI();
+  await loadAll();setupRT();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();
 }
 
 // ── REALTIME ──────────────────────────────────────────────────────
@@ -1052,7 +1076,7 @@ function openMoreDrawer(){document.getElementById('more-overlay').classList.add(
 function closeMoreDrawer(){document.getElementById('more-overlay').classList.remove('open');document.getElementById('more-drawer').classList.remove('open');}
 
 // ── NAV ───────────────────────────────────────────────────────────
-const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop Profile','crm-schedule':'Schedule','crm-forecast':'Manufacturing Forecast','crm-relog':'Customer Relations Log','crm-cleanup':'Customer Data Cleanup','crm-editlog':'Staff Edit Log'};
+const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',loss:'Loss Log',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop Profile','crm-schedule':'Schedule','crm-forecast':'Manufacturing Forecast','crm-relog':'Customer Relations Log','crm-cleanup':'Customer Data Cleanup','crm-editlog':'Staff Edit Log'};
 function showSection(name,btn){
   // Defense in depth: if a staff user calls showSection('crm-relog') directly
   // (e.g. via dev tools) and the setting is off, redirect them away.
@@ -1072,6 +1096,7 @@ function showSection(name,btn){
   if(name==='sales'){renderSales();loadAvailDates();}
   if(name==='transfers')renderTransfers();
   if(name==='settings'){renderSettings();syncCI(S.colors);syncBI(S.badges);}
+  if(name==='loss'){loadLossEntries().then(renderLossLog);}
   if(name==='crm-customers')CRM.renderCustomers();
   if(name==='crm-profile'){/* rendered via openProfile */}
   if(name==='crm-schedule')CRM.renderSchedule();
@@ -1085,32 +1110,169 @@ function openLocDetail(loc){currentLoc=loc;document.querySelectorAll('.section')
 function goBack(){showSection('locations',null);document.querySelectorAll('.nav-item').forEach(b=>{if(b.textContent.includes('Locations'))b.classList.add('active');});}
 function setStatus(t,ok){const el=document.getElementById('conn-status');el.textContent=t;el.className='conn-status'+(ok?' live':'');}
 
-// ── SQUARE SYNC ───────────────────────────────────────────────────
-async function syncNow(){
+// ── INVENTORY SYNC ───────────────────────────────────────────────────
+// Architecture as of webhook launch:
+//   - Truck inventory (Truck 1, Truck 2, Truck 3) is automatically deducted
+//     in real-time by the Cloudflare Worker as Square webhook events arrive.
+//     Nothing in this file deducts truck inventory.
+//   - Restaurant inventory is still deducted by manual sync (Toast doesn't
+//     have webhooks set up here yet). syncRestaurant() handles that path.
+//   - refreshDisplay() updates today's sales display without touching inventory.
+
+// Sync Toast (restaurant) sales: pulls today's totals, deducts the delta
+// against the Restaurant-only baseline. Truck data in the response is used
+// for DISPLAY ONLY — not deducted (those are webhook-driven now).
+async function syncRestaurant(){
   const sp=document.getElementById('sync-spinner'),ts=document.getElementById('top-spinner'),sm=document.getElementById('inv-sync-msg');
-  sp.style.display='block';ts.style.display='block';
-  if(!S.workerUrl){sp.style.display=ts.style.display='none';if(sm)sm.textContent='No Worker URL configured.';return;}
+  if(sp)sp.style.display='block';if(ts)ts.style.display='block';
+  if(!S.workerUrl){if(sp)sp.style.display='none';if(ts)ts.style.display='none';if(sm)sm.textContent='No Worker URL configured.';return;}
   if(sm)sm.textContent='Fetching sales data...';
   let deducted=0;
   try{
+    // Re-fetch the latest baseline from cloud to avoid multi-device double-deduct.
+    if(sb){
+      try{
+        const {data:freshBase}=await sb.from('app_settings').select('value').eq('key','sales_baseline').maybeSingle();
+        if(freshBase?.value){
+          const parsed=typeof freshBase.value==='string'?JSON.parse(freshBase.value):freshBase.value;
+          if(parsed && typeof parsed==='object') S.salesBaseline=parsed;
+        }
+      }catch(e){console.warn('[sync] could not refresh baseline:',e);}
+    }
     const res=await fetch(S.workerUrl+'/sales',{mode:'cors'});
-    if(!res.ok){let errMsg='Worker returned '+res.status;try{const errBody=await res.json();if(errBody.error)errMsg+=': '+errBody.error;}catch(_){try{errMsg+=': '+(await res.text()).slice(0,200);}catch(__){}}throw new Error(errMsg);}
-    const data=await res.json();const cs=data.sales||{};const cso=data.salesOnline||{};const csr=data.salesRevenue||{};const csor=data.salesOnlineRevenue||{};S.salesOnline=cso;S.salesRevenue=csr;S.salesOnlineRevenue=csor;S.salesTotals=data.totals||null;
+    if(!res.ok){let errMsg='Worker returned '+res.status;try{const errBody=await res.json();if(errBody.error)errMsg+=': '+errBody.error;}catch(_){}throw new Error(errMsg);}
+    const data=await res.json();
+    const cs=data.sales||{};const cso=data.salesOnline||{};const csr=data.salesRevenue||{};const csor=data.salesOnlineRevenue||{};
+    S.salesOnline=cso;S.salesRevenue=csr;S.salesOnlineRevenue=csor;S.salesTotals=data.totals||null;
     const iu=[];
-    S.items.forEach(item=>{LOCS.forEach(loc=>{const cur=(cs[item]||{})[loc]||0,base=(S.salesBaseline[item]||{})[loc]||0,delta=Math.max(0,cur-base);if(delta>0){S.inventory[item][loc]=Math.max(0,(S.inventory[item][loc]||0)-delta);deducted+=delta;iu.push({item_name:item,location:loc,quantity:S.inventory[item][loc]});}S.sales[item]=S.sales[item]||{};S.sales[item][loc]=cur;});});
-    S.items.forEach(item=>{LOCS.forEach(loc=>{S.salesBaseline[item]=S.salesBaseline[item]||{};S.salesBaseline[item][loc]=(cs[item]||{})[loc]||0;});});
+    // KEY CHANGE: only deduct for Restaurant. Truck inventory is handled by Square webhooks.
+    S.items.forEach(item=>{
+      ['Restaurant'].forEach(loc=>{
+        const cur=(cs[item]||{})[loc]||0;
+        const base=(S.salesBaseline[item]||{})[loc]||0;
+        const delta=Math.max(0,cur-base);
+        if(delta>0){
+          S.inventory[item][loc]=Math.max(0,(S.inventory[item][loc]||0)-delta);
+          deducted+=delta;
+          iu.push({item_name:item,location:loc,quantity:S.inventory[item][loc]});
+        }
+        S.sales[item]=S.sales[item]||{};
+        S.sales[item][loc]=cur;
+      });
+      // Mirror non-Restaurant sales into S.sales for display purposes only (NO deduction)
+      LOCS.filter(l=>l!=='Restaurant').forEach(loc=>{
+        S.sales[item]=S.sales[item]||{};
+        S.sales[item][loc]=(cs[item]||{})[loc]||0;
+      });
+    });
+    // Update Restaurant baseline only; other baselines kept in sync so a future
+    // accidental call to old logic wouldn't massively re-deduct.
+    S.items.forEach(item=>{
+      LOCS.forEach(loc=>{
+        S.salesBaseline[item]=S.salesBaseline[item]||{};
+        S.salesBaseline[item][loc]=(cs[item]||{})[loc]||0;
+      });
+    });
     S.lastSync=new Date().toLocaleString();
     if(iu.length&&sb)await sb.from('inventory').upsert(iu);
-    await dbSet('last_sync',S.lastSync);await dbSet('sales_baseline',S.salesBaseline);
-    if(sm)sm.textContent=deducted>0?`Synced — ${deducted} units deducted`:`Synced — No new sales`;
+    await dbSet('sales_baseline',S.salesBaseline);
+    await dbSet('last_sync',S.lastSync);
+    if(sm)sm.textContent=deducted>0?`Restaurant synced — ${deducted} units deducted`:`Restaurant synced — No new sales`;
     setStatus('Live',true);
-  }catch(e){const msg='Sync failed: '+e.message;if(sm)sm.textContent=msg;setStatus('Sync error',false);sp.style.display=ts.style.display='none';alert(msg+'\n\nThe worker may be taking too long, or Toast may be temporarily rate-limited. Try again in a minute. If it persists, check the Cloudflare worker logs.');checkAlerts();renderAll();return;}
+  }catch(e){
+    const msg='Sync failed: '+e.message;
+    if(sm)sm.textContent=msg;setStatus('Sync error',false);
+    if(sp)sp.style.display='none';if(ts)ts.style.display='none';
+    alert(msg);
+    checkAlerts();renderAll();return;
+  }
+  // Also refresh prices on this path (so Settings can pull latest)
   try{
     const pr=await fetch(S.workerUrl+'/prices',{mode:'cors'});
-    if(pr.ok){const pd=await pr.json();if(pd.prices&&Object.keys(pd.prices).length){const pu=[];Object.entries(pd.prices).forEach(([item,price])=>{if(S.items.includes(item)){S.prices[item]=price;pu.push({name:item,price,category:S.categories[item]||'',batch_yield:S.batchYields[item]||0,sort_order:S.items.indexOf(item)});}});if(sb&&pu.length)await sb.from('items').upsert(pu);const ind=document.getElementById('sync-ind');if(ind){ind.style.display='block';setTimeout(()=>ind.style.display='none',3000);}}}
+    if(pr.ok){const pd=await pr.json();if(pd.prices&&Object.keys(pd.prices).length){const pu=[];Object.entries(pd.prices).forEach(([item,price])=>{if(S.items.includes(item)){S.prices[item]=price;pu.push({name:item,price,category:S.categories[item]||'',batch_yield:S.batchYields[item]||0,sort_order:S.items.indexOf(item)});}});if(sb&&pu.length)await sb.from('items').upsert(pu);}}
   }catch(e){}
-  checkAlerts();renderAll();if(!salesViewDate)renderSales();sp.style.display=ts.style.display='none';
+  checkAlerts();renderAll();if(!salesViewDate)renderSales();
+  if(sp)sp.style.display='none';if(ts)ts.style.display='none';
 }
+
+// Refresh sales display ONLY — does NOT modify inventory or baselines.
+async function refreshDisplay(){
+  const sm=document.getElementById('inv-sync-msg');
+  if(!S.workerUrl){if(sm)sm.textContent='No Worker URL configured.';return;}
+  if(sm)sm.textContent='Refreshing display...';
+  try{
+    const res=await fetch(S.workerUrl+'/sales',{mode:'cors'});
+    if(!res.ok)throw new Error('Worker returned '+res.status);
+    const data=await res.json();
+    const cs=data.sales||{};
+    S.salesOnline=data.salesOnline||{};
+    S.salesRevenue=data.salesRevenue||{};
+    S.salesOnlineRevenue=data.salesOnlineRevenue||{};
+    S.salesTotals=data.totals||null;
+    // Update S.sales for display only — no inventory writes, no baseline writes.
+    S.items.forEach(item=>{
+      LOCS.forEach(loc=>{
+        S.sales[item]=S.sales[item]||{};
+        S.sales[item][loc]=(cs[item]||{})[loc]||0;
+      });
+    });
+    if(sm)sm.textContent='Display refreshed.';
+    if(!salesViewDate)renderSales();
+    renderOverview();
+  }catch(e){
+    if(sm)sm.textContent='Refresh failed: '+e.message;
+  }
+}
+
+// Legacy alias: anything still calling syncNow gets routed to the safer
+// syncRestaurant. Should be removed once we're certain no callers remain.
+async function syncNow(){ return syncRestaurant(); }
+
+// ── WEBHOOK LIVE INDICATOR ─────────────────────────────────────────
+// Reads the most recent row from webhook_dedup and updates the badge
+// on the Inventory page to show "Live — updated Xs ago".
+let _webhookLiveTimer = null;
+async function updateWebhookLiveBadge(){
+  if(!sb) return;
+  const badge = document.getElementById('webhook-live-badge');
+  const text  = document.getElementById('webhook-live-text');
+  if(!badge || !text) return;
+  try{
+    const {data, error} = await sb.from('webhook_dedup')
+      .select('processed_at')
+      .order('processed_at', {ascending:false})
+      .limit(1);
+    if(error || !data || !data.length){
+      // No webhooks ever received — show "Waiting" so the operator knows the path isn't live yet
+      badge.style.display='inline-block';
+      badge.style.background='#999';
+      text.textContent='No webhooks yet';
+      return;
+    }
+    const last = new Date(data[0].processed_at);
+    const ageSec = Math.floor((Date.now() - last.getTime())/1000);
+    badge.style.display='inline-block';
+    if(ageSec < 60){
+      badge.style.background='#2A6B3A';
+      text.textContent=`Live — updated ${ageSec}s ago`;
+    } else if(ageSec < 3600){
+      badge.style.background='#2A6B3A';
+      text.textContent=`Live — updated ${Math.floor(ageSec/60)}m ago`;
+    } else if(ageSec < 86400){
+      badge.style.background='#B05A00';
+      text.textContent=`Last update ${Math.floor(ageSec/3600)}h ago`;
+    } else {
+      badge.style.background='#A82020';
+      text.textContent=`Last update ${Math.floor(ageSec/86400)}d ago`;
+    }
+  }catch(e){console.warn('[webhook badge]',e);}
+}
+function startWebhookLiveBadge(){
+  if(_webhookLiveTimer) return;
+  updateWebhookLiveBadge();
+  _webhookLiveTimer = setInterval(updateWebhookLiveBadge, 5000);
+}
+
 
 // ── SALES HISTORY ─────────────────────────────────────────────────
 async function loadAvailDates(){if(!S.workerUrl)return;try{const r=await fetch(S.workerUrl+'/sales/dates',{mode:'cors'});if(!r.ok)return;const d=await r.json();availDates=d.dates||[];renderHistBar();}catch(e){}}
@@ -1549,6 +1711,247 @@ function renderSales(){
     }
   }
 }
+
+// ═════════════════════════════════════════════════════════════════
+// LOSS LOG — track and report inventory losses
+// ═════════════════════════════════════════════════════════════════
+
+// In-memory cache of recent loss entries
+S.lossEntries = S.lossEntries || [];
+
+const LOSS_CATEGORIES = [
+  { value:'spoilage', label:'Spoilage' },
+  { value:'damage',   label:'Damage' },
+  { value:'theft',    label:'Theft / Shrinkage' },
+  { value:'giveaway', label:'Giveaway / Sample' },
+  { value:'personal', label:'Personal Use' },
+  { value:'other',    label:'Other' },
+];
+const LOSS_CAT_COLORS = {
+  spoilage:'#B05A00', damage:'#A82020', theft:'#7A2A8A',
+  giveaway:'#2A6B3A', personal:'#3B5BA5', other:'#666',
+};
+
+// Load most recent 500 loss entries from the database. Called on app load
+// and when the Loss section is opened.
+async function loadLossEntries() {
+  if (!sb) return;
+  try {
+    const { data, error } = await sb.from('inventory_loss')
+      .select('*')
+      .order('logged_at', { ascending:false })
+      .limit(500);
+    if (error) throw error;
+    S.lossEntries = data || [];
+  } catch (e) {
+    console.error('[loss] load failed:', e);
+  }
+}
+
+function renderLossLog() {
+  const root = document.getElementById('loss-content');
+  if (!root) return;
+  // Compute totals by category (last 30 days)
+  const now = Date.now();
+  const cutoff = now - 30*24*3600*1000;
+  const recent = S.lossEntries.filter(e => new Date(e.logged_at).getTime() >= cutoff);
+  const totalsByCat = {};
+  let totalUnits = 0, totalValue = 0;
+  for (const e of recent) {
+    totalsByCat[e.category] = (totalsByCat[e.category] || 0) + Number(e.qty || 0);
+    totalUnits += Number(e.qty || 0);
+    totalValue += Number(e.qty || 0) * (Number(S.prices[e.item]) || 0);
+  }
+  const summary = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:18px">
+      <div style="background:var(--bg2);padding:12px;border-radius:6px;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:var(--sidebar)">${totalUnits.toFixed(0)}</div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase">Units Lost (30d)</div>
+      </div>
+      <div style="background:var(--bg2);padding:12px;border-radius:6px;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:var(--red)">${fmt(totalValue)}</div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase">Est. Value (30d)</div>
+      </div>
+      ${LOSS_CATEGORIES.map(c => `
+        <div style="background:var(--bg2);padding:12px;border-radius:6px;text-align:center">
+          <div style="font-size:18px;font-weight:700;color:${LOSS_CAT_COLORS[c.value]}">${(totalsByCat[c.value]||0).toFixed(0)}</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase">${c.label}</div>
+        </div>`).join('')}
+    </div>`;
+
+  // Filter controls
+  const filters = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+      <input type="text" id="loss-filter-item" placeholder="Filter by item..." oninput="renderLossTable()" style="flex:1;min-width:140px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+      <select id="loss-filter-loc" onchange="renderLossTable()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+        <option value="">All locations</option>
+        ${LOCS.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('')}
+      </select>
+      <select id="loss-filter-cat" onchange="renderLossTable()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+        <option value="">All categories</option>
+        ${LOSS_CATEGORIES.map(c => `<option value="${c.value}">${c.label}</option>`).join('')}
+      </select>
+    </div>`;
+
+  root.innerHTML = summary + filters + '<div id="loss-table"></div>';
+  renderLossTable();
+}
+
+function renderLossTable() {
+  const table = document.getElementById('loss-table');
+  if (!table) return;
+  const filterItem = (document.getElementById('loss-filter-item')?.value || '').toLowerCase();
+  const filterLoc  = document.getElementById('loss-filter-loc')?.value || '';
+  const filterCat  = document.getElementById('loss-filter-cat')?.value || '';
+  const rows = S.lossEntries.filter(e => {
+    if (filterItem && !String(e.item).toLowerCase().includes(filterItem)) return false;
+    if (filterLoc  && e.location !== filterLoc) return false;
+    if (filterCat  && e.category !== filterCat) return false;
+    return true;
+  });
+  if (!rows.length) {
+    table.innerHTML = '<p style="color:var(--text3);font-style:italic;text-align:center;padding:20px">No loss entries match the current filters.</p>';
+    return;
+  }
+  const catLabel = v => LOSS_CATEGORIES.find(c=>c.value===v)?.label || v;
+  table.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;border-bottom:1px solid var(--border)">
+      <th style="padding:6px">When</th>
+      <th style="padding:6px">Item</th>
+      <th style="padding:6px">Location</th>
+      <th style="padding:6px;text-align:right">Qty</th>
+      <th style="padding:6px">Category</th>
+      <th style="padding:6px">By</th>
+      <th style="padding:6px">Notes</th>
+      <th style="padding:6px"></th>
+    </tr></thead>
+    <tbody>${rows.map(e => `<tr style="border-bottom:1px solid rgba(132,79,6,.08)">
+      <td style="padding:8px 6px;color:var(--text3);white-space:nowrap">${new Date(e.logged_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</td>
+      <td style="padding:8px 6px;font-weight:700">${esc(e.item)}</td>
+      <td style="padding:8px 6px">${esc(e.location)}</td>
+      <td style="padding:8px 6px;text-align:right;font-weight:700">${Number(e.qty).toFixed(0)}</td>
+      <td style="padding:8px 6px"><span class="cat-chip" style="background:${LOSS_CAT_COLORS[e.category]||'#666'};color:#fff">${esc(catLabel(e.category))}</span></td>
+      <td style="padding:8px 6px;color:var(--text3);font-size:11px">${esc(e.logged_by_email||'—')}</td>
+      <td style="padding:8px 6px;font-style:italic;color:var(--text2);font-size:11px">${esc(e.notes||'')}</td>
+      <td style="padding:8px 6px;text-align:right">
+        <button class="btn btn-xs" data-admin-only onclick="deleteLossEntry(${e.id})" title="Delete (admin only) — does NOT restore inventory" style="background:var(--red-bg);color:var(--red)"><i class="ti ti-trash"></i></button>
+      </td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+  applyPermissions();
+}
+
+function openLogLoss() {
+  // Build a modal overlay with the loss-entry form
+  closeLogLoss();
+  const itemOpts = S.items.slice().sort().map(i => `<option value="${esc(i)}">${esc(i)}</option>`).join('');
+  const locOpts  = LOCS.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('');
+  const catOpts  = LOSS_CATEGORIES.map(c => `<option value="${c.value}">${c.label}</option>`).join('');
+  const modal = document.createElement('div');
+  modal.id = 'log-loss-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto';
+  modal.innerHTML = `
+    <div style="background:var(--surface);width:100%;max-width:480px;padding:22px;border-radius:var(--radius);box-shadow:0 6px 24px rgba(0,0,0,.3)">
+      <div style="font-family:var(--font-display);font-size:20px;color:var(--sidebar);margin-bottom:14px">Log Inventory Loss</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Item
+          <select id="loss-item" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box">${itemOpts}</select>
+        </label>
+        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Location
+          <select id="loss-loc" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box">${locOpts}</select>
+        </label>
+        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Quantity Lost
+          <input type="number" id="loss-qty" min="1" step="1" value="1" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box">
+        </label>
+        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Category
+          <select id="loss-cat" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box">${catOpts}</select>
+        </label>
+        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Notes (optional)
+          <textarea id="loss-notes" rows="2" placeholder="e.g. dropped during loading" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box;resize:vertical"></textarea>
+        </label>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+        <button class="btn btn-sm" onclick="closeLogLoss()">Cancel</button>
+        <button class="btn btn-sm btn-primary" onclick="saveLossEntry()"><i class="ti ti-check"></i> Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  setTimeout(() => document.getElementById('loss-item')?.focus(), 0);
+}
+
+function closeLogLoss() {
+  const m = document.getElementById('log-loss-modal');
+  if (m) m.remove();
+}
+
+async function saveLossEntry() {
+  const item = document.getElementById('loss-item')?.value;
+  const loc  = document.getElementById('loss-loc')?.value;
+  const qty  = Number(document.getElementById('loss-qty')?.value || 0);
+  const cat  = document.getElementById('loss-cat')?.value;
+  const notes = (document.getElementById('loss-notes')?.value || '').trim();
+  if (!item || !loc || !cat || !(qty > 0)) {
+    alert('Please fill in item, location, category, and a positive quantity.');
+    return;
+  }
+  // Warn but don't block if this would make inventory negative
+  const currentQty = (S.inventory[item] || {})[loc] || 0;
+  if (qty > currentQty) {
+    const proceed = confirm(`Current inventory shows ${currentQty} of ${item} at ${loc}, but you're logging ${qty} as lost. This will result in negative inventory (${currentQty - qty}). Continue?`);
+    if (!proceed) return;
+  }
+  try {
+    // 1) Insert the loss log row
+    const { data: ins, error } = await sb.from('inventory_loss').insert({
+      item, location: loc, qty, category: cat, notes,
+      logged_by: currentUser?.id || null,
+      logged_by_email: (currentUser?.email || '').toLowerCase(),
+    }).select().single();
+    if (error) throw error;
+
+    // 2) Subtract from inventory in memory and persist
+    const newQty = currentQty - qty;
+    if (!S.inventory[item]) S.inventory[item] = {};
+    S.inventory[item][loc] = newQty;
+    // Persist inventory change: assumes an 'inventory' table keyed by item + location
+    // (uses the same path the inventory inputs use; we mirror it here)
+    try {
+      await sb.from('inventory').upsert({ item_name: item, location: loc, quantity: newQty }, { onConflict: 'item_name,location' });
+    } catch (invErr) {
+      console.error('[loss] inventory upsert failed (loss log was saved):', invErr);
+      // We don't roll back the loss row — the audit trail is more important
+      // than the inventory mirror. Admin can manually correct inventory if needed.
+    }
+
+    // 3) Add to in-memory list and re-render
+    S.lossEntries.unshift(ins);
+    closeLogLoss();
+    renderLossLog();
+    // Refresh inventory views that show qty
+    if (typeof renderInventory === 'function') renderInventory();
+    if (typeof renderOverview === 'function') renderOverview();
+    if (currentLoc && typeof renderLocDetail === 'function') renderLocDetail();
+    checkAlerts();
+  } catch (e) {
+    console.error('[loss] save failed:', e);
+    alert('Failed to save: ' + (e.message || e));
+  }
+}
+
+async function deleteLossEntry(id) {
+  if (!confirm('Delete this loss entry?\n\nThis does NOT restore the inventory that was subtracted — adjust manually if needed.')) return;
+  try {
+    const { error } = await sb.from('inventory_loss').delete().eq('id', id);
+    if (error) throw error;
+    S.lossEntries = S.lossEntries.filter(e => e.id !== id);
+    renderLossLog();
+  } catch (e) {
+    console.error('[loss] delete failed:', e);
+    alert('Delete failed: ' + (e.message || e));
+  }
+}
+
+
 function renderSettings(){
   // Populate admin list
   const al=document.getElementById('admin-list');
@@ -1835,7 +2238,7 @@ let mobParLoc='Warehouse';
 
 // Category → ordered list of section keys (used to build the tab strip dynamically)
 const MOB_CATEGORIES = {
-  inventory: ['overview','inventory','locations','par','alerts','picklist','transfers','production','sales','crm-forecast'],
+  inventory: ['overview','inventory','locations','par','alerts','picklist','transfers','production','sales','loss','crm-forecast'],
   crm:       ['crm-customers','crm-schedule','crm-relog'],
 };
 
@@ -1850,6 +2253,7 @@ const MOB_SECTION_META = {
   transfers:       { icon:'ti-arrows-exchange',  label:'Transfers' },
   production:      { icon:'ti-tool',             label:'Production' },
   sales:           { icon:'ti-currency-dollar',  label:'Sales' },
+  loss:            { icon:'ti-trash-x',           label:'Loss Log' },
   'crm-customers': { icon:'ti-building-store',   label:'Stops' },
   'crm-schedule':  { icon:'ti-calendar',         label:'Schedule' },
   'crm-forecast':  { icon:'ti-trending-up',      label:'Mfg Forecast' },
@@ -1907,7 +2311,7 @@ function rebuildMobTabs(){
 }
 
 function syncMobTitle(){
-  const titles={home:'Home',overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop','crm-schedule':'Schedule','crm-forecast':'Mfg Forecast','crm-relog':'Relations Log'};
+  const titles={home:'Home',overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',loss:'Loss Log',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop','crm-schedule':'Schedule','crm-forecast':'Mfg Forecast','crm-relog':'Relations Log'};
   const titleEl = document.getElementById('mob-title');
   if(titleEl) titleEl.textContent = titles[mobSection] || mobSection;
   // Show/hide the home button: visible whenever we're not on the home screen
@@ -1943,6 +2347,10 @@ function mobRender(){
   else if(mobSection==='transfers')el.innerHTML=mobXfrHTML();
   else if(mobSection==='production')el.innerHTML=mobProdHTML();
   else if(mobSection==='sales')el.innerHTML=mobSalesHTML();
+  else if(mobSection==='loss'){
+    el.innerHTML='<div style="padding:8px 0"><button class="btn btn-sm btn-accent" onclick="openLogLoss()" style="margin-bottom:14px;width:100%"><i class="ti ti-plus"></i> Log Loss</button><div id="loss-content"></div></div>';
+    loadLossEntries().then(renderLossLog);
+  }
   else if(mobSection==='settings')el.innerHTML=mobSettingsHTML();
   else if(mobSection==='crm-customers'){el.innerHTML='<div id="crm-customers-mob"></div>';CRM.renderMobCustomers();}
   else if(mobSection==='crm-profile'){el.innerHTML='<div id="crm-profile-mob"></div>';CRM.renderMobProfile();}
