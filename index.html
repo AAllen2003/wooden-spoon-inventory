@@ -4231,49 +4231,81 @@ window.CRM = (function(){
     if (!text) return null;
     const s = text.toLowerCase();
     // Patterns we try to recognize:
-    //   "Every Monday" / "Every Tue & Thu"
-    //   "1st Tuesday" / "3rd Wednesday" / "2nd & 4th Friday"
-    //   "Every 2 weeks", "Every 6 weeks", "Bi-weekly", "Monthly"
-    //   Time range: "2-3pm", "9am-11am", "9:30-11:00"
-    const out = { dows: [], nthOfMonth: null, intervalDays: null, startTime: null, endTime: null, raw: text };
+    //   "Every Monday" / "Every Tue & Thu" / "Mon/Wed/Fri" / "Weekdays" / "Weekends"
+    //   "1st Tuesday" / "3rd Wednesday" / "2nd & 4th Friday" / "Last Friday"
+    //   "Every 2 weeks", "Every 6 weeks", "Bi-weekly", "Monthly", "Twice a month"
+    //   Time range: "2-3pm", "9am-11am", "9:30-11:00", "mornings", "afternoons"
+    const out = { dows: [], nthOfMonth: null, intervalDays: null, startTime: null, endTime: null, activeMonths: null, raw: text };
 
-    // Day names
+    // Day names — full + abbreviations + common typos. Plural forms like
+    // "Mondays" are handled by the \b regex naturally matching the start.
     const dowMatches = {
-      sunday: 0, sun: 0, monday: 1, mon: 1, tuesday: 2, tues: 2, tue: 2,
-      wednesday: 3, wed: 3, thursday: 4, thu: 4, thurs: 4,
-      friday: 5, fri: 5, saturday: 6, sat: 6,
+      sunday: 0, sundays: 0, sun: 0,
+      monday: 1, mondays: 1, mon: 1, mondy: 1, monady: 1,
+      tuesday: 2, tuesdays: 2, tues: 2, tue: 2, tueday: 2, tuesady: 2,
+      wednesday: 3, wednesdays: 3, wed: 3, weds: 3, wedensday: 3, wendesday: 3,
+      thursday: 4, thursdays: 4, thu: 4, thurs: 4, thrusday: 4, thurday: 4,
+      friday: 5, fridays: 5, fri: 5, fryday: 5, friady: 5,
+      saturday: 6, saturdays: 6, sat: 6, satuday: 6,
     };
     for (const [name, n] of Object.entries(dowMatches)) {
+      // Word-boundary match; case already lowered. Special chars in the
+      // word boundary are fine because day names are pure letters.
       if (new RegExp('\\b' + name + '\\b').test(s)) out.dows.push(n);
     }
-    out.dows = [...new Set(out.dows)];
+    // Shortcuts: "weekdays" → Mon-Fri, "weekends" → Sat/Sun
+    if (/\b(weekday|weekdays|week\s*day|every\s*weekday|business\s*days?)\b/.test(s)) {
+      out.dows.push(1, 2, 3, 4, 5);
+    }
+    if (/\b(weekend|weekends|week\s*end)\b/.test(s)) {
+      out.dows.push(0, 6);
+    }
+    // Slash-separated day list: "Mon/Wed/Fri" — handled by the matchers
+    // above iterating each token, but normalize slashes to spaces so
+    // boundary detection works for adjacent tokens like "mon/wed"
+    // (the \b regex already treats / as a boundary, so this is just defensive)
+    out.dows = [...new Set(out.dows)].sort((a,b)=>a-b);
 
-    // nth-of-month: "3rd Wednesday", "1st & 3rd Tuesday"
-    const ord = s.match(/\b(1st|2nd|3rd|4th|first|second|third|fourth)\b/g);
+    // nth-of-month: "3rd Wednesday", "1st & 3rd Tuesday", "last Friday", "5th Monday"
+    const ord = s.match(/\b(1st|2nd|3rd|4th|5th|first|second|third|fourth|fifth|last)\b/g);
     if (ord) {
-      const map = { '1st':1,'first':1,'2nd':2,'second':2,'3rd':3,'third':3,'4th':4,'fourth':4 };
-      out.nthOfMonth = ord.map(o => map[o]).filter(Boolean);
+      const map = {
+        '1st':1,'first':1,'2nd':2,'second':2,'3rd':3,'third':3,
+        '4th':4,'fourth':4,'5th':5,'fifth':5,'last':-1
+      };
+      out.nthOfMonth = ord.map(o => map[o]).filter(v => v !== undefined);
     }
 
-    // Interval
-    if (/\bweekly\b/.test(s) && !/bi-?weekly/.test(s)) out.intervalDays = 7;
-    if (/bi-?weekly|every 2 weeks|every other week/.test(s)) out.intervalDays = 14;
-    if (/every 3 weeks/.test(s)) out.intervalDays = 21;
-    if (/every 4 weeks|monthly/.test(s)) out.intervalDays = 28;
-    if (/every 6 weeks/.test(s)) out.intervalDays = 42;
-    if (/every 8 weeks/.test(s)) out.intervalDays = 56;
-    const m = s.match(/every (\d+) weeks?/);
+    // Interval — biweekly check first to avoid weekly matching biweekly
+    if (/bi-?weekly|every\s*2\s*weeks?|every\s*other\s*week|every\s*other\s*(mon|tue|tues|wed|thu|thurs|fri|sat|sun)|fortnight(ly)?|semi-?monthly|twice\s*(a|per)\s*month|2x\s*(per\s*)?month(ly)?|2\s*times\s*(a|per)\s*month/.test(s)) {
+      out.intervalDays = 14;
+    } else if (/\bweekly\b|every\s*week\b/.test(s)) {
+      out.intervalDays = 7;
+    }
+    if (/every\s*3\s*weeks?|three\s*weeks?|tri-?weekly/.test(s)) out.intervalDays = 21;
+    if (/every\s*4\s*weeks?|\bmonthly\b|once\s*(a|per)\s*month|1x\s*(per\s*)?month(ly)?/.test(s) && !out.intervalDays) out.intervalDays = 28;
+    if (/every\s*5\s*weeks?/.test(s)) out.intervalDays = 35;
+    if (/every\s*6\s*weeks?/.test(s)) out.intervalDays = 42;
+    if (/every\s*7\s*weeks?/.test(s)) out.intervalDays = 49;
+    if (/every\s*8\s*weeks?/.test(s)) out.intervalDays = 56;
+    if (/every\s*10\s*weeks?/.test(s)) out.intervalDays = 70;
+    if (/every\s*12\s*weeks?|\bquarterly\b/.test(s)) out.intervalDays = 90;
+    // Catch-all: "every N weeks" for any other N
+    const m = s.match(/every\s*(\d+)\s*weeks?/);
     if (m) out.intervalDays = parseInt(m[1],10) * 7;
-    if (/quarterly/.test(s)) out.intervalDays = 90;
+    // "three times a month" → every 10 days
+    if (/three\s*times\s*(a|per)\s*month|3x\s*(per\s*)?month(ly)?|3\s*times\s*(a|per)\s*month/.test(s)) out.intervalDays = 10;
+    // "couple weeks" / "every couple weeks"
+    if (/(every\s*)?couple\s*(of\s*)?weeks?/.test(s)) out.intervalDays = 14;
 
-    // Time range — try common formats
-    const timeMatch = s.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*[-\u2013]\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+    // Time range — try explicit ranges first
+    const timeMatch = s.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*[-\u2013to]+\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|noon)?/);
     if (timeMatch) {
       const [, h1, m1, ap1, h2, m2, ap2] = timeMatch;
       const to24 = (h, m, ap, refAp) => {
         let hh = parseInt(h, 10);
         const mm = m ? parseInt(m, 10) : 0;
-        const apFinal = ap || refAp;
+        const apFinal = ap === 'noon' ? 'pm' : (ap || refAp);
         if (apFinal === 'pm' && hh < 12) hh += 12;
         if (apFinal === 'am' && hh === 12) hh = 0;
         // If no am/pm anywhere and hour < 8, assume PM
@@ -4282,9 +4314,136 @@ window.CRM = (function(){
       };
       out.startTime = to24(h1, m1, ap1, ap2);
       out.endTime   = to24(h2, m2, ap2, ap1);
+    } else {
+      // Vague time shortcuts — only apply when no explicit range was found
+      if (/\b(morning|mornings|early\s*morning|am only|a\.?m\.? only)\b/.test(s)) {
+        out.startTime = '09:00:00'; out.endTime = '11:00:00';
+      } else if (/\b(afternoon|afternoons|early\s*afternoon|pm only|p\.?m\.? only)\b/.test(s)) {
+        out.startTime = '13:00:00'; out.endTime = '15:00:00';
+      } else if (/\b(late\s*morning|mid\s*morning|midmorning)\b/.test(s)) {
+        out.startTime = '10:00:00'; out.endTime = '11:30:00';
+      } else if (/\b(late\s*afternoon)\b/.test(s)) {
+        out.startTime = '15:00:00'; out.endTime = '17:00:00';
+      } else if (/\b(lunch|lunchtime|lunch\s*time|noon)\b/.test(s)) {
+        out.startTime = '11:30:00'; out.endTime = '12:30:00';
+      } else if (/\b(early|first\s*thing)\b/.test(s)) {
+        out.startTime = '08:00:00'; out.endTime = '09:00:00';
+      } else if (/\b(eod|end\s*of\s*day|late)\b/.test(s)) {
+        out.startTime = '16:00:00'; out.endTime = '17:00:00';
+      } else if (/\bbefore\s*noon\b/.test(s)) {
+        out.startTime = '09:00:00'; out.endTime = '12:00:00';
+      } else if (/\b(after\s*noon|after\s*lunch|post\s*lunch)\b/.test(s)) {
+        out.startTime = '13:00:00'; out.endTime = '15:00:00';
+      } else if (/\ball\s*day\b/.test(s)) {
+        out.startTime = '09:00:00'; out.endTime = '17:00:00';
+      }
     }
 
-    if (!out.dows.length && !out.intervalDays && !out.nthOfMonth) return null;
+    // ── Months & seasons (Options 1 + 5) ─────────────────────────
+    // Builds an "activeMonths" array of month numbers (1-12) when the user
+    // specifies a seasonal window. If left null, all months are active.
+    //
+    // Recognized:
+    //   "May to September" / "May-Sep" / "May–Sept"          (active range)
+    //   "Summer only" / "Spring and summer"                    (active seasons)
+    //   "Active May through September"                         (active range)
+    //   "Closed in winter" / "no service in December"          (excluded)
+    //   "Skip July and August" / "no Jan-Feb"                  (excluded)
+    const monthMap = {
+      january:1,jan:1, february:2,feb:2, march:3,mar:3,
+      april:4,apr:4, may:5,           june:6,jun:6,
+      july:7,jul:7, august:8,aug:8,
+      september:9,sep:9,sept:9, october:10,oct:10,
+      november:11,nov:11, december:12,dec:12,
+    };
+    const seasonMap = {
+      spring: [3,4,5],
+      summer: [6,7,8],
+      fall:   [9,10,11], autumn: [9,10,11],
+      winter: [12,1,2],
+    };
+
+    // Helper: expand a start..end month range, wrapping across Dec→Jan
+    const expandRange = (a, b) => {
+      const arr = [];
+      let i = a;
+      arr.push(i);
+      while (i !== b) {
+        i = i === 12 ? 1 : i + 1;
+        arr.push(i);
+      }
+      return arr;
+    };
+
+    // Detect excluded months/seasons (negative phrasing)
+    const excluded = new Set();
+    // "skip [month/season]" / "no service in [...]" / "closed [...]"
+    const exclRegex = /(?:skip|no service in|no service during|closed (?:in|during|for)|no (?:scheduling|stops|deliveries) in|avoid|except in|except during)\s+([a-z,&\s\-–\/]+?)(?=[.;!?]|$|,(?=\s*(?:every|bi|weekly|month|active|open|every other|tuesday|monday|wednesday|thursday|friday|saturday|sunday)))/g;
+    let exclMatch;
+    while ((exclMatch = exclRegex.exec(s)) !== null) {
+      const chunk = exclMatch[1];
+      for (const [name, n] of Object.entries(monthMap)) {
+        if (new RegExp('\\b' + name + '\\b').test(chunk)) excluded.add(n);
+      }
+      for (const [name, months] of Object.entries(seasonMap)) {
+        if (new RegExp('\\b' + name + '\\b').test(chunk)) months.forEach(m => excluded.add(m));
+      }
+      // month-range inside the chunk: "Jan-Feb", "December through February"
+      const rng = chunk.match(/(\w+)\s*(?:to|through|thru|until|[-\u2013\u2014])\s*(\w+)/);
+      if (rng) {
+        const a = monthMap[rng[1]], b = monthMap[rng[2]];
+        if (a && b) expandRange(a, b).forEach(m => excluded.add(m));
+      }
+    }
+
+    // Detect positive month/season constraints (active range or active seasons)
+    const positive = new Set();
+    // Direct month range: "May through September", "May-Sept", "May to Sep only"
+    const monthRangeRegex = /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s*(?:to|through|thru|until|[-\u2013\u2014])\s*(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/g;
+    let rangeMatch;
+    while ((rangeMatch = monthRangeRegex.exec(s)) !== null) {
+      const a = monthMap[rangeMatch[1]];
+      const b = monthMap[rangeMatch[2]];
+      if (a && b) expandRange(a, b).forEach(m => positive.add(m));
+    }
+    // "Summer only", "spring and summer", "active spring + fall"
+    // Trigger when 'only' / 'active' / 'open' qualifier is present, or when a
+    // season name appears unambiguously.
+    const seasonOnlyRegex = /\b(spring|summer|fall|autumn|winter)\b/g;
+    const hasOnly = /\b(only|active|open|available)\b/.test(s);
+    const negCtx  = /(skip|no service|closed|avoid|except)/.test(s);
+    if (hasOnly && !negCtx) {
+      let m;
+      while ((m = seasonOnlyRegex.exec(s)) !== null) {
+        const months = seasonMap[m[1]];
+        if (months) months.forEach(mn => positive.add(mn));
+      }
+    }
+    // "May only" / "active July and August" — individual months with positive qualifier
+    if (hasOnly && !negCtx) {
+      for (const [name, n] of Object.entries(monthMap)) {
+        if (new RegExp('\\b' + name + '\\b(?:[,\\s]*(?:and|&|or|,)[\\s,]*\\w+)*\\s*(?:only|active|open|available)').test(s)
+            || new RegExp('(?:only|active|open|available)[^.]*?\\b' + name + '\\b').test(s)) {
+          positive.add(n);
+        }
+      }
+    }
+
+    // Resolve activeMonths from positive/excluded sets.
+    if (positive.size > 0) {
+      // If user said both "May-Sep only" AND "skip July", we honor both:
+      // positive set wins as the base, exclusions subtract from it.
+      out.activeMonths = [...positive].filter(m => !excluded.has(m)).sort((a,b)=>a-b);
+    } else if (excluded.size > 0) {
+      // Only exclusions specified: active = all 12 months minus the excluded
+      const all = [1,2,3,4,5,6,7,8,9,10,11,12];
+      out.activeMonths = all.filter(m => !excluded.has(m));
+    }
+    // Sanity: if activeMonths somehow ended up empty, drop it so the
+    // scheduler defaults to "all months" rather than "never schedule"
+    if (out.activeMonths && out.activeMonths.length === 0) out.activeMonths = null;
+
+    if (!out.dows.length && !out.intervalDays && !out.nthOfMonth && !out.activeMonths) return null;
     return out;
   }
 
@@ -4298,7 +4457,9 @@ window.CRM = (function(){
     }
     // Detect "do not auto-schedule" opt-out phrases. These prevent the
     // auto-scheduler from ever generating a proposal for this stop.
-    if (/\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|call ahead|by request|on request|appointment only|as needed)\b/i.test(text)) {
+    // Note: we deliberately avoid adjectives like "flexible" since they
+    // commonly appear in legitimate preferences (e.g., "Tuesday 9am, flexible").
+    if (/\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|manual\s*sched|call ahead|call first|call before|text ahead|text first|text before|by request|on request|upon request|appointment only|by appointment|as needed|seasonal only|closed for season|inactive|on hold|paused|do not contact|dnc|no contact)\b/i.test(text)) {
       return '<span style="color:var(--amber);font-weight:700"><i class="ti ti-hand-stop"></i> AUTO-SCHEDULER WILL SKIP</span> — this stop will not be auto-scheduled. Schedule manually only.';
     }
     const p = parsePreference(text);
@@ -4312,25 +4473,39 @@ window.CRM = (function(){
       parts.push('Days: <strong>' + p.dows.map(d => dayNames[d]).join(', ') + '</strong>');
     }
     if (p.nthOfMonth && p.nthOfMonth.length) {
-      const ord = { 1:'1st', 2:'2nd', 3:'3rd', 4:'4th' };
+      const ord = { 1:'1st', 2:'2nd', 3:'3rd', 4:'4th', 5:'5th', '-1':'Last' };
       parts.push('Of the month: <strong>' + p.nthOfMonth.map(n => ord[n] || n).join(', ') + '</strong>');
     }
     if (p.intervalDays) {
       const cadenceLabel = (
         p.intervalDays === 7 ? 'weekly' :
+        p.intervalDays === 10 ? 'three times a month (~every 10 days)' :
         p.intervalDays === 14 ? 'every 2 weeks' :
         p.intervalDays === 21 ? 'every 3 weeks' :
         p.intervalDays === 28 ? 'monthly' :
+        p.intervalDays === 35 ? 'every 5 weeks' :
         p.intervalDays === 42 ? 'every 6 weeks' :
+        p.intervalDays === 49 ? 'every 7 weeks' :
         p.intervalDays === 56 ? 'every 8 weeks' :
+        p.intervalDays === 70 ? 'every 10 weeks' :
         p.intervalDays === 90 ? 'quarterly' :
-        `every ${p.intervalDays / 7} weeks`
+        `every ${(p.intervalDays / 7).toFixed(0)} weeks`
       );
       parts.push('Cadence: <strong>' + cadenceLabel + '</strong>');
     }
     if (p.startTime && p.endTime) {
       const fmt = t => { const [h,m] = t.split(':'); const hh = parseInt(h,10); const ap = hh>=12?'PM':'AM'; return ((hh%12)||12) + ':' + m + ' ' + ap; };
       parts.push('Time: <strong>' + fmt(p.startTime) + ' \u2013 ' + fmt(p.endTime) + '</strong>');
+    }
+    if (p.activeMonths && p.activeMonths.length && p.activeMonths.length < 12) {
+      const monthNames = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      // Detect contiguous ranges for friendlier display, e.g. "May–Sep"
+      const sorted = [...p.activeMonths].sort((a,b)=>a-b);
+      const isContiguous = sorted.every((m, i) => i === 0 || m === sorted[i-1] + 1);
+      const display = isContiguous && sorted.length > 2
+        ? `${monthNames[sorted[0]]}\u2013${monthNames[sorted[sorted.length-1]]}`
+        : sorted.map(m => monthNames[m]).join(', ');
+      parts.push('Active months: <strong>' + display + '</strong>');
     }
     return '<span style="color:var(--green);font-weight:700"><i class="ti ti-check"></i> Parsed:</span> ' + parts.join(' &middot; ');
   }
@@ -4369,7 +4544,7 @@ window.CRM = (function(){
       // Respect opt-out: customers whose scheduling_preference contains
       // "no auto-schedule", "manual only", "by request" etc. are skipped.
       // Same detection used by previewPreference for the live preview.
-      if (loc.scheduling_preference && /\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|call ahead|by request|on request|appointment only|as needed)\b/i.test(loc.scheduling_preference)) {
+      if (loc.scheduling_preference && /\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|manual\s*sched|call ahead|call first|call before|text ahead|text first|text before|by request|on request|upon request|appointment only|by appointment|as needed|seasonal only|closed for season|inactive|on hold|paused|do not contact|dnc|no contact)\b/i.test(loc.scheduling_preference)) {
         continue;
       }
 
@@ -4378,6 +4553,18 @@ window.CRM = (function(){
 
       const pattern = computePattern(loc.id);
       const pref = parsePreference(loc.scheduling_preference);
+
+      // Seasonal opt-out: if the preference specifies active months and the
+      // target week falls entirely outside those months, skip this customer.
+      // The week is "outside" only if NEITHER weekStart NOR weekEnd lands in
+      // an active month — that way a week that straddles the boundary still
+      // gets a proposal placed on the in-season day.
+      if (pref?.activeMonths) {
+        const startMonth = weekStart.getMonth() + 1; // 1-12
+        const endMonth   = weekEnd.getMonth() + 1;
+        const inSeason = pref.activeMonths.includes(startMonth) || pref.activeMonths.includes(endMonth);
+        if (!inSeason) continue;
+      }
 
       // Determine cadence
       let cadenceDays = null;
@@ -4429,6 +4616,14 @@ window.CRM = (function(){
 
       const offset = (chosenDow === 0 ? 7 : chosenDow) - 1; // Mon=0..Sun=6
       const proposedDate = addDays(weekStart, offset);
+
+      // Seasonal opt-out at the per-day level. The earlier check covered
+      // weeks entirely outside active months; this catches the boundary case
+      // where e.g. May 31 (Sat) starts a "Jun-Aug only" customer's window —
+      // we want the proposal on Mon Jun 2, not Sat May 31.
+      if (pref?.activeMonths && !pref.activeMonths.includes(proposedDate.getMonth() + 1)) {
+        continue;
+      }
 
       // Pick time window
       let startTime, endTime, timeSource;
