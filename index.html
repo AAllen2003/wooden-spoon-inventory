@@ -649,6 +649,38 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
         </div>
       </div>
       <div class="acc-section" data-admin-only>
+        <div class="acc-header" onclick="toggleAcc('acc-tier-thresholds')"><div class="acc-header-left"><span class="acc-icon">&#x1F3AF;</span><div><div class="acc-title">Customer Tier Thresholds</div><div class="acc-subtitle">Auto-tier customers by average revenue per visit</div></div></div><span class="acc-chevron" id="chv-acc-tier-thresholds">&#x25BC;</span></div>
+        <div class="acc-body" id="acc-tier-thresholds">
+          <div style="padding-top:14px">
+            <p style="font-size:12px;color:var(--text3);margin-bottom:14px;font-style:italic">
+              Customer tier is computed from the all-time average revenue per visit. Set the thresholds below; the change takes effect at the next nightly recompute (3:00 AM Central). Customers with zero visits stay <strong>pending</strong>.
+            </p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+              <div>
+                <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">High tier ≥</label>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <span style="font-weight:700;color:var(--text3)">$</span>
+                  <input type="number" id="tier-high-threshold" min="0" step="50" value="1800" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+                </div>
+                <div style="font-size:10px;color:var(--text3);margin-top:4px">avg per visit</div>
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Medium tier ≥</label>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <span style="font-weight:700;color:var(--text3)">$</span>
+                  <input type="number" id="tier-medium-threshold" min="0" step="50" value="800" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+                </div>
+                <div style="font-size:10px;color:var(--text3);margin-top:4px">avg per visit (anything below = low)</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <button class="btn btn-sm btn-primary" onclick="saveTierThresholds()"><i class="ti ti-device-floppy"></i> Save Thresholds</button>
+              <span id="tier-thresholds-status" style="font-size:11px;color:var(--text3);font-style:italic"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="acc-section" data-admin-only>
         <div class="acc-header" onclick="toggleAcc('acc-locations')"><div class="acc-header-left"><span class="acc-icon">&#x1F4CD;</span><div><div class="acc-title">Square Location IDs</div><div class="acc-subtitle">Truck 1 &amp; Truck 2 configured</div></div></div><span class="acc-chevron" id="chv-acc-locations">&#x25BC;</span></div>
         <div class="acc-body" id="acc-locations">
           <div style="padding-top:14px">
@@ -2140,6 +2172,52 @@ function renderSettings(){
   if (cutStatus) cutStatus.textContent = cut.cutover_date
     ? `Active: sales on or before ${cut.cutover_date} query location ${cut.legacy_location_id}.`
     : 'No cutover active — each truck queries its own location for all dates.';
+  // Load current tier thresholds into the inputs
+  loadTierThresholds();
+}
+
+// Load tier thresholds from app_settings and populate the inputs
+async function loadTierThresholds() {
+  if (!sb) return;
+  try {
+    const { data } = await sb.from('app_settings').select('value').eq('key', 'tier_thresholds').maybeSingle();
+    let raw = data?.value;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e){ raw = {}; } }
+    const hi = (raw && raw.high)   ?? 1800;
+    const md = (raw && raw.medium) ?? 800;
+    const hiEl = document.getElementById('tier-high-threshold');
+    const mdEl = document.getElementById('tier-medium-threshold');
+    if (hiEl && document.activeElement !== hiEl) hiEl.value = hi;
+    if (mdEl && document.activeElement !== mdEl) mdEl.value = md;
+  } catch(e) { console.warn('[tier] load failed:', e); }
+}
+
+async function saveTierThresholds() {
+  const status = document.getElementById('tier-thresholds-status');
+  const hi = Number(document.getElementById('tier-high-threshold')?.value);
+  const md = Number(document.getElementById('tier-medium-threshold')?.value);
+  if (!(hi > 0) || !(md > 0)) {
+    if (status) { status.textContent = 'Both thresholds must be positive numbers.'; status.style.color = 'var(--red)'; }
+    return;
+  }
+  if (md >= hi) {
+    if (status) { status.textContent = 'Medium threshold must be less than high threshold.'; status.style.color = 'var(--red)'; }
+    return;
+  }
+  try {
+    const { error } = await sb.from('app_settings').upsert({
+      key: 'tier_thresholds',
+      value: { high: hi, medium: md },
+    });
+    if (error) throw error;
+    if (status) {
+      status.textContent = `Saved. Next nightly recompute (3:00 AM Central) will apply: ≥$${hi.toLocaleString()} = High, $${md.toLocaleString()}-$${(hi-1).toLocaleString()} = Medium, below $${md.toLocaleString()} = Low.`;
+      status.style.color = 'var(--green)';
+    }
+  } catch (e) {
+    console.error('saveTierThresholds:', e);
+    if (status) { status.textContent = 'Save failed: ' + (e.message || e); status.style.color = 'var(--red)'; }
+  }
 }
 
 async function toggleManualVisitEntry(on) {
@@ -3329,10 +3407,11 @@ window.CRM = (function(){
           </label>
         </div>
         <div style="margin-bottom:10px">
-          <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Tier</label>
+          <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Tier <span style="color:var(--amber);text-transform:none;letter-spacing:0;font-weight:400;font-style:italic">(auto-computed)</span></label>
           <select id="f-tier" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
             ${['high','medium','low','pending'].map(t => `<option value="${t}" ${l.tier===t?'selected':''}>${tierLabel(t)}</option>`).join('')}
           </select>
+          <div style="font-size:10px;color:var(--text3);margin-top:4px;font-style:italic">Tier is recomputed nightly from this customer's average revenue per visit. Manual changes here will be overwritten at the next 3:00 AM Central recompute.</div>
         </div>
         <div style="margin-bottom:10px">
           <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Status</label>
