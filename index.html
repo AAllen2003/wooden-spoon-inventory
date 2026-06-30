@@ -3852,21 +3852,84 @@ window.CRM = (function(){
     } catch (e) { alert('Failed: '+e.message); }
   }
 
+  // ─── Filter helper for the Add Stop searchable picker ────────────
+  // Filters the customer list by the user's typed text and renders a
+  // dropdown of matches below the input. Called from oninput/onfocus.
+  function _filterAddStopLocations(query) {
+    const dropdown = document.getElementById('add-loc-dropdown');
+    if (!dropdown) return;
+    const q = (query || '').trim().toLowerCase();
+    const all = state.locations
+      .filter(l => l.status === 'active')
+      .sort((a,b) => a.location_name.localeCompare(b.location_name));
+    const matches = q
+      ? all.filter(l => l.location_name.toLowerCase().includes(q)).slice(0, 30)
+      : all.slice(0, 30); // empty query shows top 30 alphabetically
+    if (!matches.length) {
+      dropdown.style.display = 'block';
+      dropdown.innerHTML = '<div style="padding:10px;color:var(--text3);font-style:italic;font-size:12px">No customers match</div>';
+      return;
+    }
+    dropdown.style.display = 'block';
+    dropdown.innerHTML = matches.map(l => {
+      const addr = l.full_address ? `<div style="font-size:10px;color:var(--text3)">${esc(l.full_address)}</div>` : '';
+      const safeName = String(l.location_name).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      return `<div onclick="CRM._pickAddStopLocation('${l.id}', '${safeName}')" style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--bg2);font-size:13px" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">${esc(l.location_name)}${addr}</div>`;
+    }).join('');
+  }
+
+  function _pickAddStopLocation(id, name) {
+    const search = document.getElementById('add-loc-search');
+    const hidden = document.getElementById('add-loc');
+    const dropdown = document.getElementById('add-loc-dropdown');
+    if (search) search.value = name;
+    if (hidden) hidden.value = id;
+    if (dropdown) dropdown.style.display = 'none';
+  }
+
+  // Close the dropdown when clicking outside (one global listener installed once)
+  if (!window._addStopOutsideHandlerInstalled) {
+    document.addEventListener('click', (e) => {
+      const dropdown = document.getElementById('add-loc-dropdown');
+      const search   = document.getElementById('add-loc-search');
+      if (!dropdown || !search) return;
+      if (e.target === search || dropdown.contains(e.target)) return;
+      dropdown.style.display = 'none';
+    });
+    window._addStopOutsideHandlerInstalled = true;
+  }
+
   function openAddStop(locIdPreset) {
     const onMobile = typeof isMob === 'function' && isMob();
     const today = isoDate(new Date());
-    const locOptions = state.locations
+    const activeLocations = state.locations
       .filter(l => l.status === 'active')
-      .sort((a,b) => a.location_name.localeCompare(b.location_name))
-      .map(l => `<option value="${l.id}" ${locIdPreset===l.id?'selected':''}>${esc(l.location_name)}</option>`)
-      .join('');
+      .sort((a,b) => a.location_name.localeCompare(b.location_name));
+    // Pre-fill the search box if we have a preset location
+    const preset = locIdPreset ? activeLocations.find(l => l.id === locIdPreset) : null;
+    const presetName = preset ? preset.location_name : '';
+    const presetId   = preset ? preset.id : '';
+    // Custom searchable picker — replaces the old <select> dropdown so the
+    // user can type to filter customers and see what they've typed.
+    const locPickerHtml = `
+      <div style="margin-bottom:10px;position:relative">
+        <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Location</label>
+        <input type="text" id="add-loc-search" autocomplete="off"
+          value="${esc(presetName)}"
+          placeholder="Type to search customers..."
+          oninput="CRM._filterAddStopLocations(this.value)"
+          onfocus="CRM._filterAddStopLocations(this.value)"
+          style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+        <input type="hidden" id="add-loc" value="${esc(presetId)}">
+        <div id="add-loc-dropdown" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:100;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 4px 12px rgba(0,0,0,.15);max-height:240px;overflow-y:auto;margin-top:2px"></div>
+      </div>`;
     const ruleOpts = ['one-time','weekly','biweekly','every_6_weeks','quarterly','manual_only','locked'].map(r=>`<option value="${r}">${r}</option>`).join('');
     // Two-column on desktop, single-column on mobile so fields don't squish
     const colsStyle = onMobile ? 'display:flex;flex-direction:column' : 'display:grid;grid-template-columns:1fr 1fr;gap:14px';
     const formInner = `
       <div style="${colsStyle}">
         <div>
-          ${selField('Location','add-loc',locOptions)}
+          ${locPickerHtml}
           ${editField('Date','add-date',today)}
           ${editField('Notes','add-notes','',true)}
         </div>
@@ -8048,6 +8111,7 @@ window.CRM = (function(){
     openProfile, setProfileTab, startEdit, cancelEdit, saveEdit,
     renderSchedule, shiftWeek, setScheduleTruck, setScheduleView, pickScheduleDate, reassignStopTruck, deleteStop,
     openAddStop, saveNewStop, scheduleStopFor, openEditStop, saveEditStop, closeAddStop,
+    _filterAddStopLocations, _pickAddStopLocation,
     openAddCustomer, saveNewCustomer, closeAddCustomer,
     renderForecast,
     // Auto-scheduler
