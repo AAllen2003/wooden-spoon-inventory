@@ -2537,6 +2537,7 @@ function mobShow(sec,btn){
   }
 }
 
+let _lastMobSection = null;
 function mobRender(){
   const el=document.getElementById('mob-body');
   if(!el)return;
@@ -2564,7 +2565,15 @@ function mobRender(){
   }
   else if(mobSection==='crm-forecast'){el.innerHTML='<div id="crm-forecast-mob"></div>';CRM.renderMobForecast();}
   else if(mobSection==='crm-relog'){el.innerHTML='<div id="crm-relog-mob"></div>';CRM.renderRelog().then(()=>CRM.renderMobRelog());}
-  el.scrollTop=0;
+  // Only reset scroll when the user actually navigated to a different section.
+  // Without this guard, the periodic 45s refresh and realtime subscriptions
+  // (which fire whenever ANY user writes to inventory, sales, par, etc.)
+  // would kick the scroll back to the top mid-scroll — extra jarring when
+  // two people are using the app simultaneously.
+  if (_lastMobSection !== mobSection) {
+    el.scrollTop = 0;
+    _lastMobSection = mobSection;
+  }
   // Update alert badge (only present when the strip is showing the inventory category)
   const b=document.getElementById('mob-alert-badge');
   if(b){const n=S.alerts.length;b.style.display=n?'block':'none';b.textContent=n;}
