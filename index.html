@@ -1788,9 +1788,59 @@ function renderOverview(){
   document.getElementById('loc-summary').innerHTML=LOCS.map((loc,i)=>{let lLow=0,lOut=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;if(q===0&&p>0)lOut++;else if(p>0&&q<=p)lLow++;});const st=lOut>0?'<span class="stock-out">Action needed</span>':lLow>0?'<span class="stock-low">Low stock</span>':'<span class="stock-ok">All good</span>';return`<tr style="cursor:pointer" onclick="openLocDetail('${loc}')"><td><span class="loc-chip ${LC[i]}">${loc}</span></td><td>${S.items.length}</td><td>${lLow||'—'}</td><td>${lOut||'—'}</td><td>${st}</td><td style="color:var(--text3);font-size:11px;font-weight:700">View &rarr;</td></tr>`;}).join('');
 }
 function renderLocations(){const grid=document.getElementById('loc-grid');if(!grid)return;grid.innerHTML=LOCS.map((loc,i)=>{let total=0,low=0,out=0,value=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[loc]||0,p=(S.par[item]||{})[loc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});const sc=out>0?'var(--red)':low>0?'var(--amber)':'var(--green)';const st=out>0?out+' out of stock':low>0?low+' below par':'All good';return`<div class="loc-card" onclick="openLocDetail('${loc}')"><div class="loc-card-top"></div><div class="loc-card-name">${loc}</div><div class="loc-card-sub" style="color:${sc}">${st}</div><div class="loc-card-stats"><div><div class="loc-stat-val">${total}</div><div class="loc-stat-label">Units</div></div><div><div class="loc-stat-val">$${value.toFixed(0)}</div><div class="loc-stat-label">Value</div></div></div><div class="loc-card-arrow"><i class="ti ti-arrow-right"></i></div></div>`;}).join('');}
-function renderLocDetail(){if(!currentLoc)return;const li=LOCS.indexOf(currentLoc);const filter=document.getElementById('loc-detail-cat-filter')?.value||'';const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;let total=0,low=0,out=0,value=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[currentLoc]||0,p=(S.par[item]||{})[currentLoc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});document.getElementById('loc-detail-header').innerHTML=`<div class="loc-detail-icon">${LI[li]}</div><div style="flex:1"><div class="loc-detail-name">${currentLoc}</div><div class="loc-detail-stats"><div class="loc-detail-stat"><strong>${total}</strong> units</div><div class="loc-detail-stat"><strong>$${value.toFixed(2)}</strong> value</div><div class="loc-detail-stat"><strong>${out}</strong> out of stock</div><div class="loc-detail-stat"><strong>${low}</strong> below par</div></div></div><button class="btn btn-sm" style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.2);color:#fff" onclick="exportLocCSV()"><i class="ti ti-download"></i> Export</button>`;document.getElementById('loc-detail-title').textContent=currentLoc+' Inventory';document.getElementById('loc-detail-table').innerHTML=items.map(item=>{const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0,cat=S.categories[item]||'',price=S.prices[item]||0;const cls=qty===0?'stock-out':par>0&&qty<=par?'stock-low':'stock-ok';const st=qty===0?'Out of stock':par>0&&qty<=par?`Below par (${qty}/${par})`:'In stock';const pct=par>0?Math.min(100,Math.round((qty/par)*100)):100;const bc=qty===0?'var(--red)':par>0&&qty<=par?'var(--amber)':'var(--green)';return`<tr><td style="font-weight:700">${item}</td><td><span class="cat-chip ${cat==='Frozen Foods'?'cc-food':'cc-dessert'}">${cat==='Frozen Foods'?'Food':'Dessert'}</span></td><td style="font-weight:700;color:var(--green)">${fmt(price)}</td><td style="text-align:center"><input type="number" class="inv-input" value="${qty}" min="0" onchange="updateInventory('${esc(item)}','${currentLoc}',this.value)"></td><td style="text-align:center;color:var(--text3);font-weight:700">${par||'—'}</td><td><span class="${cls}">${st}</span>${par>0?`<div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${bc}"></div></div>`:''}</td></tr>`;}).join('');applyPermissions();}
+function renderLocDetail(){
+  if(!currentLoc)return;
+  // Snapshot the currently-focused inv input (if any) so re-renders triggered
+  // by the periodic refresh or realtime events don't kick the user out of the
+  // input they were about to edit.
+  const active = document.activeElement;
+  const activeIsInvInput = active && active.classList && active.classList.contains('inv-input') && active.closest('#loc-detail-table');
+  const focusedItem = activeIsInvInput ? active.dataset.item : null;
+  const focusedValue = activeIsInvInput ? active.value : null;
+  const focusedSelStart = activeIsInvInput ? active.selectionStart : null;
+  const focusedSelEnd = activeIsInvInput ? active.selectionEnd : null;
+
+  const li=LOCS.indexOf(currentLoc);const filter=document.getElementById('loc-detail-cat-filter')?.value||'';const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;let total=0,low=0,out=0,value=0;S.items.forEach(item=>{const q=(S.inventory[item]||{})[currentLoc]||0,p=(S.par[item]||{})[currentLoc]||0;total+=q;value+=q*(S.prices[item]||0);if(q===0&&p>0)out++;else if(p>0&&q<=p)low++;});document.getElementById('loc-detail-header').innerHTML=`<div class="loc-detail-icon">${LI[li]}</div><div style="flex:1"><div class="loc-detail-name">${currentLoc}</div><div class="loc-detail-stats"><div class="loc-detail-stat"><strong>${total}</strong> units</div><div class="loc-detail-stat"><strong>$${value.toFixed(2)}</strong> value</div><div class="loc-detail-stat"><strong>${out}</strong> out of stock</div><div class="loc-detail-stat"><strong>${low}</strong> below par</div></div></div><button class="btn btn-sm" style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.2);color:#fff" onclick="exportLocCSV()"><i class="ti ti-download"></i> Export</button>`;document.getElementById('loc-detail-title').textContent=currentLoc+' Inventory';document.getElementById('loc-detail-table').innerHTML=items.map(item=>{const qty=(S.inventory[item]||{})[currentLoc]||0,par=(S.par[item]||{})[currentLoc]||0,cat=S.categories[item]||'',price=S.prices[item]||0;const cls=qty===0?'stock-out':par>0&&qty<=par?'stock-low':'stock-ok';const st=qty===0?'Out of stock':par>0&&qty<=par?`Below par (${qty}/${par})`:'In stock';const pct=par>0?Math.min(100,Math.round((qty/par)*100)):100;const bc=qty===0?'var(--red)':par>0&&qty<=par?'var(--amber)':'var(--green)';return`<tr><td style="font-weight:700">${item}</td><td><span class="cat-chip ${cat==='Frozen Foods'?'cc-food':'cc-dessert'}">${cat==='Frozen Foods'?'Food':'Dessert'}</span></td><td style="font-weight:700;color:var(--green)">${fmt(price)}</td><td style="text-align:center"><input type="number" class="inv-input" data-item="${esc(item)}" value="${qty}" min="0" onchange="updateInventory('${esc(item)}','${currentLoc}',this.value)"></td><td style="text-align:center;color:var(--text3);font-weight:700">${par||'—'}</td><td><span class="${cls}">${st}</span>${par>0?`<div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${bc}"></div></div>`:''}</td></tr>`;}).join('');applyPermissions();
+
+  // Restore focus + value + caret position to the input the user was editing.
+  // Without this, any refresh mid-edit yanks the focus back to nowhere and
+  // the user has to keep re-tapping the box (the reported "have to click
+  // 3 times" bug).
+  if (focusedItem) {
+    const restored = document.querySelector(`#loc-detail-table input.inv-input[data-item="${CSS.escape(focusedItem)}"]`);
+    if (restored) {
+      restored.value = focusedValue; // keep whatever they had typed, not the DB value
+      restored.focus();
+      try {
+        if (focusedSelStart !== null) restored.setSelectionRange(focusedSelStart, focusedSelEnd);
+      } catch(e) { /* number inputs don't always support setSelectionRange in all browsers */ }
+    }
+  }
+}
 function renderInventory(){const filter=document.getElementById('inv-cat-filter')?.value||'';const items=filter?S.items.filter(i=>S.categories[i]===filter):S.items;document.getElementById('inv-table').innerHTML=items.map(item=>{const cols=LOCS.map(loc=>{const qty=(S.inventory[item]||{})[loc]||0,par=(S.par[item]||{})[loc]||0;const cls=qty===0?'stock-out':par>0&&qty<=par?'stock-low':'stock-ok';const pn=par>0?`<span class="qty-par">par ${par}</span>`:'';return`<td class="qty-cell"><span class="${cls}">${qty}</span>${pn}</td>`;}).join('');const total=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0),cat=S.categories[item]||'';return`<tr><td style="font-weight:700">${item}</td><td><span class="cat-chip ${cat==='Frozen Foods'?'cc-food':'cc-dessert'}">${cat==='Frozen Foods'?'Food':'Dessert'}</span></td><td style="font-weight:700;color:var(--green)">${fmt(S.prices[item])}</td>${cols}<td class="qty-cell" style="font-weight:700">${total}</td></tr>`;}).join('');}
-function renderPar(){document.getElementById('par-table-body').innerHTML=S.items.map(item=>{const cols=LOCS.map(loc=>`<td class="par-cell"><input type="number" class="par-input" id="par-${sl(item)}-${sl(loc)}" value="${(S.par[item]||{})[loc]||0}" min="0" onchange="savePar1('${esc(item)}','${loc}',this.value)"></td>`).join('');return`<tr><td style="font-weight:700;white-space:nowrap;padding-right:16px">${item}</td>${cols}</tr>`;}).join('');}
+function renderPar(){
+  // Same focus-preservation pattern as renderLocDetail — without this, the
+  // periodic refresh yanks the user out of any par input they're editing.
+  const active = document.activeElement;
+  const activeIsParInput = active && active.classList && active.classList.contains('par-input') && active.id.startsWith('par-');
+  const focusedId = activeIsParInput ? active.id : null;
+  const focusedValue = activeIsParInput ? active.value : null;
+  const focusedSelStart = activeIsParInput ? active.selectionStart : null;
+  const focusedSelEnd = activeIsParInput ? active.selectionEnd : null;
+
+  document.getElementById('par-table-body').innerHTML=S.items.map(item=>{const cols=LOCS.map(loc=>`<td class="par-cell"><input type="number" class="par-input" id="par-${sl(item)}-${sl(loc)}" value="${(S.par[item]||{})[loc]||0}" min="0" onchange="savePar1('${esc(item)}','${loc}',this.value)"></td>`).join('');return`<tr><td style="font-weight:700;white-space:nowrap;padding-right:16px">${item}</td>${cols}</tr>`;}).join('');
+
+  if (focusedId) {
+    const restored = document.getElementById(focusedId);
+    if (restored) {
+      restored.value = focusedValue;
+      restored.focus();
+      try {
+        if (focusedSelStart !== null) restored.setSelectionRange(focusedSelStart, focusedSelEnd);
+      } catch(e) {}
+    }
+  }
+}
 function renderAlerts(){document.getElementById('alerts-list').innerHTML=S.alerts.length?S.alerts.map(a=>{const li=LOCS.indexOf(a.loc),cls=a.type==='out'?'danger':'warn';return`<div class="alert-bar ${cls}"><div class="alert-body"><div class="alert-title">${a.type==='out'?'Out of stock':'Below par'}: ${a.item} @ <span class="loc-chip ${LC[li]}">${a.loc}</span></div><div class="alert-sub">Current: ${a.qty} &middot; Par: ${a.par} &middot; ${a.time}</div></div><button class="alert-dismiss" onclick="dismissAlert('${esc(a.key)}')">&#x00D7;</button></div>`;}).join(''):'<div class="empty-state"><i class="ti ti-circle-check" style="font-size:48px;display:block;margin-bottom:12px;color:var(--green)"></i>All locations are at or above par</div>';}
 function renderTransfers(){
   const itemSel = document.getElementById('xfr-item');
