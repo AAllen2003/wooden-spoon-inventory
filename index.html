@@ -1500,7 +1500,68 @@ function esc(s){return String(s).replace(/'/g,"\\'");}
 function fmt(p){return p!=null?'$'+Number(p).toFixed(2):'--';}
 
 // ── RENDER ────────────────────────────────────────────────────────
-function renderAll(){renderOverview();renderLocations();if(currentLoc)renderLocDetail();renderInventory();renderPar();renderAlerts();renderTransfers();renderPickList();renderProduction();renderSales();renderSettings();if(isMob()){try{mobRender();}catch(e){console.error('mobRender error:',e);}}applyPermissions();}
+// ── FOCUS PRESERVATION HELPER ────────────────────────────────────────
+// Wraps a render function so that if the user is actively typing in an
+// input/textarea/select at render time, we snapshot their focus + value +
+// caret and restore them after the DOM update. Without this, the periodic
+// 45s refresh (and realtime events from other users) yank focus and destroy
+// unsaved keystrokes across every editable field in the app.
+//
+// Strategy: identify the focused element by a composite key (id + name +
+// data-item), snapshot its state, run the render, then look for a matching
+// element in the fresh DOM and restore state. Silent no-op if no match.
+function withFocusPreservation(renderFn) {
+  return function(...args) {
+    const active = document.activeElement;
+    let snap = null;
+    if (active && active !== document.body && active !== document.documentElement) {
+      const tag = active.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+        snap = {
+          id:      active.id || null,
+          name:    active.getAttribute('name') || null,
+          dataItem:active.dataset ? (active.dataset.item || null) : null,
+          className: active.className || null,
+          tagName: tag,
+          value:   active.value,
+          selStart: (tag !== 'SELECT') ? active.selectionStart : null,
+          selEnd:   (tag !== 'SELECT') ? active.selectionEnd   : null,
+        };
+      }
+    }
+    const result = renderFn.apply(this, args);
+    if (snap) {
+      // Find the new element that matches the snapshot. Try id first (most
+      // reliable), fall back to data-item + class, then to name.
+      let el = null;
+      if (snap.id) el = document.getElementById(snap.id);
+      if (!el && snap.dataItem && snap.className) {
+        // Escape class list for querySelector
+        const primaryClass = snap.className.trim().split(/\s+/)[0];
+        try {
+          el = document.querySelector(`${snap.tagName.toLowerCase()}.${primaryClass}[data-item="${CSS.escape(snap.dataItem)}"]`);
+        } catch (e) {}
+      }
+      if (!el && snap.name) {
+        try { el = document.querySelector(`${snap.tagName.toLowerCase()}[name="${CSS.escape(snap.name)}"]`); } catch(e) {}
+      }
+      if (el) {
+        // Only restore VALUE if it differs from what re-render put there —
+        // meaning the user had typed something we don't want to lose.
+        // (If the render set the same value, don't touch it.)
+        if (el.value !== snap.value) el.value = snap.value;
+        try { el.focus(); } catch(e) {}
+        try {
+          if (snap.selStart !== null && snap.selEnd !== null) el.setSelectionRange(snap.selStart, snap.selEnd);
+        } catch(e) {}
+      }
+    }
+    return result;
+  };
+}
+
+function _renderAllRaw(){renderOverview();renderLocations();if(currentLoc)renderLocDetail();renderInventory();renderPar();renderAlerts();renderTransfers();renderPickList();renderProduction();renderSales();renderSettings();if(isMob()){try{mobRender();}catch(e){console.error('mobRender error:',e);}}applyPermissions();}
+const renderAll = withFocusPreservation(_renderAllRaw);
 
 // Use actual revenue from Square if available (covers WooCommerce items with no catalog price)
 
@@ -2588,7 +2649,7 @@ function mobShow(sec,btn){
 }
 
 let _lastMobSection = null;
-function mobRender(){
+function _mobRenderRaw(){
   const el=document.getElementById('mob-body');
   if(!el)return;
   if(mobSection==='home')el.innerHTML=mobHomeHTML();
@@ -2628,6 +2689,7 @@ function mobRender(){
   const b=document.getElementById('mob-alert-badge');
   if(b){const n=S.alerts.length;b.style.display=n?'block':'none';b.textContent=n;}
 }
+const mobRender = withFocusPreservation(_mobRenderRaw);
 
 // Home landing screen — three big tappable category cards
 function mobHomeHTML(){
@@ -3335,6 +3397,18 @@ window.CRM = (function(){
   function renderProfile() {
     const root = document.getElementById('crm-profile-content');
     if (!root) return;
+
+    // If the user is currently in the edit form OR the Add Customer form,
+    // DO NOT re-render — that would wipe out whatever they've typed. This is
+    // triggered both by the periodic 45s refresh and by realtime events (any
+    // other user editing anything in the app). Rest of the app re-renders
+    // normally; only this section is frozen during active edit.
+    // Detect either form by presence of its key inputs.
+    if ((state.profileEditing && root.querySelector('#f-sched')) ||
+        root.querySelector('#new-name')) {
+      return;
+    }
+
     const l = state.locations.find(x => x.id === state.currentLocId);
     if (!l) { root.innerHTML = '<div class="card">Location not found.</div>'; return; }
 
@@ -5650,6 +5724,11 @@ window.CRM = (function(){
   function renderMobProfile(){
     const root = document.getElementById('crm-profile-mob');
     if(!root) return;
+
+    // Same guard as renderProfile — don't wipe the user's typing while they
+    // have the edit form open.
+    if (state.profileEditing && root.querySelector('#f-sched')) return;
+
     const l = state.locations.find(x=>x.id===state.currentLocId);
     if(!l){ root.innerHTML='<div>Not found.</div>'; return; }
     // Live metrics computed from this customer's visits (same logic as desktop)
