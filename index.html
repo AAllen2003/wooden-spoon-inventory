@@ -243,9 +243,10 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
 .crm-tile-name{word-break:break-word;hyphens:auto;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
 .crm-tile-dot{position:absolute;top:8px;width:8px;height:8px;border-radius:50%;}
 .crm-tile-dot-flag{right:8px;background:var(--amber);}
-.crm-tile-dot-high{left:8px;background:var(--amber);}
-.crm-tile-dot-medium{left:8px;background:var(--green);}
-.crm-tile-dot-low{left:8px;background:var(--text3);}
+.crm-tile-tier{position:absolute;top:6px;left:6px;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:10px;color:#fff;line-height:1.3;box-shadow:0 1px 2px rgba(0,0,0,.15);}
+.crm-tile-tier-high{background:#2A6B3A;}
+.crm-tile-tier-medium{background:#E27B00;}
+.crm-tile-tier-low{background:#A82020;}
 @media (max-width:768px){.crm-tile-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;}.crm-tile{padding:14px 10px;min-height:64px;font-size:13px;}}
 
 </style>
@@ -3363,7 +3364,7 @@ window.CRM = (function(){
 
     list.innerHTML = `<div class="crm-tile-grid">${rows.map(l => {
       const flagDot = l.internal_flags ? '<span class="crm-tile-dot crm-tile-dot-flag" title="Needs review"></span>' : '';
-      const tierDot = l.tier && l.tier !== 'pending' ? `<span class="crm-tile-dot crm-tile-dot-${l.tier}" title="${tierLabel(l.tier)} tier"></span>` : '';
+      const tierDot = l.tier && l.tier !== 'pending' ? `<span class="crm-tile-tier crm-tile-tier-${l.tier}" title="${tierLabel(l.tier)} tier">${tierLabel(l.tier)}</span>` : '';
       return `<button class="crm-tile" onclick="CRM.openProfile(${l.id})">
         ${flagDot}${tierDot}
         <span class="crm-tile-name">${esc(l.location_name)}</span>
@@ -5700,7 +5701,7 @@ window.CRM = (function(){
     if(!rows.length){ list.innerHTML='<div style="grid-column:1/-1;padding:20px;text-align:center;color:var(--text3);font-style:italic">No matches.</div>'; return; }
     list.innerHTML = rows.map(l=>{
       const flagDot = l.internal_flags ? '<span class="crm-tile-dot crm-tile-dot-flag"></span>' : '';
-      const tierDot = l.tier && l.tier !== 'pending' ? `<span class="crm-tile-dot crm-tile-dot-${l.tier}"></span>` : '';
+      const tierDot = l.tier && l.tier !== 'pending' ? `<span class="crm-tile-tier crm-tile-tier-${l.tier}">${tierLabel(l.tier)}</span>` : '';
       return `<button class="crm-tile" onclick="CRM.openMobProfile(${l.id})">${flagDot}${tierDot}<span class="crm-tile-name">${esc(l.location_name)}</span></button>`;
     }).join('');
   }
@@ -6696,7 +6697,7 @@ window.CRM = (function(){
           const otherIdsList = id => c.filter(x => x.id !== id).map(x => x.id).join(',');
           const rows = c.map(l => `
             <tr>
-              <td><strong>${esc(l.location_name)}</strong>${l.tier ? ` <span class="cat-chip" style="font-size:9px">${esc(l.tier)}</span>` : ''}</td>
+              <td><strong>${esc(l.location_name)}</strong>${l.tier && l.tier !== 'pending' ? ` <span class="crm-tile-tier crm-tile-tier-${l.tier}" style="position:static;font-size:9px;margin-left:6px">${tierLabel(l.tier)}</span>` : ''}</td>
               <td style="font-size:11px;color:var(--text3)">${esc(l.full_address || '—')}</td>
               <td style="text-align:center">${l._stopCount}</td>
               <td style="text-align:center">${l._visitCount}</td>
