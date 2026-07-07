@@ -6919,8 +6919,11 @@ window.CRM = (function(){
         </tr></thead>
         <tbody>${entries.map(e => _editLogRow(e)).join('')}</tbody>
       </table>
-      <div style="margin-top:18px;text-align:right">
-        <button class="btn btn-sm" onclick="CRM.purgeEditLog()" style="background:var(--bg2)" title="Permanently delete log entries older than 90 days"><i class="ti ti-trash"></i> Purge old entries (>90 days)</button>
+      <div style="margin-top:18px;display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap">
+        <span style="font-size:11px;color:var(--text3)">Purge entries older than</span>
+        <input type="number" id="edit-log-purge-days" value="90" min="0" step="1" style="width:70px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:12px;text-align:right">
+        <span style="font-size:11px;color:var(--text3)">days</span>
+        <button class="btn btn-sm" onclick="CRM.purgeEditLog()" style="background:var(--bg2)" title="Delete entries older than the age specified. Use 0 to delete ALL entries."><i class="ti ti-trash"></i> Purge</button>
       </div>`;
   }
 
@@ -6940,6 +6943,7 @@ window.CRM = (function(){
         ${reverted
           ? `<span class="cat-chip" style="font-size:9px;background:var(--bg2);color:var(--text3)" title="Reverted ${_relativeTime(e.reverted_at)}">REVERTED</span>`
           : `<button class="btn btn-xs" onclick="CRM.revertEdit(${e.id})" title="Restore the previous values"><i class="ti ti-arrow-back-up"></i> Revert</button>`}
+        <button class="btn btn-xs" onclick="CRM.deleteEditLogEntry(${e.id})" title="Delete this log entry (does NOT revert; just removes from log)" style="background:var(--red-bg);color:var(--red);margin-left:4px"><i class="ti ti-x"></i></button>
       </td>
     </tr>`;
   }
@@ -6987,15 +6991,41 @@ window.CRM = (function(){
   }
 
   async function purgeEditLog() {
-    if (!confirm('Permanently delete all edit log entries older than 90 days?\n\nThis cannot be undone.')) return;
+    const daysInput = document.getElementById('edit-log-purge-days');
+    const days = daysInput ? parseInt(daysInput.value, 10) : 90;
+    if (isNaN(days) || days < 0) {
+      alert('Please enter a non-negative number of days.');
+      return;
+    }
+    const msg = days === 0
+      ? 'Permanently delete ALL edit log entries?\n\nThis cannot be undone.'
+      : `Permanently delete edit log entries older than ${days} days?\n\nThis cannot be undone.`;
+    if (!confirm(msg)) return;
     try {
-      const { data, error } = await sb.rpc('crm_purge_edit_log', { p_older_than_days: 90 });
+      // Pass p_older_than_days; if days is 0 the RPC deletes everything (we
+      // send null to trigger the "everything" branch).
+      const params = days === 0 ? { p_older_than_days: null, p_ids: null } : { p_older_than_days: days, p_ids: null };
+      const { data, error } = await sb.rpc('crm_purge_edit_log', params);
       if (error) throw error;
       renderEditLog();
       alert(`Purged ${data.purged} log entr${data.purged === 1 ? 'y' : 'ies'}.`);
     } catch (e) {
       console.error('[CRM] purge failed', e);
       alert('Purge failed: ' + (e.message || e));
+    }
+  }
+
+  // Delete one specific edit log entry (does NOT restore the underlying edit —
+  // just removes the log entry). Admin only.
+  async function deleteEditLogEntry(id) {
+    if (!confirm('Delete this specific log entry?\n\nThis just removes it from the log — the underlying edit is NOT reverted. Use "Revert" if you want to undo the edit itself.')) return;
+    try {
+      const { data, error } = await sb.rpc('crm_purge_edit_log', { p_older_than_days: null, p_ids: [id] });
+      if (error) throw error;
+      renderEditLog();
+    } catch (e) {
+      console.error('[CRM] delete entry failed', e);
+      alert('Delete failed: ' + (e.message || e));
     }
   }
 
@@ -8340,7 +8370,7 @@ window.CRM = (function(){
     // Cleanup (delete / merge / recover)
     renderCleanup, confirmDelete, restoreLocation, bulkDeleteOrphans, toggleAllOrphans, dismissDupRow, clearFlag, confirmWipeHistory,
     // Staff edit log (admin-only audit + revert)
-    renderEditLog, revertEdit, purgeEditLog, refreshEditLogBadge,
+    renderEditLog, revertEdit, purgeEditLog, deleteEditLogEntry, refreshEditLogBadge,
     // Scheduling preference preview (drives the live preview under the textarea)
     previewPreference,
     // Deliveries (driver logs after physical delivery; deducts truck inventory)
