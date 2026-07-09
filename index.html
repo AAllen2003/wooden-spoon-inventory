@@ -511,6 +511,11 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <button class="btn btn-sm" onclick="loadTodaySales()"><i class="ti ti-calendar-today"></i> Today</button>
             <input type="date" id="sales-date-picker" onchange="loadArchiveDate(this.value)">
+            <span style="font-size:11px;color:var(--text3);margin-left:4px">or range:</span>
+            <input type="date" id="sales-range-start" title="Range start date">
+            <span style="color:var(--text3)">–</span>
+            <input type="date" id="sales-range-end" title="Range end date">
+            <button class="btn btn-sm btn-accent" onclick="loadRangeFromInputs()" title="Pull sales totals across the date range"><i class="ti ti-calendar-search"></i> Load Range</button>
             <button class="btn btn-sm" onclick="exportSalesCSV()"><i class="ti ti-download"></i> Export</button>
           </div>
         </div>
@@ -1420,7 +1425,140 @@ async function loadAvailDates(){if(!S.workerUrl)return;try{const r=await fetch(S
 function renderHistBar(){const bar=document.getElementById('sales-history-bar'),list=document.getElementById('history-list');if(!list)return;if(!availDates.length){if(bar)bar.style.display='none';return;}if(bar)bar.style.display='block';list.innerHTML=availDates.slice(0,14).map(d=>`<button class="history-date-btn ${d===salesViewDate?'selected':''}" onclick="loadArchDate('${d}')">${fmtDL(d)}</button>`).join('');}
 function fmtDL(d){try{return new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});}catch(e){return d;}}
 async function loadArchDate(dateStr){if(!dateStr||!S.workerUrl)return;const sp=document.getElementById('sales-spinner'),sm=document.getElementById('sales-msg');sp.style.display='block';if(sm)sm.textContent='Loading '+dateStr+'...';try{const r=await fetch(S.workerUrl+'/sales/archive?date='+dateStr,{mode:'cors'});if(!r.ok)throw new Error('No data');const d=await r.json();salesViewData=d.sales||{};salesViewDataOnline=d.salesOnline||{};salesViewDataRevenue=d.salesRevenue||{};salesViewDataOnlineRevenue=d.salesOnlineRevenue||{};salesViewDataTotals=d.totals||null;salesViewDate=dateStr;const p=document.getElementById('sales-date-picker');if(p)p.value=dateStr;renderSales();if(sm)sm.textContent='Showing archived data for '+dateStr;}catch(e){if(sm)sm.textContent='No data for '+dateStr;}sp.style.display='none';}
-function loadTodaySales(){salesViewData=null;salesViewDate=null;const p=document.getElementById('sales-date-picker');if(p)p.value='';renderSales();}
+function loadTodaySales(){salesViewData=null;salesViewDate=null;const p=document.getElementById('sales-date-picker');if(p)p.value='';const rs=document.getElementById('sales-range-start');if(rs)rs.value='';const re=document.getElementById('sales-range-end');if(re)re.value='';renderSales();}
+
+// Load a date range from the inputs. Handles validation and calls loadArchRange.
+function loadRangeFromInputs(){
+  const start = document.getElementById('sales-range-start')?.value;
+  const end   = document.getElementById('sales-range-end')?.value;
+  if(!start || !end){
+    alert('Pick both a start and end date.');
+    return;
+  }
+  if(start > end){
+    alert('Start date must be on or before end date.');
+    return;
+  }
+  // Sanity limit: prevent someone from accidentally requesting a year
+  const startMs = new Date(start + 'T12:00:00').getTime();
+  const endMs   = new Date(end   + 'T12:00:00').getTime();
+  const dayCount = Math.round((endMs - startMs) / 86400000) + 1;
+  if(dayCount > 92){
+    if(!confirm(`This range covers ${dayCount} days. Loading will take about ${Math.round(dayCount/2)} seconds. Continue?`)) return;
+  }
+  loadArchRange(start, end);
+}
+
+// Fetch each date's archive individually and sum into salesViewData*.
+// Slow (one call per day) but reuses the existing endpoint.
+// Mobile equivalent of loadRangeFromInputs — reads the mobile range picker
+// inputs and calls the shared loadArchRange. Also re-renders the mobile view
+// after load.
+function mobLoadRange(){
+  const start = document.getElementById('mob-range-start')?.value;
+  const end   = document.getElementById('mob-range-end')?.value;
+  if(!start || !end){ alert('Pick both a start and end date.'); return; }
+  if(start > end){ alert('Start date must be on or before end date.'); return; }
+  const startMs = new Date(start + 'T12:00:00').getTime();
+  const endMs   = new Date(end   + 'T12:00:00').getTime();
+  const dayCount = Math.round((endMs - startMs) / 86400000) + 1;
+  if(dayCount > 92){
+    if(!confirm(`This range covers ${dayCount} days. Continue?`)) return;
+  }
+  loadArchRange(start, end).then(()=>{
+    if(typeof mobRender === 'function') mobRender();
+  });
+}
+
+async function loadArchRange(start, end){
+  if(!S.workerUrl) return;
+  const sp=document.getElementById('sales-spinner'),sm=document.getElementById('sales-msg');
+  if(sp)sp.style.display='block';
+
+  // Build the list of dates to fetch (inclusive)
+  const dates = [];
+  const cur = new Date(start + 'T12:00:00');
+  const endDate = new Date(end + 'T12:00:00');
+  while(cur.getTime() <= endDate.getTime()){
+    dates.push(cur.toISOString().slice(0,10));
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  // Accumulators
+  const sumSales         = {};
+  const sumSalesOnline   = {};
+  const sumRevenue       = {};
+  const sumOnlineRevenue = {};
+  let sumTotals = null;
+
+  let ok = 0, missing = 0;
+  for(let i = 0; i < dates.length; i++){
+    const d = dates[i];
+    if(sm) sm.textContent = `Loading ${d} (${i+1}/${dates.length})...`;
+    try{
+      const r = await fetch(S.workerUrl + '/sales/archive?date=' + d, {mode:'cors'});
+      if(!r.ok){ missing++; continue; }
+      const j = await r.json();
+      // Merge into sumSales (qty)
+      Object.entries(j.sales || {}).forEach(([item, locObj])=>{
+        sumSales[item] = sumSales[item] || {};
+        Object.entries(locObj).forEach(([loc, qty])=>{
+          sumSales[item][loc] = (sumSales[item][loc] || 0) + (Number(qty) || 0);
+        });
+      });
+      Object.entries(j.salesOnline || {}).forEach(([item, locObj])=>{
+        sumSalesOnline[item] = sumSalesOnline[item] || {};
+        Object.entries(locObj).forEach(([loc, qty])=>{
+          sumSalesOnline[item][loc] = (sumSalesOnline[item][loc] || 0) + (Number(qty) || 0);
+        });
+      });
+      Object.entries(j.salesRevenue || {}).forEach(([item, locObj])=>{
+        sumRevenue[item] = sumRevenue[item] || {};
+        Object.entries(locObj).forEach(([loc, rev])=>{
+          sumRevenue[item][loc] = (sumRevenue[item][loc] || 0) + (Number(rev) || 0);
+        });
+      });
+      Object.entries(j.salesOnlineRevenue || {}).forEach(([item, locObj])=>{
+        sumOnlineRevenue[item] = sumOnlineRevenue[item] || {};
+        Object.entries(locObj).forEach(([loc, rev])=>{
+          sumOnlineRevenue[item][loc] = (sumOnlineRevenue[item][loc] || 0) + (Number(rev) || 0);
+        });
+      });
+      // Merge totals — flat numeric fields with nested inPerson/online/combined/byLocation
+      if(j.totals){
+        if(!sumTotals) sumTotals = { inPerson: {}, online: {}, combined: {}, byLocation: {} };
+        ['inPerson','online','combined'].forEach(section=>{
+          Object.entries(j.totals[section] || {}).forEach(([field, val])=>{
+            sumTotals[section][field] = (sumTotals[section][field] || 0) + (Number(val) || 0);
+          });
+        });
+        Object.entries(j.totals.byLocation || {}).forEach(([loc, locTotals])=>{
+          sumTotals.byLocation[loc] = sumTotals.byLocation[loc] || {};
+          Object.entries(locTotals).forEach(([field, val])=>{
+            sumTotals.byLocation[loc][field] = (sumTotals.byLocation[loc][field] || 0) + (Number(val) || 0);
+          });
+        });
+      }
+      ok++;
+    }catch(e){
+      console.warn('[range] failed for', d, e);
+      missing++;
+    }
+  }
+
+  salesViewData             = sumSales;
+  salesViewDataOnline       = sumSalesOnline;
+  salesViewDataRevenue      = sumRevenue;
+  salesViewDataOnlineRevenue= sumOnlineRevenue;
+  salesViewDataTotals       = sumTotals;
+  // Use a compound marker so downstream code sees a truthy value and knows
+  // it's showing archived data. The renderer checks for '|' to detect ranges.
+  salesViewDate = start + '|' + end;
+
+  renderSales();
+  if(sm) sm.textContent = `Showing ${ok} day${ok===1?'':'s'} from ${start} to ${end}` + (missing ? ` (${missing} day${missing===1?'':'s'} had no data)` : '');
+  if(sp) sp.style.display='none';
+}
 
 // ── ACTIONS ───────────────────────────────────────────────────────
 async function saveWorkerUrl(){const url=document.getElementById('worker-url').value.trim().replace(/\/+$/,'');if(!url)return;const st=document.getElementById('worker-status');st.style.display='block';st.className='worker-status';st.textContent='Testing...';try{const r=await fetch(url+'/health',{mode:'cors'});if(r.ok){S.workerUrl=url;await dbSet('worker_url',url);st.className='worker-status ok';st.textContent='✓ Connected!';setStatus('Worker connected',true);}else{st.className='worker-status err';st.textContent='✗ Error '+r.status;}}catch(e){st.className='worker-status err';st.textContent='✗ Cannot reach Worker';}}
@@ -1936,7 +2074,18 @@ function renderProduction(){
 populateLogProdItems();}
 function renderSales(){
   const sd=salesViewDate?salesViewData:S.sales;const lbl=document.getElementById('sales-date-label'),bdg=document.getElementById('sales-date-badge');
-  if(salesViewDate){if(lbl)lbl.textContent=new Date(salesViewDate+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});if(bdg){bdg.textContent='Archived';bdg.className='sales-date-badge archive';}}
+  if(salesViewDate){
+    if(lbl){
+      if(salesViewDate.includes('|')){
+        const [rs, re] = salesViewDate.split('|');
+        const fmt = d => new Date(d + 'T12:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+        lbl.textContent = `${fmt(rs)} – ${fmt(re)}`;
+      } else {
+        lbl.textContent = new Date(salesViewDate+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+      }
+    }
+    if(bdg){bdg.textContent = salesViewDate.includes('|') ? 'Range' : 'Archived'; bdg.className='sales-date-badge archive';}
+  }
   else{if(lbl)lbl.textContent='Today';if(bdg){bdg.textContent='Live';bdg.className='sales-date-badge';}}
   renderHistBar();
   const lt={},lr={};LOCS.forEach(l=>{lt[l]=0;lr[l]=0;});let gu=0,gr=0;
@@ -2885,7 +3034,15 @@ function mobSalesHTML(){
   S.items.forEach(item=>{LOCS.forEach(loc=>{const q=(sd?.[item]||{})[loc]||0;const rev=getRev(item,loc,q,sdRev);lT[loc]+=q;gU+=q;gR+=rev;});});
   // Online sales total
   let onlineUnits=0;Object.values(sdOnline).forEach(locs=>{Object.values(locs||{}).forEach(q=>{onlineUnits+=q;});});
-  const dateLabel=salesViewDate?new Date(salesViewDate+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'Today';
+  let dateLabel;
+  if(!salesViewDate) dateLabel = 'Today';
+  else if(salesViewDate.includes('|')){
+    const [rs, re] = salesViewDate.split('|');
+    const fmt = d => new Date(d + 'T12:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'});
+    dateLabel = `${fmt(rs)} – ${fmt(re)}`;
+  } else {
+    dateLabel = new Date(salesViewDate+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  }
   // Live badge — shows when sales data was last refreshed. Mirror the desktop version.
   let liveBadgeHtml='';
   if(!salesViewDate){
@@ -2898,7 +3055,15 @@ function mobSalesHTML(){
     }
     liveBadgeHtml=`<div style="font-size:11px;padding:4px 10px;border-radius:12px;background:${badgeBg};color:#fff;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;margin-bottom:8px"><span style="display:inline-block;width:6px;height:6px;background:#90ee90;border-radius:50%;animation:pulse 2s ease-in-out infinite"></span>${badgeText}</div>`;
   }
-  let h=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap"><span style="font-size:12px;font-weight:700;color:var(--sidebar)">${dateLabel}</span><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:${salesViewDate?'#9f7014':'#5e3303'};color:#fff">${salesViewDate?'Archived':'Live'}</span><input type="date" style="font-size:14px;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-family:'Lato',sans-serif;margin-left:auto" onchange="loadArchDate(this.value)"><button style="background:none;border:none;font-size:10px;color:var(--sidebar);font-weight:700;cursor:pointer;font-family:'Lato',sans-serif;text-decoration:underline" onclick="loadTodaySales();document.getElementById('mob-body').innerHTML=mobSalesHTML()">Today</button></div>${liveBadgeHtml}`;
+  const badgeText = salesViewDate ? (salesViewDate.includes('|') ? 'Range' : 'Archived') : 'Live';
+  let h=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap"><span style="font-size:12px;font-weight:700;color:var(--sidebar)">${dateLabel}</span><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:${salesViewDate?'#9f7014':'#5e3303'};color:#fff">${badgeText}</span><input type="date" style="font-size:14px;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-family:'Lato',sans-serif;margin-left:auto" onchange="loadArchDate(this.value)"><button style="background:none;border:none;font-size:10px;color:var(--sidebar);font-weight:700;cursor:pointer;font-family:'Lato',sans-serif;text-decoration:underline" onclick="loadTodaySales();document.getElementById('mob-body').innerHTML=mobSalesHTML()">Today</button></div>
+  <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap;font-size:11px;color:var(--text3)">
+    <span>Range:</span>
+    <input type="date" id="mob-range-start" style="font-size:13px;border:1px solid var(--border);border-radius:6px;padding:3px 6px;font-family:'Lato',sans-serif">
+    <span>–</span>
+    <input type="date" id="mob-range-end" style="font-size:13px;border:1px solid var(--border);border-radius:6px;padding:3px 6px;font-family:'Lato',sans-serif">
+    <button style="background:var(--accent);color:#fff;border:none;font-size:11px;font-weight:700;border-radius:6px;padding:5px 10px;cursor:pointer" onclick="mobLoadRange()">Load</button>
+  </div>${liveBadgeHtml}`;
   h+=`<div class="m-sales-sum"><div class="m-ss-i"><div class="m-ss-v">${gU}</div><div class="m-ss-l">Units Sold</div></div><div class="m-ss-i"><div class="m-ss-v">$${gR.toFixed(0)}</div><div class="m-ss-l">Revenue</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Truck 1']}</div><div class="m-ss-l">Truck 1</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Truck 2']}</div><div class="m-ss-l">Truck 2</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Truck 3']||0}</div><div class="m-ss-l">Truck 3</div></div><div class="m-ss-i"><div class="m-ss-v">${lT['Restaurant']||0}</div><div class="m-ss-l">Restaurant</div></div><div class="m-ss-i"><div class="m-ss-v">${onlineUnits}</div><div class="m-ss-l">Online</div></div></div>`;
   const rows=S.items.map(item=>{
     const p=S.prices[item]||0,total=LOCS.reduce((s,l)=>s+((sd?.[item]||{})[l]||0),0);const itemRev=LOCS.reduce((s,l)=>s+getRev(item,l,(sd?.[item]||{})[l]||0,sdRev),0);
