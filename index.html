@@ -3564,14 +3564,20 @@ window.CRM = (function(){
     const root = document.getElementById('crm-profile-content');
     if (!root) return;
 
-    // If the user is currently in the edit form OR the Add Customer form,
-    // DO NOT re-render — that would wipe out whatever they've typed. This is
-    // triggered both by the periodic 45s refresh and by realtime events (any
-    // other user editing anything in the app). Rest of the app re-renders
-    // normally; only this section is frozen during active edit.
-    // Detect either form by presence of its key inputs.
+    // Skip re-render if:
+    //   - The edit form is open (we know because profileEditing is true AND
+    //     #f-sched is present)
+    //   - The Add Customer form is open (#new-name present)
+    //   - The user is actively focused on ANY input/textarea/select inside
+    //     the profile section. This is the broad safety net that catches
+    //     inputs on tabs I might not know about (item hierarchy, notes on
+    //     the sales tab, etc.) and prevents mid-typing wipes.
+    const active = document.activeElement;
+    const focusInProfile = active && root.contains(active) &&
+      (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT');
     if ((state.profileEditing && root.querySelector('#f-sched')) ||
-        root.querySelector('#new-name')) {
+        root.querySelector('#new-name') ||
+        focusInProfile) {
       return;
     }
 
@@ -5892,8 +5898,12 @@ window.CRM = (function(){
     if(!root) return;
 
     // Same guard as renderProfile — don't wipe the user's typing while they
-    // have the edit form open.
-    if (state.profileEditing && root.querySelector('#f-sched')) return;
+    // have the edit form open OR while they're focused on any input in the
+    // profile section (broader safety net for any tab).
+    const active = document.activeElement;
+    const focusInProfile = active && root.contains(active) &&
+      (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT');
+    if ((state.profileEditing && root.querySelector('#f-sched')) || focusInProfile) return;
 
     const l = state.locations.find(x=>x.id===state.currentLocId);
     if(!l){ root.innerHTML='<div>Not found.</div>'; return; }
@@ -6044,6 +6054,7 @@ window.CRM = (function(){
                 <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)}</div>
                 ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
               </div>
+              <button class="btn btn-sm" onclick="event.stopPropagation();CRM.openEditStop(${s.id})" title="Edit stop" style="flex-shrink:0"><i class="ti ti-edit"></i></button>
               ${navUrl ? `<a href="${navUrl}" target="_blank" rel="noopener" style="text-decoration:none;flex-shrink:0"><button class="btn btn-sm" style="background:var(--green);color:#fff;border-color:var(--green)"><i class="ti ti-navigation"></i></button></a>` : ''}
             </div>`;
           }).join('')}
