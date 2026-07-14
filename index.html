@@ -5009,7 +5009,7 @@ window.CRM = (function(){
     // auto-scheduler from ever generating a proposal for this stop.
     // Note: we deliberately avoid adjectives like "flexible" since they
     // commonly appear in legitimate preferences (e.g., "Tuesday 9am, flexible").
-    if (/\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|manual\s*sched|call ahead|call first|call before|text ahead|text first|text before|by request|on request|upon request|appointment only|by appointment|as needed|seasonal only|closed for season|inactive|on hold|paused|do not contact|dnc|no contact)\b/i.test(text)) {
+    if (/\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|manual\s*sched|call ahead|call first|call before|text ahead|text first|text before|by request|on request|upon request|appointment only|by appointment|as needed|seasonal only|closed for season|inactive|on hold|paused|do not contact|dnc|dns|no contact)\b/i.test(text)) {
       return '<span style="color:var(--amber);font-weight:700"><i class="ti ti-hand-stop"></i> AUTO-SCHEDULER WILL SKIP</span> — this stop will not be auto-scheduled. Schedule manually only.';
     }
     const p = parsePreference(text);
@@ -5094,7 +5094,7 @@ window.CRM = (function(){
       // Respect opt-out: customers whose scheduling_preference contains
       // "no auto-schedule", "manual only", "by request" etc. are skipped.
       // Same detection used by previewPreference for the live preview.
-      if (loc.scheduling_preference && /\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|manual\s*sched|call ahead|call first|call before|text ahead|text first|text before|by request|on request|upon request|appointment only|by appointment|as needed|seasonal only|closed for season|inactive|on hold|paused|do not contact|dnc|no contact)\b/i.test(loc.scheduling_preference)) {
+      if (loc.scheduling_preference && /\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|manual\s*sched|call ahead|call first|call before|text ahead|text first|text before|by request|on request|upon request|appointment only|by appointment|as needed|seasonal only|closed for season|inactive|on hold|paused|do not contact|dnc|dns|no contact)\b/i.test(loc.scheduling_preference)) {
         continue;
       }
 
