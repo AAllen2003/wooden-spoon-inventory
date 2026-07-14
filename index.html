@@ -5121,10 +5121,29 @@ window.CRM = (function(){
     sep:9, sept:9, september:9, oct:10, october:10, nov:11, november:11, dec:12, december:12,
   };
 
-  // Parse a month-range prefix like "Jun-Aug", "Jun to Aug", "Nov-Feb" (wraps year),
-  // "Jul" (single month). Returns an array of month numbers 1-12, or null on failure.
+  // Parse a month-range prefix. Accepts several shapes:
+  //   "Jun-Aug"                    — range (contiguous, may wrap year)
+  //   "Jun to Aug", "Jun through Aug", "Jun–Aug"  — same
+  //   "Jul"                        — single month
+  //   "Feb,Mar,Apr,Sep,Oct,Nov"    — comma-separated list (non-contiguous OK)
+  //   "Jun,Aug"                    — just two named months
+  //   Mixed: "Jun-Aug,Nov,Dec"     — combination
+  // Returns array of month numbers 1-12, or null on failure.
   function _parseMonthRangePrefix(text) {
     const t = text.toLowerCase().trim();
+    // Comma-separated (may contain ranges as segments too)
+    if (t.includes(',')) {
+      const segments = t.split(',').map(s => s.trim()).filter(Boolean);
+      const collected = new Set();
+      for (const seg of segments) {
+        // Each segment could itself be a range or a single month
+        const subResult = _parseMonthRangePrefix(seg);
+        if (!subResult) return null;
+        subResult.forEach(m => collected.add(m));
+      }
+      if (collected.size === 0) return null;
+      return [...collected].sort((a,b) => a-b);
+    }
     // "Jun-Aug" | "Jun to Aug" | "Jun through Aug" | "Jun–Aug"
     const rangeMatch = t.match(/^([a-z]{3,9})\s*(?:-|–|to|through|thru)\s*([a-z]{3,9})$/);
     if (rangeMatch) {
@@ -5169,7 +5188,11 @@ window.CRM = (function(){
 
     // Detect multi-rule syntax: any line starting with "MonthRange:"
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    const prefixRe = /^([a-z]{3,9}(?:\s*(?:-|–|to|through|thru)\s*[a-z]{3,9})?)\s*:\s*(.+)$/i;
+    // Prefix regex accepts:
+    //   Jun-Aug:  |  Sep:  |  Feb,Mar,Apr,Sep,Oct,Nov:  |  Jun-Aug,Nov,Dec:
+    // The captured group is the entire month portion; _parseMonthRangePrefix
+    // handles the full grammar including commas.
+    const prefixRe = /^([a-z]{3,9}(?:\s*(?:-|–|to|through|thru)\s*[a-z]{3,9})?(?:\s*,\s*[a-z]{3,9}(?:\s*(?:-|–|to|through|thru)\s*[a-z]{3,9})?)*)\s*:\s*(.+)$/i;
     const hasPrefix = lines.some(l => {
       const m = l.match(prefixRe);
       if (!m) return false;
