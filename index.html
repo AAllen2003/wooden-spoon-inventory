@@ -4993,7 +4993,76 @@ window.CRM = (function(){
     // scheduler defaults to "all months" rather than "never schedule"
     if (out.activeMonths && out.activeMonths.length === 0) out.activeMonths = null;
 
-    if (!out.dows.length && !out.intervalDays && !out.nthOfMonth && !out.activeMonths) return null;
+    // ─── Day-of-month range constraints ────────────────────────────
+    // Recognize phrases like "after the 20th", "before the 15th",
+    // "between the 10th and 20th", "from the 20th", "20th or later",
+    // "no earlier than the 20th", "not before the 20th", "on or after the 20th".
+    // All are inclusive (the boundary day counts as valid).
+    //
+    // Emits:
+    //   out.dayOfMonthMin = N   → only schedule on day N or later
+    //   out.dayOfMonthMax = N   → only schedule on day N or earlier
+    //
+    // These layer on top of everything else — if the customer says
+    // "Every Wednesday after the 20th", the scheduler picks the first
+    // Wednesday of each month that falls on or after the 20th.
+    out.dayOfMonthMin = null;
+    out.dayOfMonthMax = null;
+    const ordSuffix = '(?:st|nd|rd|th)?';           // 20 / 20th / 3rd / 1st
+    const dayNum    = '(?:the\\s+)?(\\d{1,2})' + ordSuffix + '(?:\\s+of\\s+(?:the\\s+)?month)?';
+
+    // Range first (most specific): "between the 10th and 20th", "from 10 to 20"
+    const rangeRe = new RegExp('\\b(?:between|from)\\s+' + dayNum + '\\s+(?:and|to|through|thru|-)\\s+' + dayNum + '\\b', 'i');
+    const rangeM = s.match(rangeRe);
+    if (rangeM) {
+      const a = parseInt(rangeM[1], 10);
+      const b = parseInt(rangeM[2], 10);
+      if (a >= 1 && a <= 31 && b >= 1 && b <= 31) {
+        out.dayOfMonthMin = Math.min(a, b);
+        out.dayOfMonthMax = Math.max(a, b);
+      }
+    } else {
+      // "After" family: "after the 20th", "on or after 20", "from the 20th",
+      // "20th or later", "no earlier than 20", "not before 20"
+      const afterRe = new RegExp(
+        '\\b(?:' +
+          '(?:on\\s+or\\s+)?after\\s+' + dayNum +
+          '|from\\s+' + dayNum + '(?!\\s*(?:and|to|through|thru|-))' +   // exclude range starts
+          '|no\\s+earlier\\s+than\\s+' + dayNum +
+          '|not\\s+before\\s+' + dayNum +
+          '|' + dayNum + '\\s+or\\s+later' +
+        ')\\b', 'i');
+      const afterM = s.match(afterRe);
+      if (afterM) {
+        // Capture groups: one of the alternatives fires; find the first non-empty numeric group
+        for (let i = 1; i < afterM.length; i++) {
+          if (afterM[i]) {
+            const n = parseInt(afterM[i], 10);
+            if (n >= 1 && n <= 31) { out.dayOfMonthMin = n; break; }
+          }
+        }
+      }
+      // "Before" family: "before the 15th", "on or before 15", "15th or earlier",
+      // "no later than 15", "not after 15"
+      const beforeRe = new RegExp(
+        '\\b(?:' +
+          '(?:on\\s+or\\s+)?before\\s+' + dayNum +
+          '|no\\s+later\\s+than\\s+' + dayNum +
+          '|not\\s+after\\s+' + dayNum +
+          '|' + dayNum + '\\s+or\\s+earlier' +
+        ')\\b', 'i');
+      const beforeM = s.match(beforeRe);
+      if (beforeM) {
+        for (let i = 1; i < beforeM.length; i++) {
+          if (beforeM[i]) {
+            const n = parseInt(beforeM[i], 10);
+            if (n >= 1 && n <= 31) { out.dayOfMonthMax = n; break; }
+          }
+        }
+      }
+    }
+
+    if (!out.dows.length && !out.intervalDays && !out.nthOfMonth && !out.activeMonths && !out.dayOfMonthMin && !out.dayOfMonthMax) return null;
     return out;
   }
 
@@ -5056,6 +5125,22 @@ window.CRM = (function(){
         ? `${monthNames[sorted[0]]}\u2013${monthNames[sorted[sorted.length-1]]}`
         : sorted.map(m => monthNames[m]).join(', ');
       parts.push('Active months: <strong>' + display + '</strong>');
+    }
+    // Day-of-month range display: "20th–end", "1st–15th", "10th–20th"
+    if (p.dayOfMonthMin || p.dayOfMonthMax) {
+      const ord = n => {
+        const s = ['th','st','nd','rd'], v = n % 100;
+        return n + (s[(v-20)%10] || s[v] || s[0]);
+      };
+      let dayStr;
+      if (p.dayOfMonthMin && p.dayOfMonthMax) {
+        dayStr = `${ord(p.dayOfMonthMin)}\u2013${ord(p.dayOfMonthMax)}`;
+      } else if (p.dayOfMonthMin) {
+        dayStr = `${ord(p.dayOfMonthMin)} or later`;
+      } else {
+        dayStr = `${ord(p.dayOfMonthMax)} or earlier`;
+      }
+      parts.push('Day of month: <strong>' + dayStr + '</strong>');
     }
     return '<span style="color:var(--green);font-weight:700"><i class="ti ti-check"></i> Parsed:</span> ' + parts.join(' &middot; ');
   }
@@ -5174,6 +5259,13 @@ window.CRM = (function(){
       if (pref?.activeMonths && !pref.activeMonths.includes(proposedDate.getMonth() + 1)) {
         continue;
       }
+
+      // Day-of-month range: skip proposals outside the user's window.
+      // Both min and max are inclusive, so "after the 20th" means the 20th itself
+      // is still valid. Both can be set at once (e.g., "between the 10th and 20th").
+      const dom = proposedDate.getDate();
+      if (pref?.dayOfMonthMin && dom < pref.dayOfMonthMin) continue;
+      if (pref?.dayOfMonthMax && dom > pref.dayOfMonthMax) continue;
 
       // Pick time window
       let startTime, endTime, timeSource;
