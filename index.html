@@ -981,6 +981,11 @@ async function doLogin(){
   await loadAll();
   if(await needsMig()){hideLo();showScreen('migration');return;}
   setupRT();hideLo();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();sb=sb;startWebhookLiveBadge();startSalesLiveBadge();startToastLiveBadge();if(typeof refreshDisplay==="function")refreshDisplay({quiet:true}).catch(()=>{});
+  // Initialize CRM module now that sb is ready and user is authenticated.
+  // Without this line, users who log in via email/password (as opposed to
+  // returning users with a live session) see empty Stops/Schedule/Deliveries
+  // because the CRM module never loaded its data.
+  try{ await CRM.init(); }catch(e){console.error('CRM init failed',e);}
 }
 async function doSignOut(){if(sb)await sb.auth.signOut();showScreen('login');document.getElementById('login-email').value='';document.getElementById('login-pw').value='';}
 function updateUserUI(){const e=currentUser?.email||'';['sidebar-user','account-email','account-subtitle'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=e;});}
@@ -1024,6 +1029,7 @@ async function doMigration(){
     if(sv.transfers?.length)await sb.from('transfers').insert(sv.transfers.slice(0,100).map(t=>({item_name:t.item,from_location:t.from,to_location:t.to,quantity:t.qty,transferred_by:currentUser.email})));
     const sr=[];if(sv.workerUrl)sr.push({key:'worker_url',value:sv.workerUrl});if(sv.colors)sr.push({key:'colors',value:JSON.stringify(sv.colors)});if(sv.badges)sr.push({key:'badges',value:JSON.stringify(sv.badges)});if(sr.length)await sb.from('app_settings').upsert(sr);
     await loadAll();setupRT();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();startWebhookLiveBadge();startSalesLiveBadge();startToastLiveBadge();if(typeof refreshDisplay==="function")refreshDisplay({quiet:true}).catch(()=>{});
+    try{ await CRM.init(); }catch(e){console.error('CRM init failed',e);}
   }catch(e){document.getElementById('migrate-err').textContent='Migration failed: '+e.message;document.getElementById('migrate-err').style.display='block';btn.textContent='Migrate My Data to Cloud';btn.disabled=false;}
 }
 async function skipMigration(){
@@ -1031,6 +1037,7 @@ async function skipMigration(){
   const ir=[];DI.forEach(name=>LOCS.forEach(loc=>ir.push({item_name:name,location:loc,quantity:0})));await sb.from('inventory').upsert(ir);
   const pr=[];DI.forEach(name=>LOCS.forEach(loc=>pr.push({item_name:name,location:loc,quantity:0})));await sb.from('par_levels').upsert(pr);
   await loadAll();setupRT();showScreen('app');applyAC(S.colors);applyAB(S.badges);await loadAdminEmails();await loadLossEntries();renderAll();applyPermissions();updateUserUI();startWebhookLiveBadge();startSalesLiveBadge();startToastLiveBadge();if(typeof refreshDisplay==="function")refreshDisplay({quiet:true}).catch(()=>{});
+  try{ await CRM.init(); }catch(e){console.error('CRM init failed',e);}
 }
 
 // ── REALTIME ──────────────────────────────────────────────────────
