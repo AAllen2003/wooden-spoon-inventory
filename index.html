@@ -3760,10 +3760,9 @@ window.CRM = (function(){
         <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:10px">Scheduling</div>
         <div style="margin-bottom:10px">
           <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Preference</label>
-          <input type="text" id="f-sched" value="${esc(l.scheduling_preference||'')}" oninput="window.CRM&&document.getElementById('f-sched-preview')&&(document.getElementById('f-sched-preview').innerHTML=CRM.previewPreference(this.value))" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+          <textarea id="f-sched" rows="4" oninput="window.CRM&&document.getElementById('f-sched-preview')&&(document.getElementById('f-sched-preview').innerHTML=CRM.previewPreference(this.value))" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;resize:vertical;min-height:80px">${esc(l.scheduling_preference||'')}</textarea>
           <div id="f-sched-preview" style="margin-top:6px;padding:8px 10px;border-radius:6px;background:var(--bg2);font-size:11px;color:var(--text3);min-height:16px">${previewPreference(l.scheduling_preference||'')}</div>
         </div>
-        ${editField('Internal Flags','f-flags', l.internal_flags, true)}
         <div style="margin-bottom:10px">
           <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Preferred Truck</label>
           <select id="f-truck" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
@@ -3823,7 +3822,6 @@ window.CRM = (function(){
       email: get('f-email'),
       scheduling_preference: get('f-sched'),
       notes: get('f-notes'),
-      internal_flags: get('f-flags') || null,
       preferred_truck: document.getElementById('f-truck')?.value ? parseInt(document.getElementById('f-truck').value,10) : null,
       truck_lock: document.getElementById('f-lock')?.checked || false,
       tier: get('f-tier'),
@@ -4580,7 +4578,7 @@ window.CRM = (function(){
             ${editField('Notes','new-notes','',true)}
             <div style="margin-bottom:10px">
               <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Scheduling preference</label>
-              <input type="text" id="new-sched" value="" oninput="window.CRM&&document.getElementById('new-sched-preview')&&(document.getElementById('new-sched-preview').innerHTML=CRM.previewPreference(this.value))" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+              <textarea id="new-sched" rows="4" oninput="window.CRM&&document.getElementById('new-sched-preview')&&(document.getElementById('new-sched-preview').innerHTML=CRM.previewPreference(this.value))" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;resize:vertical;min-height:80px"></textarea>
               <div id="new-sched-preview" style="margin-top:6px;padding:8px 10px;border-radius:6px;background:var(--bg2);font-size:11px;color:var(--text3);min-height:16px">${previewPreference('')}</div>
             </div>
           </div>
