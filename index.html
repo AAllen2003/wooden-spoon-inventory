@@ -343,7 +343,7 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
 <main class="main">
   <div class="topbar">
     <div class="page-title">
-      <button class="back-btn" id="back-btn" onclick="goBack()"><i class="ti ti-arrow-left"></i> Back</button>
+      <button class="back-btn" id="back-btn" onclick="goBackNav()"><i class="ti ti-arrow-left"></i> Back</button>
       <span id="page-title">Overview</span>
     </div>
     <div style="display:flex;align-items:center;gap:12px">
@@ -1157,6 +1157,16 @@ function closeMoreDrawer(){document.getElementById('more-overlay').classList.rem
 // ── NAV ───────────────────────────────────────────────────────────
 const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',loss:'Loss Log',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop Profile','crm-schedule':'Schedule','crm-deliveries':'Deliveries','crm-forecast':'Manufacturing Forecast','crm-relog':'Customer Relations Log','crm-cleanup':'Customer Data Cleanup','crm-editlog':'Staff Edit Log'};
 function showSection(name,btn){
+  // A sidebar-nav click (btn is a .nav-item) is a fresh navigation. Clear
+  // the back-nav stack so the Back button doesn't try to return you to a
+  // detail view you're no longer thinking about. Programmatic showSection
+  // calls (btn=null) do NOT clear the stack — those come from Back itself
+  // or from drill-in functions that manage the stack directly.
+  if (btn && btn.classList && btn.classList.contains('nav-item')) {
+    window._navStack = [];
+    const backBtn = document.getElementById('back-btn');
+    if (backBtn) backBtn.style.display = 'none';
+  }
   // Defense in depth: if a staff user calls showSection('crm-relog') directly
   // (e.g. via dev tools) and the setting is off, redirect them away.
   if (name === 'crm-relog' && !isAdmin() && !(window.CRM && CRM._state?.settings?.relog_visible_to_staff)) {
@@ -1167,7 +1177,8 @@ function showSection(name,btn){
   document.getElementById('sec-'+name).classList.add('active');
   if(btn&&btn.classList&&btn.classList.contains('nav-item'))btn.classList.add('active');
   document.getElementById('page-title').textContent=TITLES[name]||name;
-  document.getElementById('back-btn').style.display='none';
+  // Back button visibility follows the nav stack, not the section
+  document.getElementById('back-btn').style.display = (window._navStack && window._navStack.length > 0) ? 'inline-flex' : 'none';
   if(name==='inventory')renderInventory();
   if(name==='locations')renderLocations();
   if(name==='par')renderPar();
@@ -1186,8 +1197,60 @@ function showSection(name,btn){
   if(name==='crm-deliveries')CRM.renderDeliveries();
   applyPermissions();
 }
-function openLocDetail(loc){currentLoc=loc;document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.getElementById('sec-loc-detail').classList.add('active');document.getElementById('page-title').textContent=loc;document.getElementById('back-btn').style.display='inline-flex';document.getElementById('loc-detail-cat-filter').value='';renderLocDetail();applyPermissions();}
-function goBack(){showSection('locations',null);document.querySelectorAll('.nav-item').forEach(b=>{if(b.textContent.includes('Locations'))b.classList.add('active');});}
+// ── UNIVERSAL BACK NAVIGATION ─────────────────────────────────────
+// A LIFO stack of return points. Every drill-in view (Customer profile,
+// Location detail, Stop edit, Delivery detail, etc.) calls pushNav('sec-*')
+// BEFORE switching sections. The topbar Back button calls goBackNav(),
+// which pops the top entry and restores both the previous section and the
+// user's exact scroll position (both window scroll and mobile mob-body scroll).
+window._navStack = window._navStack || [];
+
+function pushNav(returnSection) {
+  window._navStack.push({
+    returnTo: returnSection,
+    winScroll: window.scrollY,
+    mobScroll: document.getElementById('mob-body')?.scrollTop || 0,
+  });
+  // Show the topbar Back button whenever the stack has entries
+  const btn = document.getElementById('back-btn');
+  if (btn) btn.style.display = 'inline-flex';
+}
+
+function goBackNav() {
+  const entry = window._navStack.pop();
+  if (!entry) return;
+  // Navigate back to the section we came from
+  const secName = entry.returnTo;
+  // Try to find the matching nav-item button so it highlights correctly
+  const navBtn = Array.from(document.querySelectorAll('.nav-item'))
+    .find(b => (b.getAttribute('onclick') || '').includes(`'${secName}'`));
+  showSection(secName, navBtn || null);
+  // Restore both scroll positions after render completes
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (typeof entry.winScroll === 'number') window.scrollTo({ top: entry.winScroll, behavior: 'instant' });
+    const mb = document.getElementById('mob-body');
+    if (mb && typeof entry.mobScroll === 'number') mb.scrollTop = entry.mobScroll;
+  }));
+  // If stack is now empty, hide the button
+  if (window._navStack.length === 0) {
+    const btn = document.getElementById('back-btn');
+    if (btn) btn.style.display = 'none';
+  }
+}
+
+// Legacy alias — existing openLocDetail still calls goBack via topbar button
+function goBack() { goBackNav(); }
+
+function openLocDetail(loc){
+  pushNav('locations');
+  currentLoc=loc;
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.getElementById('sec-loc-detail').classList.add('active');
+  document.getElementById('page-title').textContent=loc;
+  document.getElementById('loc-detail-cat-filter').value='';
+  renderLocDetail();
+  applyPermissions();
+}
 function setStatus(t,ok){const el=document.getElementById('conn-status');el.textContent=t;el.className='conn-status'+(ok?' live':'');}
 
 // ── INVENTORY SYNC ───────────────────────────────────────────────────
@@ -3549,22 +3612,10 @@ window.CRM = (function(){
     state.currentLocId = id;
     state.profileTab = 'overview';
     state.profileEditing = false;
-    // Snapshot the scroll position of the previous view (usually the Stops list)
-    // so the Back button can return the user to exactly where they were.
-    state._scrollBeforeProfile = window.scrollY;
+    // Push return-point onto the nav stack; goBackNav() handles scroll restore
+    pushNav('crm-customers');
     showSection('crm-profile');
     document.getElementById('page-title').textContent = state.locations.find(l => l.id === id)?.location_name || 'Customer';
-    document.getElementById('back-btn').style.display = '';
-    document.getElementById('back-btn').onclick = () => {
-      const navBtn = document.querySelector('.nav-item[onclick*="crm-customers"]');
-      showSection('crm-customers', navBtn);
-      // Restore scroll after the next paint so it lands after showSection's
-      // reset. Two rAFs handle the case where renderCustomers runs async.
-      const y = state._scrollBeforeProfile || 0;
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        window.scrollTo({ top: y, behavior: 'instant' });
-      }));
-    };
     renderProfile();
     // Fire-and-forget background fetch of sales for any past stops at this location
     ensureSalesForLocation(id);
