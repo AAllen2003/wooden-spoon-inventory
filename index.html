@@ -5008,6 +5008,27 @@ window.CRM = (function(){
     // Wednesday of each month that falls on or after the 20th.
     out.dayOfMonthMin = null;
     out.dayOfMonthMax = null;
+
+    // ─── Pairing: schedule immediately after another customer ─────────
+    // Recognizes: "after Bob's Deli", "pair after Bob's Deli", "right after Bob's"
+    // The customer name is captured; the scheduler resolves it to a real
+    // location by case-insensitive exact match first, falling back to a
+    // unique partial match. Ambiguity or no match is surfaced in the preview.
+    //
+    // IMPORTANT: this regex only matches when NOT followed by an ordinal or
+    // "the Nth" — that's day-of-month territory, not pairing. So "after the
+    // 20th" is still day-of-month, "after Bob's Deli" is pairing.
+    out.pairAfter = null;
+    const pairRe = /\b(?:pair\s+)?(?:right\s+)?after\s+(?!(?:the\s+)?\d)([a-z0-9][a-z0-9\s'&.\-]*?)(?:\s*[,;\-]|\s+—|\s*$)/i;
+    const pairM = text.match(pairRe);  // use original text (not lowered) to preserve capitalization for lookup
+    if (pairM) {
+      const name = pairM[1].trim();
+      // Guard against picking up stuff that's clearly not a name
+      if (name.length >= 2 && !/^\d+$/.test(name)) {
+        out.pairAfter = name;
+      }
+    }
+    // ────────────────────────────────────────────────────────────────
     const ordSuffix = '(?:st|nd|rd|th)?';           // 20 / 20th / 3rd / 1st
     const dayNum    = '(?:the\\s+)?(\\d{1,2})' + ordSuffix + '(?:\\s+of\\s+(?:the\\s+)?month)?';
 
@@ -5062,7 +5083,7 @@ window.CRM = (function(){
       }
     }
 
-    if (!out.dows.length && !out.intervalDays && !out.nthOfMonth && !out.activeMonths && !out.dayOfMonthMin && !out.dayOfMonthMax) return null;
+    if (!out.dows.length && !out.intervalDays && !out.nthOfMonth && !out.activeMonths && !out.dayOfMonthMin && !out.dayOfMonthMax && !out.pairAfter) return null;
     return out;
   }
 
@@ -5142,7 +5163,36 @@ window.CRM = (function(){
       }
       parts.push('Day of month: <strong>' + dayStr + '</strong>');
     }
+    // Pairing display + resolution check
+    if (p.pairAfter) {
+      const matches = _resolvePairName(p.pairAfter);
+      if (matches.length === 1) {
+        parts.push(`Paired: <strong>after "${esc(matches[0].location_name)}"</strong> <em style="color:var(--text3);font-size:10px">(hard — will skip if unpaired parent isn't scheduled)</em>`);
+      } else if (matches.length === 0) {
+        parts.push(`<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Paired: <strong>"${esc(p.pairAfter)}"</strong> \u2014 no matching customer found</span>`);
+      } else {
+        parts.push(`<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Paired: <strong>"${esc(p.pairAfter)}"</strong> \u2014 ambiguous, matches ${matches.length} customers: ${matches.slice(0,3).map(m=>esc(m.location_name)).join(', ')}${matches.length>3?', ...':''}</span>`);
+      }
+    }
     return '<span style="color:var(--green);font-weight:700"><i class="ti ti-check"></i> Parsed:</span> ' + parts.join(' &middot; ');
+  }
+
+  // Resolve a pairing name to matching location(s).
+  // 1. Try case-insensitive EXACT match. Return single match.
+  // 2. If no exact, try substring match (case-insensitive). Return any matches.
+  // Caller decides what to do with 0, 1, or many results.
+  function _resolvePairName(name) {
+    if (!name) return [];
+    const needle = name.toLowerCase().trim();
+    // Exact match (case-insensitive)
+    const exact = state.locations.filter(l =>
+      (l.location_name || '').toLowerCase().trim() === needle && !l.deleted_at
+    );
+    if (exact.length > 0) return exact;
+    // Fall back to partial (substring)
+    return state.locations.filter(l =>
+      (l.location_name || '').toLowerCase().includes(needle) && !l.deleted_at
+    );
   }
 
   function tierCadenceDays(tier) {
@@ -5188,6 +5238,10 @@ window.CRM = (function(){
 
       const pattern = computePattern(loc.id);
       const pref = parsePreference(loc.scheduling_preference);
+
+      // If this customer is paired to another (via "after X" in preference),
+      // skip in this pass — the pairing pass below handles them.
+      if (pref && pref.pairAfter) continue;
 
       // Seasonal opt-out: if the preference specifies active months and the
       // target week falls entirely outside those months, skip this customer.
@@ -5439,7 +5493,184 @@ window.CRM = (function(){
       };
     });
 
-    return { proposals: placed, skippedConflict, existingStops };
+    // ─── PAIRING PASS ───────────────────────────────────────────────
+    // Any customer whose preference says "after <name>" is hard-paired: it
+    // gets placed same-day, immediately after (adjacent time) its parent on
+    // the SAME truck. Chains (A → B → C) work by re-running the pass until
+    // no more can be placed. Customers whose parent isn't scheduled that
+    // week are skipped entirely (hard pairing).
+    //
+    // Skipped due to unresolved pairing get recorded in skippedPairing for
+    // display in the review UI.
+    const skippedPairing = [];
+    const cycleGuard = new Set();  // location_ids we've already tried this session
+
+    // Helper: parse duration in minutes from time range like "10:00" to "11:00"
+    const durationMin = (start, end) => {
+      if (!start || !end) return 60;
+      const [sh, sm] = start.split(':').map(n => parseInt(n, 10) || 0);
+      const [eh, em] = end.split(':').map(n => parseInt(n, 10) || 0);
+      const d = (eh * 60 + em) - (sh * 60 + sm);
+      return d > 0 ? d : 60;
+    };
+    const addMin = (time, mins) => {
+      const [h, m] = time.split(':').map(n => parseInt(n, 10) || 0);
+      const total = h * 60 + m + mins;
+      const nh = Math.floor(total / 60) % 24;
+      const nm = total % 60;
+      return String(nh).padStart(2,'0') + ':' + String(nm).padStart(2,'0');
+    };
+
+    // Build a lookup of "location_id → placed proposal" for parent-finding.
+    // Both newly-placed AND pre-existing stops are eligible parents.
+    const placedByLocId = new Map();
+    placed.forEach(p => placedByLocId.set(p.location_id, p));
+    existingInWeek.forEach(s => {
+      if (!placedByLocId.has(s.location_id)) {
+        placedByLocId.set(s.location_id, {
+          location_id: s.location_id, scheduled_date: s.scheduled_date,
+          start_time: s.start_time, end_time: s.end_time, truck: s.truck,
+        });
+      }
+    });
+
+    // Gather all paired candidates to attempt
+    const pairedCandidates = state.locations.filter(loc => {
+      if (loc.status !== 'active') return false;
+      if (loc.location_name && loc.location_name.startsWith('[Personal')) return false;
+      if (alreadyScheduled.has(loc.id)) return false;
+      const pref = parsePreference(loc.scheduling_preference);
+      return pref && pref.pairAfter;
+    });
+
+    // Iterate — chain support. Each pass places any pairable candidate whose
+    // parent is now in placedByLocId. Stop when a full pass places nothing.
+    let progress = true;
+    const remaining = [...pairedCandidates];
+    while (progress) {
+      progress = false;
+      for (let i = remaining.length - 1; i >= 0; i--) {
+        const loc = remaining[i];
+        if (cycleGuard.has(loc.id)) { remaining.splice(i, 1); continue; }
+
+        const pref = parsePreference(loc.scheduling_preference);
+        const parents = _resolvePairName(pref.pairAfter);
+
+        // Only proceed if exactly one match
+        if (parents.length !== 1) {
+          skippedPairing.push({
+            location_id: loc.id,
+            location_name: loc.location_name,
+            reason: parents.length === 0
+              ? `Paired to "${pref.pairAfter}" — no matching customer`
+              : `Paired to "${pref.pairAfter}" — ambiguous (${parents.length} matches)`,
+          });
+          remaining.splice(i, 1);
+          continue;
+        }
+        const parent = parents[0];
+
+        // Cycle detection: if parent's chain eventually references loc, skip
+        cycleGuard.add(loc.id);
+        let chainCheck = parent;
+        let cycleDetected = false;
+        const seen = new Set([loc.id]);
+        while (chainCheck) {
+          if (seen.has(chainCheck.id)) { cycleDetected = true; break; }
+          seen.add(chainCheck.id);
+          const chainPref = parsePreference(chainCheck.scheduling_preference);
+          if (!chainPref?.pairAfter) break;
+          const nextMatches = _resolvePairName(chainPref.pairAfter);
+          chainCheck = nextMatches.length === 1 ? nextMatches[0] : null;
+        }
+        if (cycleDetected) {
+          skippedPairing.push({
+            location_id: loc.id,
+            location_name: loc.location_name,
+            reason: `Pairing chain contains a cycle — cannot resolve`,
+          });
+          remaining.splice(i, 1);
+          continue;
+        }
+
+        // Is parent placed in this week?
+        const parentPlaced = placedByLocId.get(parent.id);
+        if (!parentPlaced) continue; // wait for a future pass (parent might get placed by another pairing)
+
+        // Determine B's duration
+        const bPattern = computePattern(loc.id);
+        const bDur = bPattern.typicalStart && bPattern.typicalEnd
+          ? durationMin(bPattern.typicalStart, bPattern.typicalEnd)
+          : 60;
+
+        // Compute B's slot: immediately after parent, same truck, same day
+        const bStart = parentPlaced.end_time;
+        const bEnd = addMin(bStart, bDur);
+
+        // Check for conflicts with anything else placed on this truck/day
+        const conflict = placed.find(p =>
+          p.truck === parentPlaced.truck &&
+          p.scheduled_date === parentPlaced.scheduled_date &&
+          timesOverlap(
+            { start_time: bStart, end_time: bEnd, truck: parentPlaced.truck },
+            { start_time: p.start_time, end_time: p.end_time, truck: p.truck }
+          )
+        ) || existingInWeek.find(s =>
+          s.truck === parentPlaced.truck &&
+          s.scheduled_date === parentPlaced.scheduled_date &&
+          s.location_id !== loc.id &&
+          timesOverlap(
+            { start_time: bStart, end_time: bEnd, truck: parentPlaced.truck },
+            { start_time: s.start_time, end_time: s.end_time, truck: s.truck }
+          )
+        );
+        if (conflict) {
+          skippedPairing.push({
+            location_id: loc.id,
+            location_name: loc.location_name,
+            reason: `Slot ${bStart}\u2013${bEnd} on ${parentPlaced.scheduled_date} conflicts with another stop`,
+          });
+          remaining.splice(i, 1);
+          continue;
+        }
+
+        // Place it
+        const newProp = {
+          id: `prop-${loc.id}-${parentPlaced.scheduled_date}`,
+          location_id: loc.id,
+          location_name: loc.location_name,
+          location_tier: loc.tier || 'pending',
+          scheduled_date: parentPlaced.scheduled_date,
+          start_time: bStart,
+          end_time: bEnd,
+          truck: parentPlaced.truck,
+          cadenceSource: 'paired',
+          dowSource: 'paired',
+          timeSource: 'paired',
+          confidence: 'high',
+          pattern: bPattern,
+          reasons: [`Paired: immediately after ${parent.location_name}`],
+          truck_lock: !!loc.truck_lock,
+          enabled: true,
+        };
+        placed.push(newProp);
+        placedByLocId.set(loc.id, newProp);
+        remaining.splice(i, 1);
+        progress = true;
+      }
+    }
+    // Anything left unresolved means the parent never got scheduled — hard pairing = skip
+    remaining.forEach(loc => {
+      const pref = parsePreference(loc.scheduling_preference);
+      skippedPairing.push({
+        location_id: loc.id,
+        location_name: loc.location_name,
+        reason: `Paired to "${pref.pairAfter}" — parent not scheduled this week`,
+      });
+    });
+    // ────────────────────────────────────────────────────────────────
+
+    return { proposals: placed, skippedConflict, skippedPairing, existingStops };
   }
 
   // State for the active proposal session
@@ -5716,7 +5947,7 @@ window.CRM = (function(){
   function renderProposalReview() {
     const root = document.getElementById('crm-schedule-content');
     if (!root || !state.proposalSession) return;
-    const { proposals, skippedConflict, existingStops } = state.proposalSession;
+    const { proposals, skippedConflict, skippedPairing = [], existingStops } = state.proposalSession;
     const weekStart = state.weekStart;
     const weekEnd = addDays(weekStart, 6);
 
@@ -5749,6 +5980,16 @@ window.CRM = (function(){
         <div style="font-family:var(--font-display);font-size:14px;color:var(--red);margin-bottom:8px"><i class="ti ti-alert-triangle"></i> Couldn't Fit</div>
         ${skippedConflict.map(p => `<div style="font-size:12px;padding:4px 0">
           <strong>${esc(p.location_name)}</strong> — ${esc(p.conflict || 'No available slot')}
+        </div>`).join('')}
+      </div>`;
+    }
+
+    // Pairing skips section (customers whose parent didn't get scheduled, or with resolution issues)
+    if (skippedPairing.length) {
+      html += `<div class="card" style="background:var(--amber-bg);border-color:var(--amber);margin-bottom:14px">
+        <div style="font-family:var(--font-display);font-size:14px;color:var(--amber);margin-bottom:8px"><i class="ti ti-link-off"></i> Pairing Skipped</div>
+        ${skippedPairing.map(p => `<div style="font-size:12px;padding:4px 0">
+          <strong>${esc(p.location_name)}</strong> \u2014 ${esc(p.reason || 'Pairing could not resolve')}
         </div>`).join('')}
       </div>`;
     }
