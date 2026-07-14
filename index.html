@@ -3549,12 +3549,21 @@ window.CRM = (function(){
     state.currentLocId = id;
     state.profileTab = 'overview';
     state.profileEditing = false;
+    // Snapshot the scroll position of the previous view (usually the Stops list)
+    // so the Back button can return the user to exactly where they were.
+    state._scrollBeforeProfile = window.scrollY;
     showSection('crm-profile');
     document.getElementById('page-title').textContent = state.locations.find(l => l.id === id)?.location_name || 'Customer';
     document.getElementById('back-btn').style.display = '';
     document.getElementById('back-btn').onclick = () => {
       const navBtn = document.querySelector('.nav-item[onclick*="crm-customers"]');
       showSection('crm-customers', navBtn);
+      // Restore scroll after the next paint so it lands after showSection's
+      // reset. Two rAFs handle the case where renderCustomers runs async.
+      const y = state._scrollBeforeProfile || 0;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        window.scrollTo({ top: y, behavior: 'instant' });
+      }));
     };
     renderProfile();
     // Fire-and-forget background fetch of sales for any past stops at this location
@@ -3694,6 +3703,7 @@ window.CRM = (function(){
         ${editField('Point of Contact','f-poc', l.point_of_contact)}
         ${editField('Phone','f-phone', l.phone)}
         ${editField('Email','f-email', l.email)}
+        ${editField('Notes','f-notes', l.notes, true)}
       </div>
       <div>
         <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:10px">Scheduling</div>
@@ -3702,7 +3712,6 @@ window.CRM = (function(){
           <input type="text" id="f-sched" value="${esc(l.scheduling_preference||'')}" oninput="window.CRM&&document.getElementById('f-sched-preview')&&(document.getElementById('f-sched-preview').innerHTML=CRM.previewPreference(this.value))" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
           <div id="f-sched-preview" style="margin-top:6px;padding:8px 10px;border-radius:6px;background:var(--bg2);font-size:11px;color:var(--text3);min-height:16px">${previewPreference(l.scheduling_preference||'')}</div>
         </div>
-        ${editField('Notes','f-notes', l.notes, true)}
         ${editField('Internal Flags','f-flags', l.internal_flags, true)}
         <div style="margin-bottom:10px">
           <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Preferred Truck</label>
@@ -4517,12 +4526,12 @@ window.CRM = (function(){
             ${editField('Point of Contact','new-poc','')}
             ${editField('Phone','new-phone','')}
             ${editField('Email','new-email','')}
+            ${editField('Notes','new-notes','',true)}
             <div style="margin-bottom:10px">
               <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Scheduling preference</label>
               <input type="text" id="new-sched" value="" oninput="window.CRM&&document.getElementById('new-sched-preview')&&(document.getElementById('new-sched-preview').innerHTML=CRM.previewPreference(this.value))" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
               <div id="new-sched-preview" style="margin-top:6px;padding:8px 10px;border-radius:6px;background:var(--bg2);font-size:11px;color:var(--text3);min-height:16px">${previewPreference('')}</div>
             </div>
-            ${editField('Notes','new-notes','',true)}
           </div>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
@@ -5897,8 +5906,23 @@ window.CRM = (function(){
     state.currentLocId = id;
     state.profileTab = 'overview';
     state.profileEditing = false;
+    // Snapshot mob-body scroll so the profile Back button can restore it
+    const mb = document.getElementById('mob-body');
+    state._mobScrollBeforeProfile = mb ? mb.scrollTop : 0;
     mobShow('crm-profile', null);
     ensureSalesForLocation(id);
+  }
+
+  // Return to Stops list on mobile, restoring the scroll position the user
+  // had before they opened the profile.
+  function mobBackToStops(){
+    const tab = document.querySelector('.mob-tab[data-sec="crm-customers"]');
+    mobShow('crm-customers', tab);
+    const y = state._mobScrollBeforeProfile || 0;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const mb = document.getElementById('mob-body');
+      if (mb) mb.scrollTop = y;
+    }));
   }
   function renderMobProfile(){
     const root = document.getElementById('crm-profile-mob');
@@ -5940,7 +5964,7 @@ window.CRM = (function(){
       return;
     }
     root.innerHTML = `
-      <button class="btn btn-sm" onclick="mobShow('crm-customers',document.querySelector('.mob-tab[data-sec=\\'crm-customers\\']'))" style="margin-bottom:12px"><i class="ti ti-arrow-left"></i> Back</button>
+      <button class="btn btn-sm" onclick="CRM.mobBackToStops()" style="margin-bottom:12px"><i class="ti ti-arrow-left"></i> Back</button>
       <div class="card">
         <div style="font-family:var(--font-display);font-size:20px;color:var(--sidebar);margin-bottom:14px">${esc(l.location_name)}</div>
         ${l.internal_flags ? `<div style="background:var(--amber-bg);color:var(--amber);border-left:3px solid var(--amber);padding:10px;border-radius:var(--radius);margin-bottom:14px;font-size:12px"><i class="ti ti-flag"></i> ${esc(l.internal_flags)}</div>` : ''}
@@ -8571,6 +8595,7 @@ window.CRM = (function(){
     // Mobile
     renderMobCustomers, filterMobCustomers, renderMobCustomerList,
     openMobProfile, renderMobProfile, startMobEdit, cancelMobEdit, saveMobEdit,
+    mobBackToStops,
     renderMobSchedule, setMobScheduleTruck,
     renderMobForecast,
     renderMobRelog,
