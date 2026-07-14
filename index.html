@@ -3760,7 +3760,9 @@ window.CRM = (function(){
         <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:10px">Scheduling</div>
         <div style="margin-bottom:10px">
           <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Preference</label>
-          <textarea id="f-sched" rows="4" oninput="window.CRM&&document.getElementById('f-sched-preview')&&(document.getElementById('f-sched-preview').innerHTML=CRM.previewPreference(this.value))" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;resize:vertical;min-height:80px">${esc(l.scheduling_preference||'')}</textarea>
+          <div id="f-preset-cards" style="margin-bottom:8px"></div>
+          <button type="button" class="btn btn-sm" onclick="CRM.openPresetForm(null)" style="margin-bottom:8px;background:var(--bg2);font-size:12px"><i class="ti ti-plus"></i> Add Preset</button>
+          <textarea id="f-sched" rows="4" oninput="window.CRM&&(document.getElementById('f-sched-preview').innerHTML=CRM.previewPreference(this.value), CRM.renderPresetCards())" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;resize:vertical;min-height:80px">${esc(l.scheduling_preference||'')}</textarea>
           <div id="f-sched-preview" style="margin-top:6px;padding:8px 10px;border-radius:6px;background:var(--bg2);font-size:11px;color:var(--text3);min-height:16px">${previewPreference(l.scheduling_preference||'')}</div>
         </div>
         <div style="margin-bottom:10px">
@@ -3805,7 +3807,7 @@ window.CRM = (function(){
     </div>`;
   }
 
-  function startEdit() { state.profileEditing = true; renderProfile(); }
+  function startEdit() { state.profileEditing = true; renderProfile(); setTimeout(() => renderPresetCards(), 0); }
   function cancelEdit() { state.profileEditing = false; renderProfile(); }
   async function saveEdit() {
     const id = state.currentLocId;
@@ -5349,6 +5351,350 @@ window.CRM = (function(){
     return parts;
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // PRESET BUILDER — form-driven UI for constructing scheduling
+  // preferences without typing raw syntax. Reads and writes the same
+  // f-sched textarea; the text field remains the source of truth so
+  // advanced users can still hand-edit.
+  // ═══════════════════════════════════════════════════════════════════
+
+  const _PRESET_MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const _PRESET_DAY_LABELS  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const _PRESET_CADENCE_OPTIONS = [
+    { value: 7,   label: 'Weekly' },
+    { value: 14,  label: 'Every 2 weeks (bi-weekly)' },
+    { value: 21,  label: 'Every 3 weeks' },
+    { value: 28,  label: 'Monthly (every 4 weeks)' },
+    { value: 42,  label: 'Every 6 weeks' },
+    { value: 56,  label: 'Every 8 weeks' },
+    { value: 90,  label: 'Quarterly' },
+  ];
+
+  // Parse a preset card back from the textarea. Returns array of
+  // { months: [1-12], dows: [0-6], intervalDays, startTime, endTime, extras: 'text' }
+  function _parseCardsFromText(text) {
+    if (!text || !text.trim()) return [];
+    const parsed = parsePreference(text);
+    if (!parsed) return [];
+
+    if (parsed.multiRule) {
+      return parsed.rules.map(entry => _ruleToCard(entry.rule, entry.months, entry.rawPrefix, text));
+    }
+    // Single rule — treat as one preset covering all months (or its own activeMonths)
+    const months = parsed.activeMonths || [1,2,3,4,5,6,7,8,9,10,11,12];
+    return [_ruleToCard(parsed, months, null, text)];
+  }
+
+  function _ruleToCard(rule, months, rawPrefix, fullText) {
+    // Determine which fragments of the rule we render as "extras" text — anything
+    // we can't represent as first-class form fields (pairing, day-of-month bounds, etc.)
+    const extraParts = [];
+    if (rule.dayOfMonthMin && rule.dayOfMonthMax) {
+      extraParts.push(`between the ${rule.dayOfMonthMin} and ${rule.dayOfMonthMax}`);
+    } else if (rule.dayOfMonthMin) {
+      extraParts.push(`after the ${rule.dayOfMonthMin}`);
+    } else if (rule.dayOfMonthMax) {
+      extraParts.push(`before the ${rule.dayOfMonthMax}`);
+    }
+    if (rule.nthOfMonth && rule.nthOfMonth.length) {
+      const ord = { 1:'1st', 2:'2nd', 3:'3rd', 4:'4th', 5:'5th', '-1':'Last' };
+      extraParts.push(rule.nthOfMonth.map(n => ord[n] || n).join(' and '));
+    }
+    if (rule.pairAfter) {
+      extraParts.push(`after ${rule.pairAfter}`);
+    }
+    return {
+      months: [...months].sort((a,b)=>a-b),
+      dows: [...(rule.dows || [])].sort((a,b)=>a-b),
+      intervalDays: rule.intervalDays || null,
+      startTime: rule.startTime || '',
+      endTime: rule.endTime || '',
+      extras: extraParts.join(', '),
+    };
+  }
+
+  // Serialize an array of card objects back to text (one line per preset)
+  function _cardsToText(cards) {
+    if (!cards || cards.length === 0) return '';
+
+    // If there's exactly one card that covers all 12 months, write it without
+    // a month prefix (backward-compat, avoids "Jan-Dec:" clutter for simple cases)
+    const isAllYear = c => c.months.length === 12 &&
+      [1,2,3,4,5,6,7,8,9,10,11,12].every(m => c.months.includes(m));
+
+    return cards.map(c => {
+      const parts = [];
+      // Day-of-week
+      if (c.dows.length === 5 && c.dows.every(d => d >= 1 && d <= 5)) parts.push('Weekdays');
+      else if (c.dows.length === 2 && c.dows.includes(0) && c.dows.includes(6)) parts.push('Weekends');
+      else if (c.dows.length) parts.push(c.dows.map(d => _PRESET_DAY_LABELS[d]).join('/'));
+
+      // Cadence
+      if (c.intervalDays) {
+        const opt = _PRESET_CADENCE_OPTIONS.find(o => o.value === c.intervalDays);
+        if (opt) {
+          const kw = { 7:'weekly', 14:'bi-weekly', 21:'every 3 weeks', 28:'monthly', 42:'every 6 weeks', 56:'every 8 weeks', 90:'quarterly' };
+          if (kw[c.intervalDays]) parts.push(kw[c.intervalDays]);
+        } else {
+          parts.push(`every ${Math.round(c.intervalDays/7)} weeks`);
+        }
+      }
+
+      // Times
+      if (c.startTime && c.endTime) {
+        const fmt = t => {
+          const [h, m] = t.split(':').map(n => parseInt(n, 10));
+          const ap = h >= 12 ? 'pm' : 'am';
+          const hh = (h % 12) || 12;
+          return `${hh}${m > 0 ? ':' + String(m).padStart(2,'0') : ''}${ap}`;
+        };
+        parts.push(`${fmt(c.startTime)}-${fmt(c.endTime)}`);
+      }
+
+      // Extras
+      if (c.extras && c.extras.trim()) parts.push(c.extras.trim());
+
+      const ruleText = parts.join(' ');
+      if (isAllYear(c)) return ruleText;
+
+      // Build month prefix: contiguous → range, else comma-separated
+      const monthsSorted = [...c.months].sort((a,b)=>a-b);
+      const isContig = monthsSorted.every((m,i) => i === 0 || m === monthsSorted[i-1] + 1);
+      const prefix = isContig && monthsSorted.length > 1
+        ? `${_PRESET_MONTH_NAMES[monthsSorted[0]-1]}-${_PRESET_MONTH_NAMES[monthsSorted[monthsSorted.length-1]-1]}`
+        : monthsSorted.map(m => _PRESET_MONTH_NAMES[m-1]).join(',');
+      return `${prefix}: ${ruleText}`;
+    }).join('\n');
+  }
+
+  // Render the preset cards ABOVE the textarea, reflecting the current textarea state
+  function renderPresetCards() {
+    const container = document.getElementById('f-preset-cards');
+    const ta = document.getElementById('f-sched');
+    if (!container || !ta) return;
+    const cards = _parseCardsFromText(ta.value);
+    if (cards.length === 0) {
+      container.innerHTML = '<div style="font-size:11px;color:var(--text3);font-style:italic;padding:4px 0">No presets yet. Add one with the button below, or type directly into the text field.</div>';
+      return;
+    }
+    container.innerHTML = cards.map((c, idx) => {
+      const monthLabel = c.months.length === 12
+        ? 'All year'
+        : (() => {
+            const sorted = [...c.months].sort((a,b)=>a-b);
+            const isContig = sorted.every((m,i) => i === 0 || m === sorted[i-1] + 1);
+            return isContig && sorted.length > 1
+              ? `${_PRESET_MONTH_NAMES[sorted[0]-1]}\u2013${_PRESET_MONTH_NAMES[sorted[sorted.length-1]-1]}`
+              : sorted.map(m => _PRESET_MONTH_NAMES[m-1]).join(', ');
+          })();
+      const dayLabel = c.dows.length
+        ? (c.dows.length === 5 && c.dows.every(d => d >= 1 && d <= 5) ? 'Weekdays'
+          : c.dows.length === 2 && c.dows.includes(0) && c.dows.includes(6) ? 'Weekends'
+          : c.dows.map(d => _PRESET_DAY_LABELS[d]).join(', '))
+        : '—';
+      const cadenceOpt = _PRESET_CADENCE_OPTIONS.find(o => o.value === c.intervalDays);
+      const cadenceLabel = cadenceOpt ? cadenceOpt.label : (c.intervalDays ? `Every ${Math.round(c.intervalDays/7)} weeks` : '—');
+      const timeLabel = (c.startTime && c.endTime)
+        ? (() => {
+            const fmt = t => { const [h,m] = t.split(':').map(n=>parseInt(n,10)); const ap = h>=12?'PM':'AM'; return `${(h%12)||12}:${String(m).padStart(2,'0')} ${ap}`; };
+            return `${fmt(c.startTime)}\u2013${fmt(c.endTime)}`;
+          })()
+        : '—';
+      return `<div style="border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:6px;background:var(--surface);display:flex;align-items:center;gap:12px">
+        <div style="flex:1;font-size:12px">
+          <div><strong style="color:var(--sidebar)">${esc(monthLabel)}</strong> \u00b7 ${esc(dayLabel)} \u00b7 ${esc(cadenceLabel)} \u00b7 ${esc(timeLabel)}</div>
+          ${c.extras ? `<div style="font-size:11px;color:var(--text3);margin-top:2px;font-style:italic">+ ${esc(c.extras)}</div>` : ''}
+        </div>
+        <button type="button" class="btn btn-xs" onclick="CRM.openPresetForm(${idx})" title="Edit"><i class="ti ti-edit"></i></button>
+        <button type="button" class="btn btn-xs" onclick="CRM.deletePreset(${idx})" title="Delete" style="background:var(--red-bg);color:var(--red)"><i class="ti ti-trash"></i></button>
+      </div>`;
+    }).join('');
+  }
+
+  // Open the preset form modal. If cardIdx is null, we're adding a new preset;
+  // otherwise editing an existing one.
+  function openPresetForm(cardIdx) {
+    const ta = document.getElementById('f-sched');
+    if (!ta) return;
+    const cards = _parseCardsFromText(ta.value);
+    const editing = cardIdx !== null && cardIdx !== undefined && cards[cardIdx];
+    const c = editing ? cards[cardIdx] : { months: [1,2,3,4,5,6,7,8,9,10,11,12], dows: [], intervalDays: 7, startTime: '', endTime: '', extras: '' };
+
+    // Store in a temp variable on the module so save can find it
+    state._editingPreset = { cardIdx, allCards: cards };
+
+    // Build modal HTML
+    const monthCheckboxes = _PRESET_MONTH_NAMES.map((name, i) => {
+      const monthNum = i + 1;
+      return `<label style="display:inline-flex;align-items:center;gap:4px;padding:6px 10px;background:${c.months.includes(monthNum)?'var(--accent)':'var(--bg2)'};color:${c.months.includes(monthNum)?'#fff':'var(--text2)'};border-radius:14px;cursor:pointer;font-size:12px;font-weight:700;user-select:none">
+        <input type="checkbox" class="preset-month" value="${monthNum}" ${c.months.includes(monthNum)?'checked':''} onchange="this.parentElement.style.background=this.checked?'var(--accent)':'var(--bg2)';this.parentElement.style.color=this.checked?'#fff':'var(--text2)'" style="display:none">
+        ${name}
+      </label>`;
+    }).join(' ');
+
+    const dayCheckboxes = _PRESET_DAY_LABELS.map((name, i) => {
+      return `<label style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:${c.dows.includes(i)?'var(--accent)':'var(--bg2)'};color:${c.dows.includes(i)?'#fff':'var(--text2)'};border-radius:14px;cursor:pointer;font-size:12px;font-weight:700;user-select:none">
+        <input type="checkbox" class="preset-dow" value="${i}" ${c.dows.includes(i)?'checked':''} onchange="this.parentElement.style.background=this.checked?'var(--accent)':'var(--bg2)';this.parentElement.style.color=this.checked?'#fff':'var(--text2)'" style="display:none">
+        ${name}
+      </label>`;
+    }).join(' ');
+
+    const cadenceOptions = _PRESET_CADENCE_OPTIONS.map(o =>
+      `<option value="${o.value}" ${c.intervalDays === o.value ? 'selected' : ''}>${o.label}</option>`
+    ).join('');
+
+    const modalHtml = `
+      <div id="preset-form-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto" onclick="if(event.target===this)CRM.closePresetForm()">
+        <div style="background:var(--surface);border-radius:12px;padding:24px;max-width:560px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)" onclick="event.stopPropagation()">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div style="font-family:var(--font-display);font-size:18px;color:var(--sidebar)">${editing ? 'Edit Preset' : 'Add Preset'}</div>
+            <button class="btn btn-sm" onclick="CRM.closePresetForm()"><i class="ti ti-x"></i></button>
+          </div>
+
+          <div style="margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+              <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Active Months</label>
+              <div style="font-size:10px;color:var(--text3)">
+                <a onclick="CRM._presetPickMonths([1,2,3,4,5,6,7,8,9,10,11,12])" style="cursor:pointer;text-decoration:underline;margin-right:8px">All year</a>
+                <a onclick="CRM._presetPickMonths([6,7,8])" style="cursor:pointer;text-decoration:underline;margin-right:8px">Summer</a>
+                <a onclick="CRM._presetPickMonths([9,10,11,12,1,2,3,4,5])" style="cursor:pointer;text-decoration:underline;margin-right:8px">School year</a>
+                <a onclick="CRM._presetPickMonths([])" style="cursor:pointer;text-decoration:underline">Clear</a>
+              </div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px" id="preset-months-group">${monthCheckboxes}</div>
+          </div>
+
+          <div style="margin-bottom:14px">
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:6px">Day(s) of Week</label>
+            <div style="display:flex;flex-wrap:wrap;gap:4px" id="preset-dows-group">${dayCheckboxes}</div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+            <div>
+              <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Cadence</label>
+              <select id="preset-cadence" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">${cadenceOptions}</select>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+              <div>
+                <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Start</label>
+                <input type="time" id="preset-start" value="${c.startTime||''}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">End</label>
+                <input type="time" id="preset-end" value="${c.endTime||''}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-bottom:14px">
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Additional Rules (optional)</label>
+            <input type="text" id="preset-extras" value="${esc(c.extras||'')}" placeholder="e.g. after the 20th, 1st Tuesday, after Bob's Deli" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+            <div style="font-size:10px;color:var(--text3);margin-top:4px;font-style:italic">These add extra constraints: <code>after the 20th</code>, <code>before the 15th</code>, <code>1st Tuesday</code>, <code>last Friday</code>, <code>after Bob's Deli</code> (pairing).</div>
+          </div>
+
+          <div style="margin-bottom:14px;padding:10px;background:var(--bg2);border-radius:var(--radius);font-size:11px;color:var(--text3)">
+            <div style="text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:4px">Live preview</div>
+            <div id="preset-live-preview" style="color:var(--text2);font-family:monospace"></div>
+          </div>
+
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn btn-sm" onclick="CRM.closePresetForm()">Cancel</button>
+            <button class="btn btn-sm btn-primary" onclick="CRM.savePresetForm()"><i class="ti ti-check"></i> Save Preset</button>
+          </div>
+        </div>
+      </div>`;
+
+    // Insert into DOM
+    const existing = document.getElementById('preset-form-overlay');
+    if (existing) existing.remove();
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Wire live preview — recompute whenever any field changes
+    const update = () => _updatePresetPreview();
+    document.querySelectorAll('#preset-form-overlay input, #preset-form-overlay select').forEach(el => {
+      el.addEventListener('input', update);
+      el.addEventListener('change', update);
+    });
+    update();
+  }
+
+  // Quick-add helpers (called from Summer/School year/All year/Clear links)
+  function _presetPickMonths(monthList) {
+    const checkboxes = document.querySelectorAll('#preset-months-group input.preset-month');
+    checkboxes.forEach(cb => {
+      const val = parseInt(cb.value, 10);
+      const wanted = monthList.includes(val);
+      if (cb.checked !== wanted) {
+        cb.checked = wanted;
+        cb.parentElement.style.background = wanted ? 'var(--accent)' : 'var(--bg2)';
+        cb.parentElement.style.color = wanted ? '#fff' : 'var(--text2)';
+      }
+    });
+    _updatePresetPreview();
+  }
+
+  function _updatePresetPreview() {
+    const preview = document.getElementById('preset-live-preview');
+    if (!preview) return;
+    const card = _readPresetForm();
+    if (!card) { preview.textContent = '(nothing yet)'; return; }
+    // Show what this SINGLE card would look like as text
+    const text = _cardsToText([card]);
+    preview.textContent = text || '(nothing yet)';
+  }
+
+  function _readPresetForm() {
+    const months = Array.from(document.querySelectorAll('#preset-months-group input.preset-month:checked')).map(cb => parseInt(cb.value, 10));
+    const dows   = Array.from(document.querySelectorAll('#preset-dows-group input.preset-dow:checked')).map(cb => parseInt(cb.value, 10));
+    const intervalDays = parseInt(document.getElementById('preset-cadence')?.value, 10) || null;
+    const startTime = document.getElementById('preset-start')?.value || '';
+    const endTime   = document.getElementById('preset-end')?.value || '';
+    const extras    = document.getElementById('preset-extras')?.value?.trim() || '';
+    if (!months.length && !dows.length && !startTime && !endTime && !extras) return null;
+    return { months, dows, intervalDays, startTime, endTime, extras };
+  }
+
+  function closePresetForm() {
+    const overlay = document.getElementById('preset-form-overlay');
+    if (overlay) overlay.remove();
+    state._editingPreset = null;
+  }
+
+  function savePresetForm() {
+    const card = _readPresetForm();
+    if (!card) { alert('Fill in at least one field.'); return; }
+    if (card.months.length === 0) { alert('Pick at least one month.'); return; }
+    const editState = state._editingPreset;
+    if (!editState) { closePresetForm(); return; }
+    const cards = [...editState.allCards];
+    if (editState.cardIdx === null || editState.cardIdx === undefined) {
+      cards.push(card);
+    } else {
+      cards[editState.cardIdx] = card;
+    }
+    // Write back to textarea
+    const ta = document.getElementById('f-sched');
+    if (ta) {
+      ta.value = _cardsToText(cards);
+      // Trigger the same handlers the textarea's oninput normally would
+      document.getElementById('f-sched-preview').innerHTML = previewPreference(ta.value);
+      renderPresetCards();
+    }
+    closePresetForm();
+  }
+
+  function deletePreset(idx) {
+    if (!confirm('Delete this preset?')) return;
+    const ta = document.getElementById('f-sched');
+    if (!ta) return;
+    const cards = _parseCardsFromText(ta.value);
+    if (!cards[idx]) return;
+    cards.splice(idx, 1);
+    ta.value = _cardsToText(cards);
+    document.getElementById('f-sched-preview').innerHTML = previewPreference(ta.value);
+    renderPresetCards();
+  }
+
   // Resolve a pairing name to matching location(s).
   // 1. Try case-insensitive EXACT match. Return single match.
   // 2. If no exact, try substring match (case-insensitive). Return any matches.
@@ -6581,7 +6927,7 @@ window.CRM = (function(){
   }
 
   // Mobile edit-mode entry/exit — same backing flag as desktop
-  function startMobEdit() { state.profileEditing = true; renderMobProfile(); }
+  function startMobEdit() { state.profileEditing = true; renderMobProfile(); setTimeout(() => renderPresetCards(), 0); }
   function cancelMobEdit() { state.profileEditing = false; renderMobProfile(); }
   // Saving mobile reuses saveEdit (reads same IDs) but re-renders the mobile view
   async function saveMobEdit() {
@@ -9185,6 +9531,8 @@ window.CRM = (function(){
     renderMobSchedule, setMobScheduleTruck,
     renderMobForecast,
     renderMobRelog,
+    // Preset builder (form-driven scheduling preference)
+    renderPresetCards, openPresetForm, closePresetForm, savePresetForm, deletePreset, _presetPickMonths,
     _state: state
   };
 })();
