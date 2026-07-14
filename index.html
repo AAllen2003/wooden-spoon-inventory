@@ -3954,7 +3954,24 @@ window.CRM = (function(){
    */
   function renderVisitPattern(l) {
     const pattern = computePattern(l.id);
-    const pref = parsePreference(l.scheduling_preference);
+    let pref = parsePreference(l.scheduling_preference);
+
+    // For multi-rule preferences, resolve to the rule that applies for the
+    // CURRENT calendar month. This is a summary view — the scheduler will
+    // use the appropriate per-week rule when actually generating proposals.
+    let multiRuleNote = '';
+    if (pref?.multiRule) {
+      const nowMonth = new Date().getMonth() + 1;
+      const currentRule = pref.rules.find(r => r.months.includes(nowMonth));
+      const totalRules = pref.rules.length;
+      if (currentRule) {
+        pref = currentRule.rule;
+        multiRuleNote = `<div style="margin-bottom:8px;font-size:11px;color:var(--text3);font-style:italic">Showing rule for the current month. This customer has ${totalRules} monthly presets — the scheduler will use the appropriate one each week.</div>`;
+      } else {
+        pref = null;
+        multiRuleNote = `<div style="margin-bottom:8px;font-size:11px;color:var(--amber)">This customer has ${totalRules} multi-month presets but none cover the current month.</div>`;
+      }
+    }
 
     // Determine what cadence/day/time the scheduler would actually use, and why
     let cadenceDays, cadenceSource;
@@ -4011,6 +4028,7 @@ window.CRM = (function(){
     }).join('') : '';
 
     return `<p class="section-intro">What the auto-scheduler will use for this location. Edit the location's <strong>Scheduling Preference</strong> text on the Overview tab to override any inferred values.</p>
+    ${multiRuleNote}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
       <div class="card" style="margin:0">
         <div class="card-header"><span class="card-title">Cadence</span></div>
@@ -4774,8 +4792,17 @@ window.CRM = (function(){
   /**
    * Parse scheduling_preference text into a structured rule, when possible.
    * Returns null if no clear rule found.
+   *
+   * ─ MULTI-RULE SUPPORT ─
+   * parsePreference() (below) is the public entry point. It handles
+   * multi-rule preferences where each rule is prefixed with a month range:
+   *   Jun-Aug: Tue 4-6pm
+   *   Sep-May: Tue 2:30-4:30pm, after the 20th
+   *
+   * _parseSingleRule() is the single-rule parser — it's what actually
+   * extracts days, cadence, times, etc. from ONE line/segment.
    */
-  function parsePreference(text) {
+  function _parseSingleRule(text) {
     if (!text) return null;
     const s = text.toLowerCase();
     // Patterns we try to recognize:
@@ -5085,6 +5112,118 @@ window.CRM = (function(){
     return out;
   }
 
+  // Month name → number lookup used by the multi-rule prefix parser
+  const _MONTH_MAP = {
+    jan:1, january:1, feb:2, february:2, mar:3, march:3, apr:4, april:4,
+    may:5, jun:6, june:6, jul:7, july:7, aug:8, august:8,
+    sep:9, sept:9, september:9, oct:10, october:10, nov:11, november:11, dec:12, december:12,
+  };
+
+  // Parse a month-range prefix like "Jun-Aug", "Jun to Aug", "Nov-Feb" (wraps year),
+  // "Jul" (single month). Returns an array of month numbers 1-12, or null on failure.
+  function _parseMonthRangePrefix(text) {
+    const t = text.toLowerCase().trim();
+    // "Jun-Aug" | "Jun to Aug" | "Jun through Aug" | "Jun–Aug"
+    const rangeMatch = t.match(/^([a-z]{3,9})\s*(?:-|–|to|through|thru)\s*([a-z]{3,9})$/);
+    if (rangeMatch) {
+      const a = _MONTH_MAP[rangeMatch[1]];
+      const b = _MONTH_MAP[rangeMatch[2]];
+      if (!a || !b) return null;
+      const months = [];
+      let cur = a;
+      // Handle year-wrap: Nov-Feb → 11,12,1,2
+      while (true) {
+        months.push(cur);
+        if (cur === b) break;
+        cur = cur === 12 ? 1 : cur + 1;
+        if (months.length > 12) return null; // safety
+      }
+      return months;
+    }
+    // Single month
+    const single = _MONTH_MAP[t];
+    if (single) return [single];
+    return null;
+  }
+
+  /**
+   * Public entry point. Supports two shapes:
+   *
+   * SINGLE-RULE (backward compatible):
+   *   "Every Tuesday 9-11am"                    → returns the rule directly
+   *
+   * MULTI-RULE (new):
+   *   "Jun-Aug: Tue 4-6pm\nSep-May: Tue 2:30-4:30pm after the 20th"
+   *   → returns { rules: [{months:[6,7,8], rule:{...}}, {months:[9..5], rule:{...}}],
+   *                warnings: [...], multiRule: true }
+   *
+   * Multi-rule is detected when ANY line has a "MonthRange:" prefix. Lines
+   * without prefixes in a multi-rule preference are ignored (with a warning).
+   * Overlap between rule month sets is flagged as a warning.
+   * Uncovered months are skipped — see the seasonal handling in the scheduler.
+   */
+  function parsePreference(text) {
+    if (!text || !text.trim()) return null;
+
+    // Detect multi-rule syntax: any line starting with "MonthRange:"
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const prefixRe = /^([a-z]{3,9}(?:\s*(?:-|–|to|through|thru)\s*[a-z]{3,9})?)\s*:\s*(.+)$/i;
+    const hasPrefix = lines.some(l => {
+      const m = l.match(prefixRe);
+      if (!m) return false;
+      return _parseMonthRangePrefix(m[1]) !== null;
+    });
+
+    if (!hasPrefix) {
+      // Single-rule mode — behave exactly as before, no wrapping
+      return _parseSingleRule(text);
+    }
+
+    // Multi-rule mode
+    const rules = [];
+    const warnings = [];
+    const coveredMonths = new Set();
+
+    for (const line of lines) {
+      const m = line.match(prefixRe);
+      if (!m) {
+        warnings.push(`Ignored line without month prefix: "${line}"`);
+        continue;
+      }
+      const months = _parseMonthRangePrefix(m[1]);
+      if (!months) {
+        warnings.push(`Couldn't parse month range: "${m[1]}"`);
+        continue;
+      }
+      const rule = _parseSingleRule(m[2]);
+      if (!rule) {
+        warnings.push(`Couldn't parse rule for ${m[1]}: "${m[2]}"`);
+        continue;
+      }
+      // Check for overlaps against already-covered months
+      const overlaps = months.filter(mo => coveredMonths.has(mo));
+      if (overlaps.length) {
+        const monthNames = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        warnings.push(`Overlap: ${m[1]} conflicts with earlier rule on ${overlaps.map(x=>monthNames[x]).join(', ')}`);
+      }
+      months.forEach(mo => coveredMonths.add(mo));
+      rules.push({ months, rule, rawPrefix: m[1] });
+    }
+
+    if (rules.length === 0) return null;
+    return { multiRule: true, rules, warnings, raw: text };
+  }
+
+  // Given a parsed multi-rule result and a target date, returns the rule
+  // that applies for that date's month, or null if none.
+  function _ruleForDate(parsed, date) {
+    if (!parsed) return null;
+    if (!parsed.multiRule) return parsed;   // single-rule mode: same rule for all dates
+    const monthNum = date.getMonth() + 1;   // 1-12
+    const found = parsed.rules.find(r => r.months.includes(monthNum));
+    return found ? found.rule : null;
+  }
+
   // ─── Preview helper for the Scheduling Preference field ────────────
   // Returns a friendly HTML string describing what the parser extracted
   // from a given preference text. Powers the live preview under the
@@ -5104,7 +5243,45 @@ window.CRM = (function(){
     if (!p) {
       return '<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Not understood</span> — auto-scheduler can\'t extract a rule. Will fall back to the tier default cadence. See the Scheduling Guide for accepted phrasings.';
     }
-    // Build the description
+
+    // Multi-rule preview (one line per rule, month range as prefix)
+    if (p.multiRule) {
+      const monthNames = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const monthLabel = arr => {
+        // Detect contiguous (accounting for year-wrap like [11,12,1,2])
+        if (arr.length <= 1) return arr.map(m => monthNames[m]).join(', ');
+        const isSeq = arr.every((m, i) => i === 0 || m === (arr[i-1] === 12 ? 1 : arr[i-1] + 1));
+        return isSeq && arr.length > 2
+          ? `${monthNames[arr[0]]}\u2013${monthNames[arr[arr.length-1]]}`
+          : arr.map(m => monthNames[m]).join(', ');
+      };
+      const ruleLines = p.rules.map(entry => {
+        const parts = _describeRuleParts(entry.rule);
+        return `<div style="margin:2px 0"><strong style="color:var(--sidebar)">${monthLabel(entry.months)}:</strong> ${parts.join(' &middot; ')}</div>`;
+      });
+      // Coverage gap warning
+      const coveredMonths = new Set();
+      p.rules.forEach(r => r.months.forEach(m => coveredMonths.add(m)));
+      const uncovered = [1,2,3,4,5,6,7,8,9,10,11,12].filter(m => !coveredMonths.has(m));
+      const warnings = [...(p.warnings || [])];
+      if (uncovered.length) {
+        warnings.push(`Uncovered months: ${uncovered.map(m => monthNames[m]).join(', ')} \u2014 auto-scheduler will skip during these months`);
+      }
+      const warnHtml = warnings.length
+        ? `<div style="margin-top:6px;color:var(--amber);font-size:11px">${warnings.map(w => `<div>\u26A0 ${esc(w)}</div>`).join('')}</div>`
+        : '';
+      return `<div><span style="color:var(--green);font-weight:700"><i class="ti ti-check"></i> Parsed ${p.rules.length} rule${p.rules.length===1?'':'s'}:</span></div>${ruleLines.join('')}${warnHtml}`;
+    }
+
+    // Single-rule preview
+    const parts = _describeRuleParts(p);
+    return '<span style="color:var(--green);font-weight:700"><i class="ti ti-check"></i> Parsed:</span> ' + parts.join(' &middot; ');
+  }
+
+  // Build the array of "Days: X · Cadence: Y · Time: Z" parts for a single
+  // rule. Extracted so it can be reused for both single-rule and multi-rule
+  // preview rendering.
+  function _describeRuleParts(p) {
     const parts = [];
     if (p.dows.length) {
       const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -5137,7 +5314,6 @@ window.CRM = (function(){
     }
     if (p.activeMonths && p.activeMonths.length && p.activeMonths.length < 12) {
       const monthNames = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      // Detect contiguous ranges for friendlier display, e.g. "May–Sep"
       const sorted = [...p.activeMonths].sort((a,b)=>a-b);
       const isContiguous = sorted.every((m, i) => i === 0 || m === sorted[i-1] + 1);
       const display = isContiguous && sorted.length > 2
@@ -5145,7 +5321,6 @@ window.CRM = (function(){
         : sorted.map(m => monthNames[m]).join(', ');
       parts.push('Active months: <strong>' + display + '</strong>');
     }
-    // Day-of-month range display: "20th–end", "1st–15th", "10th–20th"
     if (p.dayOfMonthMin || p.dayOfMonthMax) {
       const ord = n => {
         const s = ['th','st','nd','rd'], v = n % 100;
@@ -5161,18 +5336,17 @@ window.CRM = (function(){
       }
       parts.push('Day of month: <strong>' + dayStr + '</strong>');
     }
-    // Pairing display + resolution check
     if (p.pairAfter) {
       const matches = _resolvePairName(p.pairAfter);
       if (matches.length === 1) {
-        parts.push(`Paired: <strong>after "${esc(matches[0].location_name)}"</strong> <em style="color:var(--text3);font-size:10px">(hard — will skip if unpaired parent isn't scheduled)</em>`);
+        parts.push(`Paired: <strong>after "${esc(matches[0].location_name)}"</strong>`);
       } else if (matches.length === 0) {
-        parts.push(`<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Paired: <strong>"${esc(p.pairAfter)}"</strong> \u2014 no matching customer found</span>`);
+        parts.push(`<span style="color:var(--amber)">Paired: <strong>"${esc(p.pairAfter)}"</strong> \u2014 no match</span>`);
       } else {
-        parts.push(`<span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Paired: <strong>"${esc(p.pairAfter)}"</strong> \u2014 ambiguous, matches ${matches.length} customers: ${matches.slice(0,3).map(m=>esc(m.location_name)).join(', ')}${matches.length>3?', ...':''}</span>`);
+        parts.push(`<span style="color:var(--amber)">Paired: <strong>"${esc(p.pairAfter)}"</strong> \u2014 ambiguous</span>`);
       }
     }
-    return '<span style="color:var(--green);font-weight:700"><i class="ti ti-check"></i> Parsed:</span> ' + parts.join(' &middot; ');
+    return parts;
   }
 
   // Resolve a pairing name to matching location(s).
@@ -5235,7 +5409,21 @@ window.CRM = (function(){
       if (alreadyScheduled.has(loc.id)) continue;
 
       const pattern = computePattern(loc.id);
-      const pref = parsePreference(loc.scheduling_preference);
+      let pref = parsePreference(loc.scheduling_preference);
+
+      // If this is a multi-rule preference (different rules per month),
+      // pick the rule that applies to the current week. Prefer the weekStart
+      // month, fall back to the weekEnd month for boundary-straddle weeks.
+      // If neither has a rule → skip this customer for this week.
+      if (pref?.multiRule) {
+        const startMonth = weekStart.getMonth() + 1;
+        const endMonth   = weekEnd.getMonth() + 1;
+        const startRule = pref.rules.find(r => r.months.includes(startMonth));
+        const endRule   = pref.rules.find(r => r.months.includes(endMonth));
+        const chosen = startRule || endRule;
+        if (!chosen) continue;  // uncovered month → skip
+        pref = chosen.rule;
+      }
 
       // If this customer is paired to another (via "after X" in preference),
       // skip in this pass — the pairing pass below handles them.
@@ -5532,12 +5720,26 @@ window.CRM = (function(){
       }
     });
 
+    // Helper: resolve any preference (single- or multi-rule) to a single
+    // rule for THIS week. Uses weekStart month, falls back to weekEnd month.
+    // Returns null if the customer isn't active this week at all.
+    const _resolveForWeek = (rawPref) => {
+      const parsed = parsePreference(rawPref);
+      if (!parsed) return null;
+      if (!parsed.multiRule) return parsed;
+      const startMonth = weekStart.getMonth() + 1;
+      const endMonth   = weekEnd.getMonth() + 1;
+      const chosen = parsed.rules.find(r => r.months.includes(startMonth))
+                 || parsed.rules.find(r => r.months.includes(endMonth));
+      return chosen ? chosen.rule : null;
+    };
+
     // Gather all paired candidates to attempt
     const pairedCandidates = state.locations.filter(loc => {
       if (loc.status !== 'active') return false;
       if (loc.location_name && loc.location_name.startsWith('[Personal')) return false;
       if (alreadyScheduled.has(loc.id)) return false;
-      const pref = parsePreference(loc.scheduling_preference);
+      const pref = _resolveForWeek(loc.scheduling_preference);
       return pref && pref.pairAfter;
     });
 
@@ -5551,7 +5753,8 @@ window.CRM = (function(){
         const loc = remaining[i];
         if (cycleGuard.has(loc.id)) { remaining.splice(i, 1); continue; }
 
-        const pref = parsePreference(loc.scheduling_preference);
+        const pref = _resolveForWeek(loc.scheduling_preference);
+        if (!pref) { remaining.splice(i, 1); continue; }
         const parents = _resolvePairName(pref.pairAfter);
 
         // Only proceed if exactly one match
@@ -5576,7 +5779,7 @@ window.CRM = (function(){
         while (chainCheck) {
           if (seen.has(chainCheck.id)) { cycleDetected = true; break; }
           seen.add(chainCheck.id);
-          const chainPref = parsePreference(chainCheck.scheduling_preference);
+          const chainPref = _resolveForWeek(chainCheck.scheduling_preference);
           if (!chainPref?.pairAfter) break;
           const nextMatches = _resolvePairName(chainPref.pairAfter);
           chainCheck = nextMatches.length === 1 ? nextMatches[0] : null;
@@ -5659,7 +5862,8 @@ window.CRM = (function(){
     }
     // Anything left unresolved means the parent never got scheduled — hard pairing = skip
     remaining.forEach(loc => {
-      const pref = parsePreference(loc.scheduling_preference);
+      const pref = _resolveForWeek(loc.scheduling_preference);
+      if (!pref) return; // shouldn't happen (was in remaining) but be safe
       skippedPairing.push({
         location_id: loc.id,
         location_name: loc.location_name,
