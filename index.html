@@ -3835,7 +3835,9 @@ window.CRM = (function(){
 
             <div style="margin-bottom:12px">
               <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Scheduling Preference</label>
-              <textarea id="route-pref" rows="3" oninput="document.getElementById('route-pref-preview').innerHTML=CRM.previewPreference(this.value)" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;resize:vertical;min-height:70px">${esc(route.scheduling_preference || '')}</textarea>
+              <div id="route-preset-cards" style="margin-bottom:8px"></div>
+              <button type="button" class="btn btn-sm" onclick="CRM.openPresetForm(null)" style="margin-bottom:8px;background:var(--bg2);font-size:12px" data-admin-only><i class="ti ti-plus"></i> Add Preset</button>
+              <textarea id="route-pref" rows="3" oninput="document.getElementById('route-pref-preview').innerHTML=CRM.previewPreference(this.value);CRM.renderPresetCards()" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;resize:vertical;min-height:70px">${esc(route.scheduling_preference || '')}</textarea>
               <div id="route-pref-preview" style="margin-top:6px;padding:8px 10px;border-radius:6px;background:var(--bg2);font-size:11px;color:var(--text3);min-height:16px">${prefHtml}</div>
             </div>
           </div>
@@ -3899,6 +3901,9 @@ window.CRM = (function(){
     if (!isNew) {
       filterRouteAddCandidates();
     }
+    // Switch preset builder to route target and render cards from current text
+    setPresetTarget(_PRESET_TARGET_ROUTE);
+    setTimeout(() => renderPresetCards(), 0);
     applyPermissions();
   }
 
@@ -4403,7 +4408,7 @@ window.CRM = (function(){
     </div>`;
   }
 
-  function startEdit() { state.profileEditing = true; renderProfile(); setTimeout(() => renderPresetCards(), 0); }
+  function startEdit() { state.profileEditing = true; renderProfile(); setPresetTarget(_PRESET_TARGET_CUSTOMER); setTimeout(() => renderPresetCards(), 0); }
   function cancelEdit() { state.profileEditing = false; renderProfile(); }
   async function saveEdit() {
     const id = state.currentLocId;
@@ -6087,9 +6092,19 @@ window.CRM = (function(){
   }
 
   // Render the preset cards ABOVE the textarea, reflecting the current textarea state
+  // Default target for the customer form; routes pass a different config.
+  // { textareaId, previewId, cardsContainerId }
+  const _PRESET_TARGET_CUSTOMER = { textareaId: 'f-sched',     previewId: 'f-sched-preview',    cardsContainerId: 'f-preset-cards' };
+  const _PRESET_TARGET_ROUTE    = { textareaId: 'route-pref',  previewId: 'route-pref-preview', cardsContainerId: 'route-preset-cards' };
+
+  // The active target — set by whichever form opens the preset system.
+  // Defaults to the customer form for backward compat.
+  let _presetTarget = _PRESET_TARGET_CUSTOMER;
+  function setPresetTarget(target) { _presetTarget = target || _PRESET_TARGET_CUSTOMER; }
+
   function renderPresetCards() {
-    const container = document.getElementById('f-preset-cards');
-    const ta = document.getElementById('f-sched');
+    const container = document.getElementById(_presetTarget.cardsContainerId);
+    const ta = document.getElementById(_presetTarget.textareaId);
     if (!container || !ta) return;
     const cards = _parseCardsFromText(ta.value);
     if (cards.length === 0) {
@@ -6133,7 +6148,7 @@ window.CRM = (function(){
   // Open the preset form modal. If cardIdx is null, we're adding a new preset;
   // otherwise editing an existing one.
   function openPresetForm(cardIdx) {
-    const ta = document.getElementById('f-sched');
+    const ta = document.getElementById(_presetTarget.textareaId);
     if (!ta) return;
     const cards = _parseCardsFromText(ta.value);
     const editing = cardIdx !== null && cardIdx !== undefined && cards[cardIdx];
@@ -6292,11 +6307,12 @@ window.CRM = (function(){
       cards[editState.cardIdx] = card;
     }
     // Write back to textarea
-    const ta = document.getElementById('f-sched');
+    const ta = document.getElementById(_presetTarget.textareaId);
     if (ta) {
       ta.value = _cardsToText(cards);
       // Trigger the same handlers the textarea's oninput normally would
-      document.getElementById('f-sched-preview').innerHTML = previewPreference(ta.value);
+      const preview = document.getElementById(_presetTarget.previewId);
+      if (preview) preview.innerHTML = previewPreference(ta.value);
       renderPresetCards();
     }
     closePresetForm();
@@ -6304,13 +6320,14 @@ window.CRM = (function(){
 
   function deletePreset(idx) {
     if (!confirm('Delete this preset?')) return;
-    const ta = document.getElementById('f-sched');
+    const ta = document.getElementById(_presetTarget.textareaId);
     if (!ta) return;
     const cards = _parseCardsFromText(ta.value);
     if (!cards[idx]) return;
     cards.splice(idx, 1);
     ta.value = _cardsToText(cards);
-    document.getElementById('f-sched-preview').innerHTML = previewPreference(ta.value);
+    const preview = document.getElementById(_presetTarget.previewId);
+    if (preview) preview.innerHTML = previewPreference(ta.value);
     renderPresetCards();
   }
 
@@ -7546,7 +7563,7 @@ window.CRM = (function(){
   }
 
   // Mobile edit-mode entry/exit — same backing flag as desktop
-  function startMobEdit() { state.profileEditing = true; renderMobProfile(); setTimeout(() => renderPresetCards(), 0); }
+  function startMobEdit() { state.profileEditing = true; renderMobProfile(); setPresetTarget(_PRESET_TARGET_CUSTOMER); setTimeout(() => renderPresetCards(), 0); }
   function cancelMobEdit() { state.profileEditing = false; renderMobProfile(); }
   // Saving mobile reuses saveEdit (reads same IDs) but re-renders the mobile view
   async function saveMobEdit() {
@@ -10157,7 +10174,7 @@ window.CRM = (function(){
     renderMobForecast,
     renderMobRelog,
     // Preset builder (form-driven scheduling preference)
-    renderPresetCards, openPresetForm, closePresetForm, savePresetForm, deletePreset, _presetPickMonths,
+    renderPresetCards, openPresetForm, closePresetForm, savePresetForm, deletePreset, _presetPickMonths, setPresetTarget,
     // Routes (Phase 1)
     renderRoutes, renderRouteEdit, openRouteEdit, saveRoute, deleteRoute,
     addRouteMember, removeRouteMember, moveRouteMember, optimizeRouteOrder,
