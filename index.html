@@ -791,6 +791,7 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
         <p class="section-intro">Master customer database. Click a row to view full profile, edit info, view sales history, and manage scheduling preferences.</p>
         <div id="crm-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px"></div>
         <div id="crm-customer-list"></div>
+        <div id="crm-manual-list" style="margin-top:32px"></div>
       </div>
     </div>
 
@@ -3572,6 +3573,87 @@ window.CRM = (function(){
       <div class="metric clickable" onclick="document.getElementById('crm-flag-filter').value='flagged';CRM.filterCustomers()" style="cursor:pointer"><div class="metric-label">Needs Review</div><div class="metric-value">${flagged}</div></div>
     `;
     filterCustomers();
+    renderManualList();
+  }
+
+  // ─── Manual scheduling list ───────────────────────────────────────
+  // Lists every active customer that the auto-scheduler will NOT touch,
+  // so the user can manually schedule them and track what needs attention.
+  // Skips: opt-out phrases (manual only, DNS, call ahead, etc.), pairings
+  // that can't resolve to a real customer, and multi-rule preferences
+  // that don't cover any month.
+  function renderManualList() {
+    const el = document.getElementById('crm-manual-list');
+    if (!el) return;
+
+    // Same opt-out regex the parser and scheduler use
+    const optOutRe = /\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|manual\s*sched|call ahead|call first|call before|text ahead|text first|text before|by request|on request|upon request|appointment only|by appointment|as needed|seasonal only|closed for season|inactive|on hold|paused|do not contact|dnc|dns|no contact)\b/i;
+
+    // Human-readable reason from the raw preference text
+    const reasonFor = (loc) => {
+      const pref = loc.scheduling_preference || '';
+
+      // Check opt-out phrase FIRST — it's the whole point of this list
+      const m = pref.match(optOutRe);
+      if (m) return `Opt-out phrase: "${m[0]}"`;
+
+      // Check unresolvable pairing
+      const parsed = parsePreference(pref);
+      if (parsed) {
+        // If multi-rule, check any rule for pairing issues
+        const rules = parsed.multiRule ? parsed.rules.map(r => r.rule) : [parsed];
+        for (const rule of rules) {
+          if (rule.pairAfter) {
+            const matches = _resolvePairName(rule.pairAfter);
+            if (matches.length === 0) return `Paired to "${rule.pairAfter}" — no matching customer found`;
+            if (matches.length > 1)  return `Paired to "${rule.pairAfter}" — ambiguous (matches ${matches.length} customers)`;
+          }
+        }
+        // Multi-rule preferences with no month coverage at all
+        if (parsed.multiRule) {
+          const covered = new Set();
+          parsed.rules.forEach(r => r.months.forEach(m => covered.add(m)));
+          if (covered.size === 0) return 'Multi-preset preference with no months covered';
+        }
+      }
+      return null; // not skipped
+    };
+
+    // Collect all active customers with a reason
+    const skipped = state.locations
+      .filter(l => l.status === 'active')
+      .filter(l => !(l.location_name || '').startsWith('[Personal'))
+      .map(l => ({ loc: l, reason: reasonFor(l) }))
+      .filter(x => x.reason);
+
+    if (skipped.length === 0) {
+      el.innerHTML = `<div class="card" style="background:var(--surface)">
+        <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:6px"><i class="ti ti-calendar-off"></i> Manual Scheduling Required</div>
+        <div style="font-size:12px;color:var(--text3);font-style:italic">No customers are currently set to manual scheduling. Any customer with an opt-out phrase in their preference (like "manual only", "DNS", "call ahead") will appear here.</div>
+      </div>`;
+      return;
+    }
+
+    // Sort alphabetically for easy reference
+    skipped.sort((a, b) => (a.loc.location_name || '').localeCompare(b.loc.location_name || ''));
+
+    el.innerHTML = `<div class="card" style="background:var(--amber-bg,#fff8e5);border-color:var(--amber)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar)"><i class="ti ti-calendar-off"></i> Manual Scheduling Required <span style="background:var(--amber);color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;margin-left:6px">${skipped.length}</span></div>
+        <div style="font-size:11px;color:var(--text3);font-style:italic">Auto-scheduler will skip these — schedule manually as needed</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:8px">
+        ${skipped.map(({loc, reason}) => `
+          <div style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:center;gap:10px;cursor:pointer" onclick="CRM.openProfile(${loc.id})">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:13px;color:var(--sidebar);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(loc.location_name)}</div>
+              <div style="font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(reason)}">${esc(reason)}</div>
+            </div>
+            <i class="ti ti-chevron-right" style="color:var(--text3);flex-shrink:0"></i>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
   }
 
   function filterCustomers() {
@@ -9517,7 +9599,7 @@ window.CRM = (function(){
 
   return {
     init: loadAll,
-    renderCustomers, filterCustomers,
+    renderCustomers, filterCustomers, renderManualList,
     openProfile, setProfileTab, startEdit, cancelEdit, saveEdit,
     renderSchedule, shiftWeek, setScheduleTruck, setScheduleView, pickScheduleDate, reassignStopTruck, deleteStop,
     openAddStop, saveNewStop, scheduleStopFor, openEditStop, saveEditStop, closeAddStop,
