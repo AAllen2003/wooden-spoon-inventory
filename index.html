@@ -324,6 +324,7 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
     <div class="nav-section">CRM</div>
     <button class="nav-item" onclick="showSection('crm-customers',this)"><i class="ti ti-building-store"></i> Stops</button>
     <button class="nav-item" onclick="showSection('crm-schedule',this)"><i class="ti ti-calendar"></i> Schedule</button>
+    <button class="nav-item" onclick="showSection('crm-routes',this)"><i class="ti ti-route"></i> Routes</button>
     <button class="nav-item" onclick="showSection('crm-deliveries',this)"><i class="ti ti-truck-delivery"></i> Deliveries</button>
     <button class="nav-item relog-nav" onclick="showSection('crm-relog',this)"><i class="ti ti-clipboard-text"></i> Relations Log</button>
     <button class="nav-item" onclick="showSection('crm-cleanup',this)" data-admin-only><i class="ti ti-broom"></i> Cleanup</button>
@@ -835,6 +836,23 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
       </div>
     </div>
 
+    <div class="section" id="sec-crm-routes">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Routes</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-sm btn-accent" onclick="CRM.openRouteEdit(null)" data-admin-only><i class="ti ti-plus"></i> New Route</button>
+          </div>
+        </div>
+        <p class="section-intro">Group multiple customer locations into a single scheduled event. Routes let a salesperson visit many businesses in one trip, in an optimized driving sequence. Each route can be scheduled by the auto-scheduler with its own cadence and duration.</p>
+        <div id="crm-routes-content"></div>
+      </div>
+    </div>
+
+    <div class="section" id="sec-crm-route-edit">
+      <div id="crm-route-edit-content"></div>
+    </div>
+
     <div class="section" id="sec-crm-forecast">
       <div class="card">
         <div class="card-header">
@@ -907,6 +925,7 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
     <hr class="more-divider">
     <button class="more-item" onclick="showSection('crm-customers',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-building-store"></i> Stops</button>
     <button class="more-item" onclick="showSection('crm-schedule',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-calendar"></i> Schedule</button>
+    <button class="more-item" onclick="showSection('crm-routes',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-route"></i> Routes</button>
     <button class="more-item" onclick="showSection('crm-deliveries',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-truck-delivery"></i> Deliveries</button>
     <button class="more-item relog-nav" onclick="showSection('crm-relog',null);setBnActive(null);closeMoreDrawer()"><i class="ti ti-clipboard-text"></i> Relations Log</button>
     <hr class="more-divider">
@@ -1156,7 +1175,7 @@ function openMoreDrawer(){document.getElementById('more-overlay').classList.add(
 function closeMoreDrawer(){document.getElementById('more-overlay').classList.remove('open');document.getElementById('more-drawer').classList.remove('open');}
 
 // ── NAV ───────────────────────────────────────────────────────────
-const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',loss:'Loss Log',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop Profile','crm-schedule':'Schedule','crm-deliveries':'Deliveries','crm-forecast':'Manufacturing Forecast','crm-relog':'Customer Relations Log','crm-cleanup':'Customer Data Cleanup','crm-editlog':'Staff Edit Log'};
+const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',loss:'Loss Log',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop Profile','crm-schedule':'Schedule','crm-routes':'Routes','crm-route-edit':'Edit Route','crm-deliveries':'Deliveries','crm-forecast':'Manufacturing Forecast','crm-relog':'Customer Relations Log','crm-cleanup':'Customer Data Cleanup','crm-editlog':'Staff Edit Log'};
 function showSection(name,btn){
   // A sidebar-nav click (btn is a .nav-item) is a fresh navigation. Clear
   // the back-nav stack so the Back button doesn't try to return you to a
@@ -1191,6 +1210,8 @@ function showSection(name,btn){
   if(name==='crm-customers')CRM.renderCustomers();
   if(name==='crm-profile'){/* rendered via openProfile */}
   if(name==='crm-schedule')CRM.renderSchedule();
+  if(name==='crm-routes')CRM.renderRoutes();
+  if(name==='crm-route-edit')CRM.renderRouteEdit();
   if(name==='crm-forecast')CRM.renderForecast();
   if(name==='crm-relog')CRM.renderRelog();
   if(name==='crm-cleanup')CRM.renderCleanup();
@@ -3238,6 +3259,9 @@ window.CRM = (function(){
     dismissedDupPairs: new Set(), // "a:b" pair keys marked "not a duplicate"
     stops: [],
     visits: [],
+    routes: [],           // crm_routes rows
+    routeMembers: [],     // crm_route_members rows
+    editingRouteId: null, // currently-open route editor
     settings: { buffer_minutes: 15, truck_device_map: {} },
     currentLocId: null,
     profileTab: 'overview',
@@ -3304,10 +3328,12 @@ window.CRM = (function(){
   async function loadAll() {
     if (!sb) { console.warn('[CRM] no supabase client'); return; }
     try {
-      const [locations, stops, visits, setR, dismissed] = await Promise.all([
+      const [locations, stops, visits, routes, routeMembers, setR, dismissed] = await Promise.all([
         fetchAll('crm_locations', 'location_name', true),
         fetchAll('crm_stops', 'scheduled_date', true),
         fetchAll('crm_visits', 'visit_date', false),
+        fetchAll('crm_routes', 'name', true),
+        fetchAll('crm_route_members', 'sequence', true),
         sb.from('app_settings').select('*').in('key', ['crm_buffer_minutes','crm_truck_device_map','crm_manual_visit_entry_enabled','crm_truck_devices','crm_sales_legacy_cutover','crm_relog_visible_to_staff']),
         sb.from('crm_dup_dismissed').select('loc_a_id, loc_b_id')
       ]);
@@ -3327,6 +3353,8 @@ window.CRM = (function(){
       state.deletedLocations = dedupe(locations).filter(l => l.deleted_at);
       state.stops     = dedupe(stops);
       state.visits    = dedupe(visits);
+      state.routes    = dedupe(routes).filter(r => !r.deleted_at);
+      state.routeMembers = dedupe(routeMembers);
       // Build a Set of dismissed pair keys "a:b" with a<b for O(1) lookup
       state.dismissedDupPairs = new Set(
         (dismissed?.data || []).map(r => `${Math.min(r.loc_a_id, r.loc_b_id)}:${Math.max(r.loc_a_id, r.loc_b_id)}`)
@@ -3374,13 +3402,43 @@ window.CRM = (function(){
   function subscribeRealtime() {
     if (state.subscribed || !sb) return;
     state.subscribed = true;
-    ['crm_locations','crm_stops','crm_visits','crm_session_logs','crm_session_events','crm_session_pings'].forEach(table => {
+    ['crm_locations','crm_stops','crm_visits','crm_routes','crm_route_members','crm_session_logs','crm_session_events','crm_session_pings'].forEach(table => {
       sb.channel(`crm-${table}`)
         .on('postgres_changes', { event:'*', schema:'public', table }, payload => {
           // Always read live array references from `state`, not captured at subscribe-time
           // Route the realtime event to the right local cache; session tables push into state.relog
           if (table === 'crm_session_logs' || table === 'crm_session_events' || table === 'crm_session_pings') {
             handleRelogRealtime(table, payload);
+            return;
+          }
+          // Routes have a soft-delete flag — remove from active list when deleted_at is set
+          if (table === 'crm_routes') {
+            if (payload.eventType === 'DELETE' || payload.new?.deleted_at) {
+              const id = (payload.new || payload.old || {}).id;
+              const i = state.routes.findIndex(r => r.id === id);
+              if (i >= 0) state.routes.splice(i, 1);
+            } else if (payload.eventType === 'INSERT') {
+              if (!state.routes.some(r => r.id === payload.new.id)) state.routes.push(payload.new);
+            } else if (payload.eventType === 'UPDATE') {
+              const i = state.routes.findIndex(r => r.id === payload.new.id);
+              if (i >= 0) state.routes[i] = payload.new;
+              else state.routes.push(payload.new);
+            }
+            renderCurrent();
+            return;
+          }
+          if (table === 'crm_route_members') {
+            if (payload.eventType === 'INSERT') {
+              if (!state.routeMembers.some(m => m.id === payload.new.id)) state.routeMembers.push(payload.new);
+            } else if (payload.eventType === 'UPDATE') {
+              const i = state.routeMembers.findIndex(m => m.id === payload.new.id);
+              if (i >= 0) state.routeMembers[i] = payload.new;
+              else state.routeMembers.push(payload.new);
+            } else if (payload.eventType === 'DELETE') {
+              const i = state.routeMembers.findIndex(m => m.id === payload.old.id);
+              if (i >= 0) state.routeMembers.splice(i, 1);
+            }
+            renderCurrent();
             return;
           }
           // Locations have a soft-delete flag — route between active list and recovery list
@@ -3549,6 +3607,8 @@ window.CRM = (function(){
     if (id === 'sec-crm-customers') renderCustomers();
     else if (id === 'sec-crm-profile') renderProfile();
     else if (id === 'sec-crm-schedule') renderSchedule();
+    else if (id === 'sec-crm-routes') renderRoutes();
+    else if (id === 'sec-crm-route-edit') renderRouteEdit();
     else if (id === 'sec-crm-forecast') renderForecast();
     else if (id === 'sec-crm-relog') renderRelog();
     else if (id === 'sec-crm-cleanup') renderCleanup();
@@ -3656,6 +3716,451 @@ window.CRM = (function(){
     </div>`;
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // ROUTES — Phase 1: data model + management UI
+  // ═══════════════════════════════════════════════════════════════════
+
+  // Helper: get all members for a given route, ordered by sequence, with
+  // the location object embedded.
+  function _routeMembers(routeId) {
+    return state.routeMembers
+      .filter(m => m.route_id === routeId)
+      .sort((a, b) => a.sequence - b.sequence)
+      .map(m => ({
+        ...m,
+        location: state.locations.find(l => l.id === m.location_id) || null,
+      }));
+  }
+
+  // Helper: given routes, return {routeId → member count}
+  function _routeMemberCounts() {
+    const counts = {};
+    state.routeMembers.forEach(m => {
+      counts[m.route_id] = (counts[m.route_id] || 0) + 1;
+    });
+    return counts;
+  }
+
+  // Helper: return all routes that contain a given location
+  function _routesContaining(locationId) {
+    const routeIds = new Set(
+      state.routeMembers.filter(m => m.location_id === locationId).map(m => m.route_id)
+    );
+    return state.routes.filter(r => routeIds.has(r.id));
+  }
+
+  // ─── Route list page ─────────────────────────────────────────────
+  function renderRoutes() {
+    const el = document.getElementById('crm-routes-content');
+    if (!el) return;
+
+    if (state.routes.length === 0) {
+      el.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text3);font-style:italic">
+        No routes yet. Click "New Route" above to create your first one.
+      </div>`;
+      return;
+    }
+
+    const counts = _routeMemberCounts();
+    const sorted = [...state.routes].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px">
+      ${sorted.map(r => {
+        const memberCount = counts[r.id] || 0;
+        const durationHrs = (r.duration_minutes / 60).toFixed(r.duration_minutes % 60 === 0 ? 0 : 1);
+        const truckLabel = r.preferred_truck
+          ? `Truck ${r.preferred_truck}${r.truck_lock ? ' (locked)' : ''}`
+          : 'Any truck';
+        return `<div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px;background:var(--surface);cursor:pointer" onclick="CRM.openRouteEdit(${r.id})">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+            <div style="font-family:var(--font-display);font-size:16px;color:var(--sidebar);flex:1;min-width:0"><i class="ti ti-route"></i> ${esc(r.name)}</div>
+            <span class="cat-chip" style="font-size:10px;background:var(--bg2);color:var(--text3)">${memberCount} stop${memberCount === 1 ? '' : 's'}</span>
+          </div>
+          <div style="font-size:11px;color:var(--text3);line-height:1.6">
+            <div><i class="ti ti-clock"></i> Duration: <strong style="color:var(--text2)">${durationHrs} hr</strong></div>
+            <div><i class="ti ti-truck"></i> ${truckLabel}</div>
+            ${r.scheduling_preference
+              ? `<div style="margin-top:4px;padding:4px 8px;background:var(--bg2);border-radius:4px;font-style:italic;font-size:11px">${esc(r.scheduling_preference)}</div>`
+              : `<div style="margin-top:4px;color:var(--amber);font-size:11px"><i class="ti ti-alert-triangle"></i> No scheduling preference set</div>`
+            }
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  // ─── Route editor (create + edit) ────────────────────────────────
+  function openRouteEdit(routeId) {
+    state.editingRouteId = routeId;
+    pushNav('crm-routes');
+    showSection('crm-route-edit');
+    renderRouteEdit();
+  }
+
+  function renderRouteEdit() {
+    const el = document.getElementById('crm-route-edit-content');
+    if (!el) return;
+
+    const isNew = !state.editingRouteId;
+    const route = isNew
+      ? { id: null, name: '', scheduling_preference: '', duration_minutes: 180, preferred_truck: null, truck_lock: false, notes: '' }
+      : state.routes.find(r => r.id === state.editingRouteId);
+
+    if (!route) {
+      el.innerHTML = `<div class="card">Route not found. <button class="btn btn-sm" onclick="goBackNav()">Back</button></div>`;
+      return;
+    }
+
+    const members = _routeMembers(route.id);
+
+    // Live-parse the preference field so admin can see what auto-scheduler will do
+    const prefHtml = previewPreference(route.scheduling_preference || '');
+
+    el.innerHTML = `
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-header">
+          <span class="card-title"><i class="ti ti-route"></i> ${isNew ? 'New Route' : 'Edit Route'}</span>
+          <div style="display:flex;gap:8px">
+            ${!isNew ? `<button class="btn btn-sm" onclick="CRM.deleteRoute(${route.id})" style="background:var(--red-bg);color:var(--red)" data-admin-only><i class="ti ti-trash"></i> Delete Route</button>` : ''}
+            <button class="btn btn-sm btn-primary" onclick="CRM.saveRoute()" data-admin-only><i class="ti ti-check"></i> Save Route</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div>
+            <div style="margin-bottom:12px">
+              <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Route Name *</label>
+              <input type="text" id="route-name" value="${esc(route.name || '')}" placeholder="e.g., West Fayetteville Route" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+            </div>
+
+            <div style="margin-bottom:12px">
+              <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Scheduling Preference</label>
+              <textarea id="route-pref" rows="3" oninput="document.getElementById('route-pref-preview').innerHTML=CRM.previewPreference(this.value)" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;resize:vertical;min-height:70px">${esc(route.scheduling_preference || '')}</textarea>
+              <div id="route-pref-preview" style="margin-top:6px;padding:8px 10px;border-radius:6px;background:var(--bg2);font-size:11px;color:var(--text3);min-height:16px">${prefHtml}</div>
+            </div>
+          </div>
+
+          <div>
+            <div style="margin-bottom:12px">
+              <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Duration</label>
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="number" id="route-duration-hours" min="0.5" max="12" step="0.5" value="${(route.duration_minutes / 60).toFixed(route.duration_minutes % 60 === 0 ? 0 : 1)}" style="width:80px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+                <span style="font-size:12px;color:var(--text3)">hours</span>
+              </div>
+              <div style="font-size:10px;color:var(--text3);margin-top:4px;font-style:italic">Auto-scheduler respects this exactly, regardless of driving time.</div>
+            </div>
+
+            <div style="margin-bottom:12px">
+              <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Preferred Truck</label>
+              <div style="display:flex;align-items:center;gap:12px">
+                <select id="route-truck" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+                  <option value="">Any truck</option>
+                  <option value="1" ${route.preferred_truck === 1 ? 'selected' : ''}>Truck 1</option>
+                  <option value="2" ${route.preferred_truck === 2 ? 'selected' : ''}>Truck 2</option>
+                  <option value="3" ${route.preferred_truck === 3 ? 'selected' : ''}>Truck 3</option>
+                </select>
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);cursor:pointer">
+                  <input type="checkbox" id="route-truck-lock" ${route.truck_lock ? 'checked' : ''}> Lock
+                </label>
+              </div>
+            </div>
+
+            <div style="margin-bottom:12px">
+              <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Notes</label>
+              <textarea id="route-notes" rows="2" placeholder="Optional internal notes..." style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:12px;resize:vertical">${esc(route.notes || '')}</textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Members <span style="color:var(--text3);font-weight:400;font-size:13px">(${members.length})</span></span>
+          <div style="display:flex;gap:8px;align-items:center">
+            ${!isNew && members.length >= 2 ? `<button class="btn btn-sm" onclick="CRM.optimizeRouteOrder(${route.id})" data-admin-only><i class="ti ti-arrows-sort"></i> Optimize Order</button>` : ''}
+          </div>
+        </div>
+        <p class="section-intro">Add customers to this route. Drag or use the arrow buttons to change driving order.</p>
+
+        ${isNew ? `<div style="padding:16px;background:var(--bg2);border-radius:var(--radius);text-align:center;color:var(--text3);font-style:italic;font-size:13px">
+          Save the route first, then add members.
+        </div>` : `
+          <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
+            <input type="text" id="route-add-search" oninput="CRM.filterRouteAddCandidates()" placeholder="Search customers to add..." style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
+          </div>
+          <div id="route-add-results" style="max-height:200px;overflow-y:auto;margin-bottom:16px"></div>
+
+          <div id="route-members-list">${_renderRouteMemberList(members)}</div>
+        `}
+      </div>
+    `;
+
+    // Wire up dynamic bits
+    if (!isNew) {
+      filterRouteAddCandidates();
+    }
+    applyPermissions();
+  }
+
+  function _renderRouteMemberList(members) {
+    if (members.length === 0) {
+      return `<div style="padding:20px;text-align:center;color:var(--text3);font-style:italic;font-size:13px">No members yet. Search above to add customers.</div>`;
+    }
+    return `<div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      ${members.map((m, idx) => {
+        const l = m.location;
+        return `<div style="padding:10px 12px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
+          <div style="width:32px;height:32px;background:var(--accent);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">${idx + 1}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:13px;color:var(--sidebar)">${l ? esc(l.location_name) : `<em style="color:var(--red)">Deleted customer (id ${m.location_id})</em>`}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">${l ? esc(l.full_address || l.city || '—') : '—'}</div>
+          </div>
+          <div style="display:flex;gap:2px">
+            <button class="btn btn-xs" onclick="CRM.moveRouteMember(${m.id}, -1)" title="Move up" ${idx === 0 ? 'disabled' : ''} data-admin-only><i class="ti ti-arrow-up"></i></button>
+            <button class="btn btn-xs" onclick="CRM.moveRouteMember(${m.id}, 1)" title="Move down" ${idx === members.length - 1 ? 'disabled' : ''} data-admin-only><i class="ti ti-arrow-down"></i></button>
+            <button class="btn btn-xs" onclick="CRM.removeRouteMember(${m.id})" title="Remove from route" style="background:var(--red-bg);color:var(--red)" data-admin-only><i class="ti ti-x"></i></button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  // Filter the "add member" search results
+  function filterRouteAddCandidates() {
+    const results = document.getElementById('route-add-results');
+    if (!results) return;
+    const q = (document.getElementById('route-add-search')?.value || '').toLowerCase().trim();
+    const routeId = state.editingRouteId;
+    const existingMemberIds = new Set(state.routeMembers.filter(m => m.route_id === routeId).map(m => m.location_id));
+
+    let candidates = state.locations.filter(l =>
+      !existingMemberIds.has(l.id) &&
+      l.status === 'active' &&
+      !(l.location_name || '').startsWith('[Personal')
+    );
+
+    if (q) {
+      candidates = candidates.filter(l =>
+        (l.location_name || '').toLowerCase().includes(q) ||
+        (l.city || '').toLowerCase().includes(q) ||
+        (l.full_address || '').toLowerCase().includes(q)
+      );
+    }
+
+    // Only show results when the user is actually searching, or first 20 as suggestions
+    const shown = q ? candidates.slice(0, 30) : [];
+
+    if (!q) {
+      results.innerHTML = `<div style="padding:10px;text-align:center;color:var(--text3);font-style:italic;font-size:12px">Type to search customers.</div>`;
+      return;
+    }
+    if (shown.length === 0) {
+      results.innerHTML = `<div style="padding:10px;text-align:center;color:var(--text3);font-style:italic;font-size:12px">No matches.</div>`;
+      return;
+    }
+    results.innerHTML = shown.map(l =>
+      `<div style="padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:var(--sidebar);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(l.location_name)}</div>
+          <div style="font-size:11px;color:var(--text3)">${esc(l.city || l.full_address || '—')}</div>
+        </div>
+        <button class="btn btn-xs btn-primary" onclick="CRM.addRouteMember(${l.id})" data-admin-only><i class="ti ti-plus"></i> Add</button>
+      </div>`
+    ).join('');
+    applyPermissions();
+  }
+
+  // Save the route (create or update)
+  async function saveRoute() {
+    const name = document.getElementById('route-name')?.value?.trim();
+    if (!name) { alert('Route name is required.'); return; }
+
+    const pref = document.getElementById('route-pref')?.value?.trim() || '';
+    const durationHours = parseFloat(document.getElementById('route-duration-hours')?.value);
+    if (!(durationHours > 0)) { alert('Duration must be greater than 0.'); return; }
+    const durationMinutes = Math.round(durationHours * 60);
+
+    const truckSel = document.getElementById('route-truck')?.value;
+    const preferredTruck = truckSel ? parseInt(truckSel, 10) : null;
+    const truckLock = !!document.getElementById('route-truck-lock')?.checked;
+    const notes = document.getElementById('route-notes')?.value?.trim() || null;
+
+    const payload = {
+      name,
+      scheduling_preference: pref || null,
+      duration_minutes: durationMinutes,
+      preferred_truck: preferredTruck,
+      truck_lock: truckLock,
+      notes,
+    };
+
+    try {
+      if (state.editingRouteId) {
+        const { error } = await sb.from('crm_routes').update(payload).eq('id', state.editingRouteId);
+        if (error) throw error;
+      } else {
+        const { data, error } = await sb.from('crm_routes').insert(payload).select().single();
+        if (error) throw error;
+        // Now that it exists, switch the editor to edit mode so member management works
+        state.editingRouteId = data.id;
+        // Realtime will populate state.routes; nudge it too for immediate render
+        state.routes = state.routes.concat([data]);
+      }
+      // Re-render editor
+      renderRouteEdit();
+    } catch (e) {
+      console.error('[CRM] saveRoute:', e);
+      alert('Save failed: ' + (e.message || e));
+    }
+  }
+
+  // Delete a route (soft delete via deleted_at)
+  async function deleteRoute(routeId) {
+    const r = state.routes.find(x => x.id === routeId);
+    if (!r) return;
+    if (!confirm(`Delete route "${r.name}"?\n\nThis cannot be undone from the UI.`)) return;
+    try {
+      const { error } = await sb.from('crm_routes').update({ deleted_at: new Date().toISOString() }).eq('id', routeId);
+      if (error) throw error;
+      state.routes = state.routes.filter(x => x.id !== routeId);
+      goBackNav();
+    } catch (e) {
+      console.error('[CRM] deleteRoute:', e);
+      alert('Delete failed: ' + (e.message || e));
+    }
+  }
+
+  // Add a customer to the currently-open route
+  async function addRouteMember(locationId) {
+    const routeId = state.editingRouteId;
+    if (!routeId) return;
+    const existing = state.routeMembers.filter(m => m.route_id === routeId);
+    const nextSeq = existing.length === 0 ? 0 : Math.max(...existing.map(m => m.sequence)) + 1;
+    try {
+      const { data, error } = await sb.from('crm_route_members')
+        .insert({ route_id: routeId, location_id: locationId, sequence: nextSeq })
+        .select().single();
+      if (error) throw error;
+      state.routeMembers = state.routeMembers.concat([data]);
+      renderRouteEdit();
+    } catch (e) {
+      console.error('[CRM] addRouteMember:', e);
+      alert('Add failed: ' + (e.message || e));
+    }
+  }
+
+  // Remove a member (by row id)
+  async function removeRouteMember(memberId) {
+    if (!confirm('Remove this customer from the route?')) return;
+    try {
+      const { error } = await sb.from('crm_route_members').delete().eq('id', memberId);
+      if (error) throw error;
+      state.routeMembers = state.routeMembers.filter(m => m.id !== memberId);
+      renderRouteEdit();
+    } catch (e) {
+      console.error('[CRM] removeRouteMember:', e);
+      alert('Remove failed: ' + (e.message || e));
+    }
+  }
+
+  // Move a member up or down in sequence
+  async function moveRouteMember(memberId, direction) {
+    const routeId = state.editingRouteId;
+    const members = _routeMembers(routeId);
+    const idx = members.findIndex(m => m.id === memberId);
+    if (idx === -1) return;
+    const targetIdx = idx + direction;
+    if (targetIdx < 0 || targetIdx >= members.length) return;
+
+    const a = members[idx];
+    const b = members[targetIdx];
+    try {
+      // Swap sequences. Use a temp value to avoid unique constraint issues if one exists.
+      await sb.from('crm_route_members').update({ sequence: -999999 }).eq('id', a.id);
+      await sb.from('crm_route_members').update({ sequence: a.sequence }).eq('id', b.id);
+      await sb.from('crm_route_members').update({ sequence: b.sequence }).eq('id', a.id);
+      // Update local state
+      state.routeMembers = state.routeMembers.map(m => {
+        if (m.id === a.id) return { ...m, sequence: b.sequence };
+        if (m.id === b.id) return { ...m, sequence: a.sequence };
+        return m;
+      });
+      renderRouteEdit();
+    } catch (e) {
+      console.error('[CRM] moveRouteMember:', e);
+      alert('Move failed: ' + (e.message || e));
+    }
+  }
+
+  // Optimize member driving order using nearest-neighbor on lat/lng.
+  // Starts from the first member (or the geographic centroid if first has no coords)
+  // and greedily picks the nearest unvisited stop.
+  async function optimizeRouteOrder(routeId) {
+    const members = _routeMembers(routeId);
+    if (members.length < 2) return;
+
+    // Members with valid coords
+    const withCoords = members.filter(m => m.location && Number.isFinite(m.location.lat) && Number.isFinite(m.location.lng));
+    const withoutCoords = members.filter(m => !(m.location && Number.isFinite(m.location.lat) && Number.isFinite(m.location.lng)));
+
+    if (withCoords.length < 2) {
+      alert('Not enough members have geocoded addresses to optimize. Make sure member addresses are set correctly on their profiles.');
+      return;
+    }
+
+    // Nearest-neighbor from the current first stop (if geocoded), else from the westernmost point
+    const dist = (a, b) => {
+      const dLat = a.lat - b.lat;
+      const dLng = a.lng - b.lng;
+      return Math.sqrt(dLat * dLat + dLng * dLng);
+    };
+
+    const remaining = [...withCoords];
+    const ordered = [];
+    // Start with current first, if geocoded; else westernmost
+    let current = withCoords[0].location.lat && withCoords[0].location.lng
+      ? withCoords[0]
+      : remaining.reduce((min, m) => (m.location.lng < min.location.lng ? m : min), remaining[0]);
+    ordered.push(current);
+    remaining.splice(remaining.indexOf(current), 1);
+
+    while (remaining.length) {
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < remaining.length; i++) {
+        const d = dist(current.location, remaining[i].location);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+      }
+      current = remaining[bestIdx];
+      ordered.push(current);
+      remaining.splice(bestIdx, 1);
+    }
+
+    // Members without coords go at the end in their existing order
+    const finalOrder = [...ordered, ...withoutCoords];
+
+    // Persist the new sequence
+    try {
+      // Assign temporary out-of-range sequences first to avoid uniqueness collisions
+      for (let i = 0; i < finalOrder.length; i++) {
+        await sb.from('crm_route_members').update({ sequence: 100000 + i }).eq('id', finalOrder[i].id);
+      }
+      // Then assign final sequences
+      for (let i = 0; i < finalOrder.length; i++) {
+        await sb.from('crm_route_members').update({ sequence: i }).eq('id', finalOrder[i].id);
+      }
+      // Update local state
+      state.routeMembers = state.routeMembers.map(m => {
+        const idx = finalOrder.findIndex(x => x.id === m.id);
+        return idx !== -1 ? { ...m, sequence: idx } : m;
+      });
+      renderRouteEdit();
+    } catch (e) {
+      console.error('[CRM] optimizeRouteOrder:', e);
+      alert('Optimize failed: ' + (e.message || e));
+    }
+  }
+
   function filterCustomers() {
     const q = (document.getElementById('crm-search')?.value || '').toLowerCase().trim();
     const tier = document.getElementById('crm-tier-filter')?.value || '';
@@ -3759,6 +4264,15 @@ window.CRM = (function(){
         <button class="btn btn-xs" onclick="CRM.clearFlag(${l.id})" data-admin-only title="Clear this flag"><i class="ti ti-x"></i> Clear</button>
       </div>` : '';
 
+    // Route memberships — show which routes this customer is a part of
+    const memberOf = _routesContaining(l.id);
+    const routeBox = memberOf.length ? `
+      <div class="alert-bar" style="background:var(--bg2);color:var(--text2);border-left:3px solid var(--accent);padding:10px 14px;border-radius:var(--radius);margin-bottom:14px;font-size:12px">
+        <i class="ti ti-route"></i>
+        <strong style="color:var(--sidebar)">Member of ${memberOf.length} route${memberOf.length === 1 ? '' : 's'}:</strong>
+        ${memberOf.map(r => `<a onclick="CRM.openRouteEdit(${r.id})" style="cursor:pointer;color:var(--accent);text-decoration:underline;margin-left:6px">${esc(r.name)}</a>`).join(',')}
+      </div>` : '';
+
     const wipeBtn = (isAdmin() && state.settings?.manual_visit_entry_enabled)
       ? `<button class="btn btn-sm" onclick="CRM.confirmWipeHistory(${l.id})" data-admin-only style="background:var(--red);color:#fff" title="Delete all visits, all stops, and clear seed numbers for this customer"><i class="ti ti-eraser"></i> Wipe History</button>`
       : '';
@@ -3772,7 +4286,7 @@ window.CRM = (function(){
       ? _myVisits.map(v => v.visit_date).sort().slice(-1)[0]
       : null;
 
-    return `${flagBox}
+    return `${flagBox}${routeBox}
     <div style="display:flex;justify-content:flex-end;margin-bottom:12px;gap:8px;flex-wrap:wrap">
       <button class="btn btn-sm" onclick="CRM.startEdit()"><i class="ti ti-edit"></i> Edit</button>
       <button class="btn btn-sm btn-accent" onclick="CRM.scheduleStopFor(${l.id})"><i class="ti ti-calendar-plus"></i> Schedule Stop</button>
@@ -8047,9 +8561,15 @@ window.CRM = (function(){
     if (!l) { alert('Location not found.'); return; }
     const stops = state.stops.filter(s => s.location_id === locId).length;
     const visits = state.visits.filter(v => v.location_id === locId).length;
+    // Route memberships — warn the user if this customer is in any routes
+    const routesContaining = _routesContaining(locId);
+    const routeWarning = routesContaining.length
+      ? `\n\n⚠ This customer is a member of ${routesContaining.length} route${routesContaining.length === 1 ? '' : 's'}:\n${routesContaining.map(r => `  • ${r.name}`).join('\n')}\nDeleting will remove them from ${routesContaining.length === 1 ? 'this route' : 'these routes'}.`
+      : '';
     const msg = `Delete "${l.location_name}"?\n\n` +
       `This customer has ${stops} scheduled stop${stops === 1 ? '' : 's'} and ${visits} recorded visit${visits === 1 ? '' : 's'}.\n` +
-      `These stay attached and will come back if you restore.\n\n` +
+      `These stay attached and will come back if you restore.` +
+      routeWarning + `\n\n` +
       `Soft-delete is recoverable for 90 days. Type the customer name below to confirm.`;
     const typed = prompt(msg);
     if (typed == null) return;
@@ -9638,6 +10158,10 @@ window.CRM = (function(){
     renderMobRelog,
     // Preset builder (form-driven scheduling preference)
     renderPresetCards, openPresetForm, closePresetForm, savePresetForm, deletePreset, _presetPickMonths,
+    // Routes (Phase 1)
+    renderRoutes, renderRouteEdit, openRouteEdit, saveRoute, deleteRoute,
+    addRouteMember, removeRouteMember, moveRouteMember, optimizeRouteOrder,
+    filterRouteAddCandidates,
     _state: state
   };
 })();
