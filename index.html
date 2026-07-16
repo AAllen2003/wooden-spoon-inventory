@@ -5405,6 +5405,18 @@ window.CRM = (function(){
    * _parseSingleRule() is the single-rule parser — it's what actually
    * extracts days, cadence, times, etc. from ONE line/segment.
    */
+  // Convert "HH:MM" or "HH:MM:SS" to total minutes since midnight
+  function _timeStrToMinutes(t) {
+    if (!t) return 0;
+    const [h, m] = t.split(':').map(x => parseInt(x, 10) || 0);
+    return h * 60 + m;
+  }
+  function _minutesToTimeStr(mins) {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`;
+  }
+
   function _parseSingleRule(text) {
     if (!text) return null;
     const s = text.toLowerCase();
@@ -5413,7 +5425,7 @@ window.CRM = (function(){
     //   "1st Tuesday" / "3rd Wednesday" / "2nd & 4th Friday" / "Last Friday"
     //   "Every 2 weeks", "Every 6 weeks", "Bi-weekly", "Monthly", "Twice a month"
     //   Time range: "2-3pm", "9am-11am", "9:30-11:00", "mornings", "afternoons"
-    const out = { dows: [], nthOfMonth: null, intervalDays: null, startTime: null, endTime: null, activeMonths: null, raw: text };
+    const out = { dows: [], nthOfMonth: null, intervalDays: null, startTime: null, endTime: null, activeMonths: null, isFlexible: false, durationMinutes: null, raw: text };
 
     // Day names — full + abbreviations + common typos. Plural forms like
     // "Mondays" are handled by the \b regex naturally matching the start.
@@ -5516,6 +5528,43 @@ window.CRM = (function(){
         out.startTime = '09:00:00'; out.endTime = '17:00:00';
       }
     }
+
+    // ── Flexible window + duration ─────────────────────────────────
+    // A "flexible" time preference means the times represent a WINDOW during
+    // which the visit can occur, not a fixed slot. The scheduler picks the
+    // best-fit slot within the window based on other stops that day.
+    //
+    // Recognized:
+    //   "anytime 1-6pm"                              → flexible window 1-6pm
+    //   "flexible 1-6pm"                             → same
+    //   "1-6pm flexible"                             → same (keyword after time)
+    //   "anytime between 1 and 6pm"                  → same
+    //   "any time from 1pm to 6pm"                   → same
+    //
+    // Duration (only meaningful with flexible windows; ignored for fixed times):
+    //   "for 1 hour", "for 2 hours", "1 hour visit", "1hr visit",
+    //   "for 30 minutes", "for 45 min", "30 min visit"
+    if (out.startTime && out.endTime && /\b(anytime|any\s*time|flexible|flex\b|between)\b/.test(s)) {
+      out.isFlexible = true;
+    }
+    // Duration extraction (only useful when we already have startTime/endTime)
+    const durMatch = s.match(/(?:for\s+)?(\d{1,2})(?:\.\d+)?\s*(hours?|hrs?|h\b|minutes?|mins?|m\b)(?:\s+visit)?/);
+    if (durMatch) {
+      const n = parseFloat(durMatch[1]);
+      const unit = durMatch[2];
+      const mins = /^h/.test(unit) ? Math.round(n * 60) : Math.round(n);
+      if (mins > 0 && mins <= 720) {  // sanity: 12h max
+        out.durationMinutes = mins;
+        // If duration was specified but no explicit flex keyword, still treat as flexible
+        // (a duration statement only makes sense when the window is bigger than the visit)
+        if (out.startTime && out.endTime) {
+          const winMins = _timeStrToMinutes(out.endTime) - _timeStrToMinutes(out.startTime);
+          if (winMins > mins) out.isFlexible = true;
+        }
+      }
+    }
+    // If flexible but no duration specified, default to 1 hour
+    if (out.isFlexible && !out.durationMinutes) out.durationMinutes = 60;
 
     // ── Months & seasons (Options 1 + 5) ─────────────────────────
     // Builds an "activeMonths" array of month numbers (1-12) when the user
@@ -5936,7 +5985,13 @@ window.CRM = (function(){
     }
     if (p.startTime && p.endTime) {
       const fmt = t => { const [h,m] = t.split(':'); const hh = parseInt(h,10); const ap = hh>=12?'PM':'AM'; return ((hh%12)||12) + ':' + m + ' ' + ap; };
-      parts.push('Time: <strong>' + fmt(p.startTime) + ' \u2013 ' + fmt(p.endTime) + '</strong>');
+      if (p.isFlexible) {
+        const dur = p.durationMinutes || 60;
+        const durStr = dur % 60 === 0 ? `${dur/60} hr` : `${dur} min`;
+        parts.push('Window: <strong>' + fmt(p.startTime) + ' \u2013 ' + fmt(p.endTime) + '</strong> <em style="color:var(--text3);font-size:10px">(flexible, ' + durStr + ' visit)</em>');
+      } else {
+        parts.push('Time: <strong>' + fmt(p.startTime) + ' \u2013 ' + fmt(p.endTime) + '</strong>');
+      }
     }
     if (p.activeMonths && p.activeMonths.length && p.activeMonths.length < 12) {
       const monthNames = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -6033,6 +6088,8 @@ window.CRM = (function(){
       intervalDays: rule.intervalDays || null,
       startTime: rule.startTime || '',
       endTime: rule.endTime || '',
+      isFlexible: !!rule.isFlexible,
+      flexDurationMinutes: rule.durationMinutes || null,
       extras: extraParts.join(', '),
     };
   }
@@ -6072,7 +6129,15 @@ window.CRM = (function(){
           const hh = (h % 12) || 12;
           return `${hh}${m > 0 ? ':' + String(m).padStart(2,'0') : ''}${ap}`;
         };
-        parts.push(`${fmt(c.startTime)}-${fmt(c.endTime)}`);
+        if (c.isFlexible) {
+          const dur = c.flexDurationMinutes || 60;
+          const durStr = dur % 60 === 0
+            ? `${dur / 60} hour${dur === 60 ? '' : 's'}`
+            : `${dur} minutes`;
+          parts.push(`anytime ${fmt(c.startTime)}-${fmt(c.endTime)} for ${durStr}`);
+        } else {
+          parts.push(`${fmt(c.startTime)}-${fmt(c.endTime)}`);
+        }
       }
 
       // Extras
@@ -6210,13 +6275,26 @@ window.CRM = (function(){
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
               <div>
-                <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Start</label>
+                <label id="preset-start-label" style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">${c.isFlexible ? 'Window Start' : 'Start'}</label>
                 <input type="time" id="preset-start" value="${c.startTime||''}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
               </div>
               <div>
-                <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">End</label>
+                <label id="preset-end-label" style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">${c.isFlexible ? 'Window End' : 'End'}</label>
                 <input type="time" id="preset-end" value="${c.endTime||''}" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
               </div>
+            </div>
+          </div>
+
+          <div style="margin-bottom:14px;padding:10px;background:var(--bg2);border-radius:var(--radius)">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2)">
+              <input type="checkbox" id="preset-flexible" ${c.isFlexible?'checked':''} onchange="CRM._presetToggleFlexible()">
+              <span><strong>Flexible window</strong> \u2014 the times above are a WINDOW; the scheduler picks a slot inside it</span>
+            </label>
+            <div id="preset-flex-duration-wrap" style="margin-top:10px;display:${c.isFlexible?'flex':'none'};align-items:center;gap:8px">
+              <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Visit duration</label>
+              <input type="number" id="preset-flex-duration" min="15" max="480" step="15" value="${c.flexDurationMinutes || 60}" style="width:80px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:12px">
+              <span style="font-size:11px;color:var(--text3)">minutes</span>
+              <span style="font-size:10px;color:var(--text3);font-style:italic;margin-left:auto">Auto-scheduler will pack tightest against other stops</span>
             </div>
           </div>
 
@@ -6277,6 +6355,15 @@ window.CRM = (function(){
     preview.textContent = text || '(nothing yet)';
   }
 
+  function _presetToggleFlexible() {
+    const flex = document.getElementById('preset-flexible')?.checked;
+    const wrap = document.getElementById('preset-flex-duration-wrap');
+    if (wrap) wrap.style.display = flex ? 'flex' : 'none';
+    document.getElementById('preset-start-label').textContent = flex ? 'Window Start' : 'Start';
+    document.getElementById('preset-end-label').textContent   = flex ? 'Window End'   : 'End';
+    _updatePresetPreview();
+  }
+
   function _readPresetForm() {
     const months = Array.from(document.querySelectorAll('#preset-months-group input.preset-month:checked')).map(cb => parseInt(cb.value, 10));
     const dows   = Array.from(document.querySelectorAll('#preset-dows-group input.preset-dow:checked')).map(cb => parseInt(cb.value, 10));
@@ -6284,8 +6371,10 @@ window.CRM = (function(){
     const startTime = document.getElementById('preset-start')?.value || '';
     const endTime   = document.getElementById('preset-end')?.value || '';
     const extras    = document.getElementById('preset-extras')?.value?.trim() || '';
+    const isFlexible = !!document.getElementById('preset-flexible')?.checked;
+    const flexDurationMinutes = isFlexible ? parseInt(document.getElementById('preset-flex-duration')?.value, 10) || 60 : null;
     if (!months.length && !dows.length && !startTime && !endTime && !extras) return null;
-    return { months, dows, intervalDays, startTime, endTime, extras };
+    return { months, dows, intervalDays, startTime, endTime, extras, isFlexible, flexDurationMinutes };
   }
 
   function closePresetForm() {
@@ -6491,8 +6580,15 @@ window.CRM = (function(){
 
       // Pick time window
       let startTime, endTime, timeSource;
+      // Track flexibility separately so conflict resolution knows how to place
+      let isFlexible = false;
+      let flexDurationMin = 60;
       if (pref?.startTime && pref?.endTime) {
         startTime = pref.startTime; endTime = pref.endTime; timeSource = 'preference';
+        if (pref.isFlexible) {
+          isFlexible = true;
+          flexDurationMin = pref.durationMinutes || 60;
+        }
       } else if (pattern.count > 0) {
         startTime = pattern.typicalStart; endTime = pattern.typicalEnd; timeSource = 'history';
       } else {
@@ -6547,13 +6643,30 @@ window.CRM = (function(){
         pattern,
         reasons,
         truck_lock: !!loc.truck_lock,
+        isFlexible,
+        flexWindowStart: isFlexible ? startTime : null,
+        flexWindowEnd:   isFlexible ? endTime   : null,
+        flexDurationMin: isFlexible ? flexDurationMin : null,
         enabled: true,
       });
     }
 
-    // ── Conflict resolution ──
+    // Sort: fixed-time proposals go first (they can't move), then flexible ones
+    // with tightest windows first (least freedom → hardest to place).
+    // Within each group, tier ranking applies.
     const tierRank = { high: 1, medium: 2, low: 3, pending: 4 };
-    proposals.sort((a, b) => tierRank[a.location_tier] - tierRank[b.location_tier]);
+    const _t2m = t => t ? (parseInt(t.slice(0,2),10)*60 + parseInt(t.slice(3,5),10)) : 0;
+    proposals.sort((a, b) => {
+      // Fixed first
+      if (a.isFlexible !== b.isFlexible) return a.isFlexible ? 1 : -1;
+      // Within flexible: tighter window first
+      if (a.isFlexible && b.isFlexible) {
+        const aWin = _t2m(a.flexWindowEnd) - _t2m(a.flexWindowStart);
+        const bWin = _t2m(b.flexWindowEnd) - _t2m(b.flexWindowStart);
+        if (aWin !== bWin) return aWin - bWin;
+      }
+      return tierRank[a.location_tier] - tierRank[b.location_tier];
+    });
 
     const placed = []; // accepted proposals
     const skippedConflict = [];
@@ -6583,7 +6696,97 @@ window.CRM = (function(){
     console.log(`[CRM] auto-schedule baseline: ${baseline.length} existing stops in week`, baseline);
 
     for (const p of proposals) {
-      // Try original slot first
+      // FLEXIBLE proposals: search within their window for the best-fit slot
+      // instead of trying the fixed times. Best-fit = the slot that packs
+      // tightest against existing stops (minimizes wasted gap-time before it).
+      if (p.isFlexible) {
+        const winStart = _t2m(p.flexWindowStart);
+        const winEnd = _t2m(p.flexWindowEnd);
+        const dur = p.flexDurationMin;
+
+        // Sanity: window has to fit the duration
+        if (winEnd - winStart < dur) {
+          skippedConflict.push({ ...p, conflict: `Window ${p.flexWindowStart.slice(0,5)}\u2013${p.flexWindowEnd.slice(0,5)} is shorter than ${dur}min duration` });
+          continue;
+        }
+
+        // Gather existing stops on this truck/date, sorted by start time
+        const dayStops = [...placed, ...baseline].filter(s =>
+          s.truck === p.truck && s.scheduled_date === p.scheduled_date
+        ).sort((a, b) => _t2m(a.start_time) - _t2m(b.start_time));
+
+        // Also consider truck switching for best-fit — collect stops on the OTHER truck too
+        // (used later as a fallback)
+        const altTruck = p.truck === 1 ? 2 : (p.truck === 2 ? 1 : p.truck);
+
+        // Build list of candidate start times: quarter-hour increments within the window
+        const candidates = [];
+        for (let m = roundToQuarter(winStart); m + dur <= winEnd; m += 15) {
+          candidates.push(m);
+        }
+
+        // Score each candidate = distance to nearest existing stop's boundary (smaller = tighter pack)
+        let best = null; let bestScore = Infinity;
+        for (const startM of candidates) {
+          const endM = startM + dur;
+          // Conflict check against existing stops
+          const conflictHere = dayStops.some(s => {
+            const sM = _t2m(s.start_time), eM = _t2m(s.end_time);
+            return !(endM <= sM || eM <= startM);
+          });
+          if (conflictHere) continue;
+          // Score: minimize gap to nearest existing stop (or window edge if empty)
+          let score = Infinity;
+          if (dayStops.length === 0) {
+            score = startM - winStart; // prefer earlier in window when no other stops
+          } else {
+            for (const s of dayStops) {
+              const sM = _t2m(s.start_time), eM = _t2m(s.end_time);
+              // Gap to this stop's boundary
+              const gapBefore = Math.abs(startM - eM);   // this cand starts right after s ends
+              const gapAfter  = Math.abs(sM - endM);      // this cand ends right before s starts
+              score = Math.min(score, gapBefore, gapAfter);
+            }
+          }
+          if (score < bestScore) { bestScore = score; best = startM; }
+        }
+
+        if (best !== null) {
+          p.start_time = _minutesToTimeStr(best);
+          p.end_time   = _minutesToTimeStr(best + dur);
+          p.reasons.push(`Placed at ${p.start_time.slice(0,5)} within flexible window ${p.flexWindowStart.slice(0,5)}\u2013${p.flexWindowEnd.slice(0,5)}`);
+          placed.push(p);
+        } else {
+          // Try alternate truck if not locked
+          if (!p.truck_lock && altTruck !== p.truck) {
+            const altStops = [...placed, ...baseline].filter(s =>
+              s.truck === altTruck && s.scheduled_date === p.scheduled_date
+            ).sort((a, b) => _t2m(a.start_time) - _t2m(b.start_time));
+            for (const startM of candidates) {
+              const endM = startM + dur;
+              const conflictHere = altStops.some(s => {
+                const sM = _t2m(s.start_time), eM = _t2m(s.end_time);
+                return !(endM <= sM || eM <= startM);
+              });
+              if (!conflictHere) {
+                p.truck = altTruck;
+                p.start_time = _minutesToTimeStr(startM);
+                p.end_time   = _minutesToTimeStr(startM + dur);
+                p.reasons.push(`Placed at ${p.start_time.slice(0,5)} on Truck ${altTruck} within flexible window`);
+                placed.push(p);
+                best = startM;
+                break;
+              }
+            }
+          }
+          if (best === null) {
+            skippedConflict.push({ ...p, conflict: `No open ${dur}min slot within ${p.flexWindowStart.slice(0,5)}\u2013${p.flexWindowEnd.slice(0,5)} on any truck` });
+          }
+        }
+        continue; // done with this proposal
+      }
+
+      // FIXED proposals: try original slot first
       let conflict = conflictsWith(p, [...placed, ...baseline]);
 
       // If conflict, try shifting +/- 30, 60 min within the day (only if truck not locked)
@@ -10174,7 +10377,7 @@ window.CRM = (function(){
     renderMobForecast,
     renderMobRelog,
     // Preset builder (form-driven scheduling preference)
-    renderPresetCards, openPresetForm, closePresetForm, savePresetForm, deletePreset, _presetPickMonths, setPresetTarget,
+    renderPresetCards, openPresetForm, closePresetForm, savePresetForm, deletePreset, _presetPickMonths, _presetToggleFlexible, setPresetTarget,
     // Routes (Phase 1)
     renderRoutes, renderRouteEdit, openRouteEdit, saveRoute, deleteRoute,
     addRouteMember, removeRouteMember, moveRouteMember, optimizeRouteOrder,
