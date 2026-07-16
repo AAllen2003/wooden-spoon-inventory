@@ -6606,6 +6606,9 @@ window.CRM = (function(){
     const weekStartISO = isoOfDate(weekStart);
     const weekEndISO = isoOfDate(weekEnd);
 
+    // Time-string → minutes helper, used throughout this function
+    const _t2m = t => t ? (parseInt(t.slice(0,2),10)*60 + parseInt(t.slice(3,5),10)) : 0;
+
     // Existing stops in the target week (any source)
     const existingInWeek = state.stops.filter(s =>
       s.scheduled_date >= weekStartISO && s.scheduled_date <= weekEndISO
@@ -6921,7 +6924,6 @@ window.CRM = (function(){
     // with tightest windows first (least freedom → hardest to place).
     // Within each group, tier ranking applies.
     const tierRank = { high: 1, medium: 2, low: 3, pending: 4 };
-    const _t2m = t => t ? (parseInt(t.slice(0,2),10)*60 + parseInt(t.slice(3,5),10)) : 0;
     proposals.sort((a, b) => {
       // Fixed first
       if (a.isFlexible !== b.isFlexible) return a.isFlexible ? 1 : -1;
