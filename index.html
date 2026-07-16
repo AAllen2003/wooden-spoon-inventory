@@ -3680,22 +3680,38 @@ window.CRM = (function(){
     };
 
     // Collect all active customers with a reason
-    const skipped = state.locations
+    const skippedCustomers = state.locations
       .filter(l => l.status === 'active')
       .filter(l => !(l.location_name || '').startsWith('[Personal'))
-      .map(l => ({ loc: l, reason: reasonFor(l) }))
+      .map(l => ({ kind: 'customer', item: l, reason: reasonFor(l) }))
       .filter(x => x.reason);
+
+    // Also include routes with opt-out phrases in their own scheduling_preference
+    const skippedRoutes = (state.routes || []).filter(r => !r.deleted_at).map(r => {
+      const pref = r.scheduling_preference || '';
+      const m = pref.match(optOutRe);
+      if (m) return { kind: 'route', item: r, reason: `Opt-out phrase: "${m[0]}"` };
+      // No preference at all → warn
+      if (!pref.trim()) return { kind: 'route', item: r, reason: 'No scheduling preference set' };
+      return null;
+    }).filter(Boolean);
+
+    const skipped = [...skippedCustomers, ...skippedRoutes];
 
     if (skipped.length === 0) {
       el.innerHTML = `<div class="card" style="background:var(--surface)">
         <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:6px"><i class="ti ti-calendar-off"></i> Manual Scheduling Required</div>
-        <div style="font-size:12px;color:var(--text3);font-style:italic">No customers are currently set to manual scheduling. Any customer with an opt-out phrase in their preference (like "manual only", "DNS", "call ahead") will appear here.</div>
+        <div style="font-size:12px;color:var(--text3);font-style:italic">No customers or routes are currently set to manual scheduling. Any customer or route with an opt-out phrase in their preference (like "manual only", "DNS", "call ahead") will appear here.</div>
       </div>`;
       return;
     }
 
     // Sort alphabetically for easy reference
-    skipped.sort((a, b) => (a.loc.location_name || '').localeCompare(b.loc.location_name || ''));
+    skipped.sort((a, b) => {
+      const nameA = a.kind === 'route' ? a.item.name : a.item.location_name;
+      const nameB = b.kind === 'route' ? b.item.name : b.item.location_name;
+      return (nameA || '').localeCompare(nameB || '');
+    });
 
     el.innerHTML = `<div class="card" style="background:var(--amber-bg,#fff8e5);border-color:var(--amber)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -3703,15 +3719,18 @@ window.CRM = (function(){
         <div style="font-size:11px;color:var(--text3);font-style:italic">Auto-scheduler will skip these — schedule manually as needed</div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:8px">
-        ${skipped.map(({loc, reason}) => `
-          <div style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:center;gap:10px;cursor:pointer" onclick="CRM.openProfile(${loc.id})">
+        ${skipped.map(({kind, item, reason}) => {
+          const name = kind === 'route' ? item.name : item.location_name;
+          const icon = kind === 'route' ? 'ti-route' : '';
+          const onClick = kind === 'route' ? `CRM.openRouteEdit(${item.id})` : `CRM.openProfile(${item.id})`;
+          return `<div style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:center;gap:10px;cursor:pointer${kind === 'route' ? ';border-left:3px solid var(--accent)' : ''}" onclick="${onClick}">
             <div style="flex:1;min-width:0">
-              <div style="font-weight:700;font-size:13px;color:var(--sidebar);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(loc.location_name)}</div>
+              <div style="font-weight:700;font-size:13px;color:var(--sidebar);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${icon ? `<i class="ti ${icon}" style="color:var(--accent)"></i> ` : ''}${esc(name)}</div>
               <div style="font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(reason)}">${esc(reason)}</div>
             </div>
             <i class="ti ti-chevron-right" style="color:var(--text3);flex-shrink:0"></i>
-          </div>
-        `).join('')}
+          </div>`;
+        }).join('')}
       </div>
     </div>`;
   }
@@ -4102,9 +4121,7 @@ window.CRM = (function(){
   // and greedily picks the nearest unvisited stop.
   async function optimizeRouteOrder(routeId) {
     const members = _routeMembers(routeId);
-    if (members.length < 2) return;
-
-    // Members with valid coords
+    if (members.length < 2) return;  // Members with valid coords
     const withCoords = members.filter(m => m.location && Number.isFinite(m.location.lat) && Number.isFinite(m.location.lng));
     const withoutCoords = members.filter(m => !(m.location && Number.isFinite(m.location.lat) && Number.isFinite(m.location.lng)));
 
@@ -4164,6 +4181,101 @@ window.CRM = (function(){
       console.error('[CRM] optimizeRouteOrder:', e);
       alert('Optimize failed: ' + (e.message || e));
     }
+  }
+
+  // ─── Route stop detail modal ───────────────────────────────────
+  // Opened from the calendar when a driver taps a scheduled route stop.
+  // Shows full member list in sequence with contact info, notes, and a
+  // single Google Maps URL that chains all stops in order.
+  function openRouteStopDetail(stopId) {
+    const s = state.stops.find(x => x.id === stopId);
+    if (!s || !s.route_id) return;
+    const route = state.routes.find(r => r.id === s.route_id);
+    if (!route) { alert('Route not found (may have been deleted).'); return; }
+
+    const members = state.routeMembers
+      .filter(m => m.route_id === s.route_id)
+      .sort((a, b) => a.sequence - b.sequence)
+      .map(m => ({ ...m, location: state.locations.find(l => l.id === m.location_id) }));
+
+    // Full Google Maps URL for the whole route
+    const geocoded = members.filter(m => m.location && m.location.geocode_status === 'success');
+    let navUrl = null;
+    if (geocoded.length >= 1) {
+      const addrs = geocoded.map(m => [m.location.full_address, m.location.city, m.location.state, m.location.zip].filter(Boolean).join(', '));
+      const dest = encodeURIComponent(addrs[addrs.length - 1]);
+      const waypoints = addrs.slice(0, -1).map(encodeURIComponent).join('|');
+      const wpParam = waypoints ? `&waypoints=${waypoints}` : '';
+      navUrl = `https://www.google.com/maps/dir/?api=1&destination=${dest}${wpParam}&travelmode=driving`;
+    }
+
+    const modalHtml = `
+      <div id="route-detail-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto" onclick="if(event.target===this)CRM.closeRouteStopDetail()">
+        <div style="background:var(--surface);border-radius:12px;padding:24px;max-width:640px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)" onclick="event.stopPropagation()">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px">
+            <div>
+              <div style="font-family:var(--font-display);font-size:20px;color:var(--sidebar)"><i class="ti ti-route"></i> ${esc(route.name)}</div>
+              <div style="font-size:12px;color:var(--text3);margin-top:4px">
+                ${new Date(s.scheduled_date + 'T12:00:00').toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'})}
+                &middot; ${fmtTime(s.start_time)}\u2013${fmtTime(s.end_time)}
+                &middot; Truck ${s.truck}
+                &middot; ${members.length} stop${members.length===1?'':'s'}
+              </div>
+            </div>
+            <button class="btn btn-sm" onclick="CRM.closeRouteStopDetail()"><i class="ti ti-x"></i></button>
+          </div>
+
+          ${navUrl ? `<div style="margin-bottom:16px">
+            <a href="${navUrl}" target="_blank" rel="noopener" style="text-decoration:none">
+              <button class="btn btn-primary" style="width:100%;background:var(--green);border-color:var(--green)"><i class="ti ti-navigation"></i> Open Full Route in Google Maps</button>
+            </a>
+            <div style="font-size:10px;color:var(--text3);margin-top:6px;font-style:italic;text-align:center">Chains all ${geocoded.length} stops in driving order</div>
+          </div>` : ''}
+
+          <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">Stops (in driving order)</div>
+
+          <div style="max-height:60vh;overflow-y:auto">
+            ${members.map((m, idx) => {
+              const l = m.location;
+              if (!l) {
+                return `<div style="padding:12px;background:var(--red-bg);color:var(--red);border-radius:var(--radius);margin-bottom:8px">
+                  <strong>#${idx + 1}: Deleted customer</strong> (id ${m.location_id})
+                </div>`;
+              }
+              const addr = [l.full_address, l.city, l.state, l.zip].filter(Boolean).join(', ');
+              const singleNavUrl = l.geocode_status === 'success' && addr
+                ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}&travelmode=driving`
+                : null;
+              return `<div style="padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;display:flex;gap:12px;align-items:flex-start">
+                <div style="width:32px;height:32px;background:var(--accent);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">${idx + 1}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:700;font-size:14px;color:var(--sidebar)">${esc(l.location_name)}</div>
+                  ${l.point_of_contact ? `<div style="font-size:12px;color:var(--text2);margin-top:2px"><i class="ti ti-user" style="font-size:11px"></i> ${esc(l.point_of_contact)}${l.phone?' \u00b7 <a href="tel:'+esc(l.phone)+'" style="color:var(--accent)">'+esc(l.phone)+'</a>':''}</div>` : ''}
+                  ${addr ? `<div style="font-size:11px;color:var(--text3);margin-top:2px">${esc(addr)}</div>` : ''}
+                  ${l.notes ? `<div style="font-size:11px;color:var(--text2);margin-top:4px;font-style:italic;padding:6px 8px;background:var(--bg2);border-radius:4px">${esc(l.notes)}</div>` : ''}
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+                  ${singleNavUrl ? `<a href="${singleNavUrl}" target="_blank" rel="noopener" style="text-decoration:none"><button class="btn btn-xs" style="background:var(--green);color:#fff;border-color:var(--green)" title="Directions to this stop"><i class="ti ti-navigation"></i></button></a>` : ''}
+                  <button class="btn btn-xs" onclick="CRM.closeRouteStopDetail();CRM.openProfile(${l.id})" title="View full customer profile"><i class="ti ti-external-link"></i></button>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+
+          <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);text-align:right">
+            <button class="btn btn-sm" onclick="CRM.closeRouteStopDetail()">Close</button>
+          </div>
+        </div>
+      </div>`;
+
+    const existing = document.getElementById('route-detail-overlay');
+    if (existing) existing.remove();
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+  }
+
+  function closeRouteStopDetail() {
+    const overlay = document.getElementById('route-detail-overlay');
+    if (overlay) overlay.remove();
   }
 
   function filterCustomers() {
@@ -4839,6 +4951,46 @@ window.CRM = (function(){
   }
 
   function renderStopRow(s) {
+    // ─ Route stops: distinct visual treatment; clicking opens the route detail view
+    if (s.route_id) {
+      const route = state.routes.find(r => r.id === s.route_id);
+      const memberCount = state.routeMembers.filter(m => m.route_id === s.route_id).length;
+      const routeName = route ? route.name : 'Unknown route';
+      // Build the multi-stop Google Maps URL for the whole route
+      const members = state.routeMembers
+        .filter(m => m.route_id === s.route_id)
+        .sort((a, b) => a.sequence - b.sequence)
+        .map(m => state.locations.find(l => l.id === m.location_id))
+        .filter(l => l && l.geocode_status === 'success');
+      let navBtn = '';
+      if (members.length >= 1 && !isStopPast(s)) {
+        const addrs = members.map(l => [l.full_address, l.city, l.state, l.zip].filter(Boolean).join(', '));
+        // Google Maps: origin=current, destinations chained via '/'
+        // Use Directions URL with waypoints
+        const dest = encodeURIComponent(addrs[addrs.length - 1]);
+        const waypoints = addrs.slice(0, -1).map(encodeURIComponent).join('|');
+        const wpParam = waypoints ? `&waypoints=${waypoints}` : '';
+        const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${dest}${wpParam}&travelmode=driving`;
+        navBtn = `<a href="${navUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open full route in Google Maps" style="text-decoration:none">
+          <button class="btn btn-sm" style="background:var(--green);color:#fff;border-color:var(--green)"><i class="ti ti-navigation"></i> Route</button>
+        </a>`;
+      }
+      return `<div style="display:flex;gap:12px;padding:12px 14px;background:linear-gradient(90deg,rgba(159,112,20,0.10),var(--surface) 30%);border:2px solid var(--accent);border-radius:var(--radius);margin-bottom:6px;align-items:center" onclick="CRM.openRouteStopDetail(${s.id})" data-cursor="pointer">
+        <div style="width:8px;height:44px;background:${s.truck===1?'var(--sidebar)':'var(--green)'};border-radius:2px;flex-shrink:0"></div>
+        <div style="flex:1;min-width:0;cursor:pointer">
+          <div style="font-size:13px;font-weight:700;color:var(--sidebar);text-transform:uppercase;letter-spacing:.02em"><i class="ti ti-route"></i> ${esc(routeName)} <span style="font-weight:400;font-size:11px;color:var(--text3);text-transform:none;letter-spacing:0">· ${memberCount} stop${memberCount === 1 ? '' : 's'}</span></div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)}</div>
+          ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
+        </div>
+        ${navBtn}
+        <select onchange="CRM.reassignStopTruck(${s.id}, this.value)" onclick="event.stopPropagation()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;font-family:var(--font-body)">
+          <option value="1" ${s.truck===1?'selected':''}>Truck 1</option>
+          <option value="2" ${s.truck===2?'selected':''}>Truck 2</option>
+        </select>
+        <button class="btn btn-sm" onclick="event.stopPropagation();CRM.openEditStop(${s.id})" title="Edit route stop"><i class="ti ti-edit"></i></button>
+        <button class="btn btn-sm" onclick="event.stopPropagation();CRM.deleteStop(${s.id})" data-admin-only title="Delete route stop"><i class="ti ti-trash"></i></button>
+      </div>`;
+    }
     const loc = state.locations.find(l => l.id === s.location_id);
     const name = loc ? loc.location_name : 'Unknown location';
     const ruleLabel = ({
@@ -6651,6 +6803,120 @@ window.CRM = (function(){
       });
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // ROUTE PROPOSALS — treat each active route as a scheduling entity.
+    // Routes support the same preference syntax as customers (multi-preset,
+    // day-of-month, active months, etc.) but always use their explicit
+    // duration_minutes instead of the customer-style time-range logic.
+    // Members' own opt-outs are IGNORED — the route's schedule overrides.
+    // ═══════════════════════════════════════════════════════════════════
+
+    // Identify routes already scheduled this week (existing route stops)
+    const existingRouteIds = new Set(existingInWeek.filter(s => s.route_id).map(s => s.route_id));
+
+    for (const route of (state.routes || [])) {
+      if (route.deleted_at) continue;
+      if (existingRouteIds.has(route.id)) continue;  // already on the calendar
+
+      // Route opt-out phrases apply to the ROUTE ITSELF (not its members)
+      if (route.scheduling_preference && /\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|manual\s*sched|call ahead|call first|call before|text ahead|text first|text before|by request|on request|upon request|appointment only|by appointment|as needed|seasonal only|closed for season|inactive|on hold|paused|do not contact|dnc|dns|no contact)\b/i.test(route.scheduling_preference)) {
+        continue;
+      }
+
+      let pref = parsePreference(route.scheduling_preference);
+
+      // Multi-rule resolution for the week (same logic as customers)
+      if (pref?.multiRule) {
+        const startMonth = weekStart.getMonth() + 1;
+        const endMonth   = weekEnd.getMonth() + 1;
+        const chosen = pref.rules.find(r => r.months.includes(startMonth))
+                    || pref.rules.find(r => r.months.includes(endMonth));
+        if (!chosen) continue;
+        pref = chosen.rule;
+      }
+
+      // Routes can also be pairing targets, but a route paired to another
+      // route isn't supported in Phase 2 (they should stand alone)
+      if (pref?.pairAfter) continue;
+
+      // Pick day-of-week from preference; if none, default to Wednesday
+      const dows = (pref?.dows && pref.dows.length) ? pref.dows : [3];
+      const chosenDow = dows[0];
+
+      // Compute proposed date within the week
+      const proposedDate = new Date(weekStart);
+      const wsDow = weekStart.getDay();
+      const delta = (chosenDow - wsDow + 7) % 7;
+      proposedDate.setDate(proposedDate.getDate() + delta);
+
+      // Check activeMonths (if set)
+      if (pref?.activeMonths && !pref.activeMonths.includes(proposedDate.getMonth() + 1)) continue;
+      // Check day-of-month range
+      const dom = proposedDate.getDate();
+      if (pref?.dayOfMonthMin && dom < pref.dayOfMonthMin) continue;
+      if (pref?.dayOfMonthMax && dom > pref.dayOfMonthMax) continue;
+
+      // Cadence check: has this route been scheduled recently enough that we
+      // should wait? Skip if it was scheduled within the last (cadence - 3) days.
+      const cadenceDays = pref?.intervalDays || 28;
+      const recent = state.stops.find(s =>
+        s.route_id === route.id &&
+        s.scheduled_date < weekStartISO &&
+        (new Date(weekStart) - new Date(s.scheduled_date + 'T12:00:00')) / 86400000 < (cadenceDays - 3)
+      );
+      if (recent) continue;
+
+      // Duration comes from the route itself, not the preference
+      const durMin = route.duration_minutes || 180;
+
+      // Start time: use preference's startTime if given; else default to 9:00
+      let startTime = pref?.startTime || '09:00:00';
+      const isFlexible = !!pref?.isFlexible;
+      const flexWindowStart = isFlexible ? pref.startTime : null;
+      const flexWindowEnd   = isFlexible ? pref.endTime   : null;
+      // For routes, duration is authoritative — override any flex duration
+      const flexDurationMin = isFlexible ? durMin : null;
+      // Compute end = start + duration
+      const startMin = _t2m(startTime);
+      const endMin = startMin + durMin;
+      const endTime = `${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}:00`;
+
+      // Truck
+      let truck;
+      if (route.truck_lock && route.preferred_truck) truck = route.preferred_truck;
+      else if (route.preferred_truck) truck = route.preferred_truck;
+      else truck = 1;
+
+      const memberCount = state.routeMembers.filter(m => m.route_id === route.id).length;
+
+      proposals.push({
+        id: `prop-route-${route.id}-${isoOfDate(proposedDate)}`,
+        route_id: route.id,
+        location_id: null,   // routes don't have a single location
+        location_name: `\ud83d\uddba ${route.name}`,   // route pin emoji distinguishes visually
+        location_tier: 'high',  // routes always get high-tier scheduling priority
+        scheduled_date: isoOfDate(proposedDate),
+        start_time: startTime,
+        end_time: endTime,
+        truck,
+        cadenceSource: pref ? 'preference' : 'fallback',
+        dowSource: pref?.dows?.length ? 'preference' : 'fallback',
+        timeSource: 'preference',
+        confidence: pref ? 'high' : 'medium',
+        pattern: null,
+        reasons: [`Route with ${memberCount} member${memberCount === 1 ? '' : 's'}`],
+        truck_lock: !!route.truck_lock,
+        isFlexible,
+        flexWindowStart,
+        flexWindowEnd,
+        flexDurationMin,
+        isRoute: true,
+        routeMemberCount: memberCount,
+        enabled: true,
+      });
+    }
+    // ═══════════════════════════════════════════════════════════════════
+
     // Sort: fixed-time proposals go first (they can't move), then flexible ones
     // with tightest windows first (least freedom → hardest to place).
     // Within each group, tier ranking applies.
@@ -7057,7 +7323,76 @@ window.CRM = (function(){
     });
     // ────────────────────────────────────────────────────────────────
 
-    return { proposals: placed, skippedConflict, skippedPairing, existingStops };
+    // ═══════════════════════════════════════════════════════════════════
+    // ROUTE-MEMBER SUPPRESSION
+    // If a route was placed on a given date, remove any standalone customer
+    // proposal for a member of that route on the SAME date. The route wins.
+    // Also removes existing standalone stops from other passes if needed.
+    // ═══════════════════════════════════════════════════════════════════
+    const placedRoutesByDate = {};
+    placed.filter(p => p.isRoute).forEach(p => {
+      if (!placedRoutesByDate[p.scheduled_date]) placedRoutesByDate[p.scheduled_date] = [];
+      placedRoutesByDate[p.scheduled_date].push(p.route_id);
+    });
+    // Filter out placed customer stops that would be duplicates of route members that day
+    const suppressedByRoute = [];
+    const finalPlaced = placed.filter(p => {
+      if (p.isRoute) return true;  // routes stay
+      if (!p.location_id) return true;  // no location, skip check
+      const routeIdsThisDate = placedRoutesByDate[p.scheduled_date] || [];
+      if (routeIdsThisDate.length === 0) return true;
+      // Is this customer a member of any of those routes?
+      const isRouteMember = state.routeMembers.some(m =>
+        m.location_id === p.location_id && routeIdsThisDate.includes(m.route_id)
+      );
+      if (isRouteMember) {
+        suppressedByRoute.push({
+          location_id: p.location_id,
+          location_name: p.location_name,
+          reason: `Suppressed — will be visited via route on ${p.scheduled_date}`,
+        });
+        return false;
+      }
+      return true;
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // GEOGRAPHIC FEASIBILITY WARNINGS FOR PLACED ROUTES
+    // For each placed route, estimate straight-line distance between members.
+    // A rough heuristic: at 30 mph average with 5 min per stop, if the total
+    // estimated route time (drive + dwell) exceeds duration + 25%, flag it.
+    // ═══════════════════════════════════════════════════════════════════
+    const routeWarnings = [];
+    finalPlaced.filter(p => p.isRoute).forEach(p => {
+      const members = state.routeMembers
+        .filter(m => m.route_id === p.route_id)
+        .sort((a, b) => a.sequence - b.sequence)
+        .map(m => state.locations.find(l => l.id === m.location_id))
+        .filter(Boolean);
+      const withCoords = members.filter(l => Number.isFinite(l.lat) && Number.isFinite(l.lng));
+      if (withCoords.length < 2) return;
+      // Sum straight-line distances between consecutive stops (in miles, rough)
+      let totalMiles = 0;
+      for (let i = 1; i < withCoords.length; i++) {
+        const a = withCoords[i-1], b = withCoords[i];
+        const dLat = (b.lat - a.lat) * 69;         // 69 mi per degree lat
+        const dLng = (b.lng - a.lng) * 55;         // ~55 mi per degree lng in mid-latitudes
+        totalMiles += Math.sqrt(dLat*dLat + dLng*dLng);
+      }
+      const driveMin = Math.round((totalMiles / 30) * 60);  // 30 mph avg
+      const dwellMin = members.length * 8;                   // 8 min per stop
+      const estMin = driveMin + dwellMin;
+      const budget = _t2m(p.end_time) - _t2m(p.start_time);
+      if (estMin > budget * 1.25) {
+        routeWarnings.push({
+          route_id: p.route_id,
+          location_name: p.location_name,
+          reason: `Rough estimate: ~${estMin}min driving+dwell for ${members.length} stops, but only ${budget}min allotted`,
+        });
+      }
+    });
+
+    return { proposals: finalPlaced, skippedConflict, skippedPairing, suppressedByRoute, routeWarnings, existingStops };
   }
 
   // State for the active proposal session
@@ -7334,7 +7669,7 @@ window.CRM = (function(){
   function renderProposalReview() {
     const root = document.getElementById('crm-schedule-content');
     if (!root || !state.proposalSession) return;
-    const { proposals, skippedConflict, skippedPairing = [], existingStops } = state.proposalSession;
+    const { proposals, skippedConflict, skippedPairing = [], suppressedByRoute = [], routeWarnings = [], existingStops } = state.proposalSession;
     const weekStart = state.weekStart;
     const weekEnd = addDays(weekStart, 6);
 
@@ -7377,6 +7712,28 @@ window.CRM = (function(){
         <div style="font-family:var(--font-display);font-size:14px;color:var(--amber);margin-bottom:8px"><i class="ti ti-link-off"></i> Pairing Skipped</div>
         ${skippedPairing.map(p => `<div style="font-size:12px;padding:4px 0">
           <strong>${esc(p.location_name)}</strong> \u2014 ${esc(p.reason || 'Pairing could not resolve')}
+        </div>`).join('')}
+      </div>`;
+    }
+
+    // Route feasibility warnings — placed routes that look geographically tight
+    if (routeWarnings.length) {
+      html += `<div class="card" style="background:var(--amber-bg);border-color:var(--amber);margin-bottom:14px">
+        <div style="font-family:var(--font-display);font-size:14px;color:var(--amber);margin-bottom:8px"><i class="ti ti-alert-triangle"></i> Route Feasibility Warnings</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px;font-style:italic">These routes fit on the schedule but the driving+dwell time estimate exceeds the allotted duration. Consider extending duration or removing stops.</div>
+        ${routeWarnings.map(w => `<div style="font-size:12px;padding:4px 0">
+          <strong>${esc(w.location_name)}</strong> \u2014 ${esc(w.reason)}
+        </div>`).join('')}
+      </div>`;
+    }
+
+    // Suppressed standalone stops — member customers whose route is scheduled the same day
+    if (suppressedByRoute.length) {
+      html += `<div class="card" style="background:var(--bg2);margin-bottom:14px">
+        <div style="font-family:var(--font-display);font-size:13px;color:var(--text2);margin-bottom:8px"><i class="ti ti-arrow-merge"></i> Suppressed by Route</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px;font-style:italic">These customer stops were suppressed because their route is scheduled the same day. They'll be visited as part of the route.</div>
+        ${suppressedByRoute.map(w => `<div style="font-size:12px;padding:4px 0">
+          <strong>${esc(w.location_name)}</strong> \u2014 ${esc(w.reason)}
         </div>`).join('')}
       </div>`;
     }
@@ -7517,14 +7874,15 @@ window.CRM = (function(){
       // 1. Insert new proposals (batched)
       if (enabled.length) {
         const rows = enabled.map(p => ({
-          location_id: p.location_id,
+          location_id: p.location_id,   // null for route proposals
+          route_id: p.route_id || null, // set for route proposals only
           truck: p.truck,
           scheduled_date: p.scheduled_date,
           start_time: p.start_time,
           end_time: p.end_time,
           recurrence_rule: 'one-time',
           status: 'scheduled',
-          source: 'auto-scheduled',
+          source: p.isRoute ? 'auto-scheduled-route' : 'auto-scheduled',
           notes: 'Auto-proposed: ' + p.reasons.join('; '),
         }));
         tasks.push(
@@ -7841,6 +8199,20 @@ window.CRM = (function(){
         return `<div style="margin-bottom:16px">
           <div style="font-family:var(--font-display);font-size:13px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">${dt.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}</div>
           ${byDay[d].map(s=>{
+            // Route stops on mobile: distinct styling, opens the route detail modal
+            if (s.route_id) {
+              const route = state.routes.find(r => r.id === s.route_id);
+              const memberCount = state.routeMembers.filter(m => m.route_id === s.route_id).length;
+              const routeName = route ? route.name : 'Unknown route';
+              return `<div style="padding:10px 12px;background:linear-gradient(90deg,rgba(159,112,20,0.10),var(--surface) 30%);border:2px solid var(--accent);border-radius:var(--radius);margin-bottom:6px;display:flex;gap:10px;align-items:center" onclick="CRM.openRouteStopDetail(${s.id})">
+                <div style="flex:1;cursor:pointer;min-width:0">
+                  <div style="font-size:13px;font-weight:700;color:var(--sidebar);text-transform:uppercase;letter-spacing:.02em"><i class="ti ti-route"></i> ${esc(routeName)}</div>
+                  <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} \u2013 ${fmtTime(s.end_time)} \u00b7 ${memberCount} stop${memberCount === 1 ? '' : 's'}</div>
+                  ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
+                </div>
+                <i class="ti ti-chevron-right" style="color:var(--text3);flex-shrink:0"></i>
+              </div>`;
+            }
             const loc = state.locations.find(l=>l.id===s.location_id);
             const past = isStopPast(s);
             let navUrl = null;
@@ -10378,10 +10750,11 @@ window.CRM = (function(){
     renderMobRelog,
     // Preset builder (form-driven scheduling preference)
     renderPresetCards, openPresetForm, closePresetForm, savePresetForm, deletePreset, _presetPickMonths, _presetToggleFlexible, setPresetTarget,
-    // Routes (Phase 1)
+    // Routes (Phase 1 + Phase 2)
     renderRoutes, renderRouteEdit, openRouteEdit, saveRoute, deleteRoute,
     addRouteMember, removeRouteMember, moveRouteMember, optimizeRouteOrder,
     filterRouteAddCandidates,
+    openRouteStopDetail, closeRouteStopDetail,
     _state: state
   };
 })();
