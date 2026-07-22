@@ -3663,10 +3663,11 @@ window.CRM = (function(){
         // If multi-rule, check any rule for pairing issues
         const rules = parsed.multiRule ? parsed.rules.map(r => r.rule) : [parsed];
         for (const rule of rules) {
-          if (rule.pairAfter) {
-            const matches = _resolvePairName(rule.pairAfter);
-            if (matches.length === 0) return `Paired to "${rule.pairAfter}" — no matching customer found`;
-            if (matches.length > 1)  return `Paired to "${rule.pairAfter}" — ambiguous (matches ${matches.length} customers)`;
+          const pn = rule.pairBefore || rule.pairAfter;
+          if (pn) {
+            const matches = _resolvePairName(pn);
+            if (matches.length === 0) return `Paired to "${pn}" — no matching customer found`;
+            if (matches.length > 1)  return `Paired to "${pn}" — ambiguous (matches ${matches.length} customers)`;
           }
         }
         // Multi-rule preferences with no month coverage at all
@@ -5857,6 +5858,22 @@ window.CRM = (function(){
         out.pairAfter = name;
       }
     }
+
+    // ─── Pairing: schedule immediately BEFORE another customer ───────
+    // Mirror of pairAfter. Recognizes: "before Bob's Deli", "pair before
+    // Bob's Deli", "right before Bob's". Uses the same ordinal guard so
+    // "before the 15th" stays day-of-month territory, while "before Bob's
+    // Deli" is pairing. A stop can't be paired both before AND after; if a
+    // preference somehow specifies both, pairBefore wins downstream.
+    out.pairBefore = null;
+    const pairBeforeRe = /\b(?:pair\s+)?(?:right\s+)?before\s+(?!(?:the\s+)?\d)([a-z0-9][a-z0-9\s'&.\-]*?)(?:\s*[,;\-]|\s+—|\s*$)/i;
+    const pairBeforeM = text.match(pairBeforeRe);  // original text preserves capitalization for lookup
+    if (pairBeforeM) {
+      const name = pairBeforeM[1].trim();
+      if (name.length >= 2 && !/^\d+$/.test(name)) {
+        out.pairBefore = name;
+      }
+    }
     // ────────────────────────────────────────────────────────────────
     const ordSuffix = '(?:st|nd|rd|th)?';           // 20 / 20th / 3rd / 1st
     const dayNum    = '(?:the\\s+)?(\\d{1,2})' + ordSuffix + '(?:\\s+of\\s+(?:the\\s+)?month)?';
@@ -5912,7 +5929,7 @@ window.CRM = (function(){
       }
     }
 
-    if (!out.dows.length && !out.intervalDays && !out.nthOfMonth && !out.activeMonths && !out.dayOfMonthMin && !out.dayOfMonthMax && !out.pairAfter) return null;
+    if (!out.dows.length && !out.intervalDays && !out.nthOfMonth && !out.activeMonths && !out.dayOfMonthMin && !out.dayOfMonthMax && !out.pairAfter && !out.pairBefore) return null;
     return out;
   }
 
@@ -6179,6 +6196,16 @@ window.CRM = (function(){
         parts.push(`<span style="color:var(--amber)">Paired: <strong>"${esc(p.pairAfter)}"</strong> \u2014 ambiguous</span>`);
       }
     }
+    if (p.pairBefore) {
+      const matches = _resolvePairName(p.pairBefore);
+      if (matches.length === 1) {
+        parts.push(`Paired: <strong>before "${esc(matches[0].location_name)}"</strong>`);
+      } else if (matches.length === 0) {
+        parts.push(`<span style="color:var(--amber)">Paired: <strong>"${esc(p.pairBefore)}"</strong> \u2014 no match</span>`);
+      } else {
+        parts.push(`<span style="color:var(--amber)">Paired: <strong>"${esc(p.pairBefore)}"</strong> \u2014 ambiguous</span>`);
+      }
+    }
     return parts;
   }
 
@@ -6233,6 +6260,9 @@ window.CRM = (function(){
     }
     if (rule.pairAfter) {
       extraParts.push(`after ${rule.pairAfter}`);
+    }
+    if (rule.pairBefore) {
+      extraParts.push(`before ${rule.pairBefore}`);
     }
     return {
       months: [...months].sort((a,b)=>a-b),
@@ -6651,9 +6681,9 @@ window.CRM = (function(){
         pref = chosen.rule;
       }
 
-      // If this customer is paired to another (via "after X" in preference),
-      // skip in this pass — the pairing pass below handles them.
-      if (pref && pref.pairAfter) continue;
+      // If this customer is paired to another (via "after X" or "before X"
+      // in preference), skip in this pass — the pairing pass below handles them.
+      if (pref && (pref.pairAfter || pref.pairBefore)) continue;
 
       // Seasonal opt-out: if the preference specifies active months and the
       // target week falls entirely outside those months, skip this customer.
@@ -6840,7 +6870,7 @@ window.CRM = (function(){
 
       // Routes can also be pairing targets, but a route paired to another
       // route isn't supported in Phase 2 (they should stand alone)
-      if (pref?.pairAfter) continue;
+      if (pref?.pairAfter || pref?.pairBefore) continue;
 
       // Pick day-of-week from preference; if none, default to Wednesday
       const dows = (pref?.dows && pref.dows.length) ? pref.dows : [3];
@@ -7193,7 +7223,7 @@ window.CRM = (function(){
       if (loc.location_name && loc.location_name.startsWith('[Personal')) return false;
       if (alreadyScheduled.has(loc.id)) return false;
       const pref = _resolveForWeek(loc.scheduling_preference);
-      return pref && pref.pairAfter;
+      return pref && (pref.pairAfter || pref.pairBefore);
     });
 
     // Iterate — chain support. Each pass places any pairable candidate whose
@@ -7208,7 +7238,10 @@ window.CRM = (function(){
 
         const pref = _resolveForWeek(loc.scheduling_preference);
         if (!pref) { remaining.splice(i, 1); continue; }
-        const parents = _resolvePairName(pref.pairAfter);
+        // pairBefore wins if both are somehow set; isBefore flips slot placement.
+        const isBefore = !!pref.pairBefore;
+        const pairName = pref.pairBefore || pref.pairAfter;
+        const parents = _resolvePairName(pairName);
 
         // Only proceed if exactly one match
         if (parents.length !== 1) {
@@ -7216,8 +7249,8 @@ window.CRM = (function(){
             location_id: loc.id,
             location_name: loc.location_name,
             reason: parents.length === 0
-              ? `Paired to "${pref.pairAfter}" — no matching customer`
-              : `Paired to "${pref.pairAfter}" — ambiguous (${parents.length} matches)`,
+              ? `Paired to "${pairName}" — no matching customer`
+              : `Paired to "${pairName}" — ambiguous (${parents.length} matches)`,
           });
           remaining.splice(i, 1);
           continue;
@@ -7233,8 +7266,9 @@ window.CRM = (function(){
           if (seen.has(chainCheck.id)) { cycleDetected = true; break; }
           seen.add(chainCheck.id);
           const chainPref = _resolveForWeek(chainCheck.scheduling_preference);
-          if (!chainPref?.pairAfter) break;
-          const nextMatches = _resolvePairName(chainPref.pairAfter);
+          const chainName = chainPref?.pairBefore || chainPref?.pairAfter;
+          if (!chainName) break;
+          const nextMatches = _resolvePairName(chainName);
           chainCheck = nextMatches.length === 1 ? nextMatches[0] : null;
         }
         if (cycleDetected) {
@@ -7257,9 +7291,29 @@ window.CRM = (function(){
           ? durationMin(bPattern.typicalStart, bPattern.typicalEnd)
           : 60;
 
-        // Compute B's slot: immediately after parent, same truck, same day
-        const bStart = parentPlaced.end_time;
-        const bEnd = addMin(bStart, bDur);
+        // Compute B's slot relative to parent, same truck, same day.
+        // "after":  B starts when the parent ends.
+        // "before": B ends when the parent starts (B sits directly ahead of it).
+        // Guard the before case against underflowing midnight, since addMin()
+        // wraps modulo 24 and would otherwise emit a malformed time.
+        let bStart, bEnd;
+        if (isBefore) {
+          bEnd = parentPlaced.start_time;
+          const bEndTotal = parseInt(bEnd.slice(0,2),10) * 60 + parseInt(bEnd.slice(3,5),10);
+          if (bEndTotal - bDur < 0) {
+            skippedPairing.push({
+              location_id: loc.id,
+              location_name: loc.location_name,
+              reason: `Slot before ${parent.location_name} would start before 00:00 — no room ahead of it`,
+            });
+            remaining.splice(i, 1);
+            continue;
+          }
+          bStart = addMin(bEnd, -bDur);
+        } else {
+          bStart = parentPlaced.end_time;
+          bEnd = addMin(bStart, bDur);
+        }
 
         // Check for conflicts with anything else placed on this truck/day
         const conflict = placed.find(p =>
@@ -7303,7 +7357,7 @@ window.CRM = (function(){
           timeSource: 'paired',
           confidence: 'high',
           pattern: bPattern,
-          reasons: [`Paired: immediately after ${parent.location_name}`],
+          reasons: [`Paired: immediately ${isBefore ? 'before' : 'after'} ${parent.location_name}`],
           truck_lock: !!loc.truck_lock,
           enabled: true,
         };
@@ -7320,7 +7374,7 @@ window.CRM = (function(){
       skippedPairing.push({
         location_id: loc.id,
         location_name: loc.location_name,
-        reason: `Paired to "${pref.pairAfter}" — parent not scheduled this week`,
+        reason: `Paired to "${pref.pairBefore || pref.pairAfter}" — parent not scheduled this week`,
       });
     });
     // ────────────────────────────────────────────────────────────────
