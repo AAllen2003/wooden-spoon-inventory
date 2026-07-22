@@ -5082,31 +5082,64 @@ window.CRM = (function(){
     const dropdown = document.getElementById('add-loc-dropdown');
     if (!dropdown) return;
     const q = (query || '').trim().toLowerCase();
+
+    // Routes are schedulable too — surface matching routes at the top of the
+    // list, visually distinguished, so a whole route can be dropped on the day.
+    const routes = (state.routes || [])
+      .filter(r => !r.deleted_at)
+      .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+    const routeMatches = (q ? routes.filter(r => (r.name||'').toLowerCase().includes(q)) : routes).slice(0, 10);
+
     const all = state.locations
       .filter(l => l.status === 'active')
       .sort((a,b) => a.location_name.localeCompare(b.location_name));
     const matches = q
       ? all.filter(l => l.location_name.toLowerCase().includes(q)).slice(0, 30)
       : all.slice(0, 30); // empty query shows top 30 alphabetically
-    if (!matches.length) {
+
+    if (!routeMatches.length && !matches.length) {
       dropdown.style.display = 'block';
-      dropdown.innerHTML = '<div style="padding:10px;color:var(--text3);font-style:italic;font-size:12px">No customers match</div>';
+      dropdown.innerHTML = '<div style="padding:10px;color:var(--text3);font-style:italic;font-size:12px">No customers or routes match</div>';
       return;
     }
-    dropdown.style.display = 'block';
-    dropdown.innerHTML = matches.map(l => {
+
+    const routeRows = routeMatches.map(r => {
+      const memberCount = state.routeMembers.filter(m => m.route_id === r.id).length;
+      const safeName = String(r.name).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      const bg = 'linear-gradient(90deg,rgba(159,112,20,0.08),transparent)';
+      return `<div onclick="CRM._pickAddStopLocation('${r.id}', '${safeName}', 'route')" style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--bg2);font-size:13px;background:${bg}" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='${bg}'"><i class="ti ti-route" style="color:var(--accent)"></i> <strong>${esc(r.name)}</strong> <span style="font-size:10px;color:var(--text3)">route &middot; ${memberCount} stop${memberCount===1?'':'s'}</span></div>`;
+    }).join('');
+
+    const locRows = matches.map(l => {
       const addr = l.full_address ? `<div style="font-size:10px;color:var(--text3)">${esc(l.full_address)}</div>` : '';
       const safeName = String(l.location_name).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-      return `<div onclick="CRM._pickAddStopLocation('${l.id}', '${safeName}')" style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--bg2);font-size:13px" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">${esc(l.location_name)}${addr}</div>`;
+      return `<div onclick="CRM._pickAddStopLocation('${l.id}', '${safeName}', 'location')" style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--bg2);font-size:13px" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">${esc(l.location_name)}${addr}</div>`;
     }).join('');
+
+    dropdown.style.display = 'block';
+    dropdown.innerHTML = routeRows + locRows;
   }
 
-  function _pickAddStopLocation(id, name) {
+  function _pickAddStopLocation(id, name, kind) {
     const search = document.getElementById('add-loc-search');
     const hidden = document.getElementById('add-loc');
+    const kindEl = document.getElementById('add-kind');
     const dropdown = document.getElementById('add-loc-dropdown');
     if (search) search.value = name;
     if (hidden) hidden.value = id;
+    if (kindEl) kindEl.value = kind || 'location';
+    // When a route is picked, size the stop to the route's own duration so the
+    // end time reflects how long the route actually takes.
+    if (kind === 'route') {
+      const route = (state.routes || []).find(r => r.id === parseInt(id, 10));
+      const startEl = document.getElementById('add-start');
+      const endEl = document.getElementById('add-end');
+      if (route && route.duration_minutes && startEl && endEl) {
+        const [h, m] = (startEl.value || '09:00').split(':').map(n => parseInt(n, 10) || 0);
+        const tot = h * 60 + m + route.duration_minutes;
+        endEl.value = String(Math.floor(tot / 60) % 24).padStart(2, '0') + ':' + String(tot % 60).padStart(2, '0');
+      }
+    }
     if (dropdown) dropdown.style.display = 'none';
   }
 
@@ -5136,14 +5169,15 @@ window.CRM = (function(){
     // user can type to filter customers and see what they've typed.
     const locPickerHtml = `
       <div style="margin-bottom:10px;position:relative">
-        <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Location</label>
+        <label style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:4px">Customer or route</label>
         <input type="text" id="add-loc-search" autocomplete="off"
           value="${esc(presetName)}"
-          placeholder="Type to search customers..."
+          placeholder="Type to search customers or routes..."
           oninput="CRM._filterAddStopLocations(this.value)"
           onfocus="CRM._filterAddStopLocations(this.value)"
           style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
         <input type="hidden" id="add-loc" value="${esc(presetId)}">
+        <input type="hidden" id="add-kind" value="location">
         <div id="add-loc-dropdown" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:100;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 4px 12px rgba(0,0,0,.15);max-height:240px;overflow-y:auto;margin-top:2px"></div>
       </div>`;
     const ruleOpts = ['one-time','weekly','biweekly','every_6_weeks','quarterly','manual_only','locked'].map(r=>`<option value="${r}">${r}</option>`).join('');
@@ -5217,21 +5251,53 @@ window.CRM = (function(){
 
   async function saveNewStop() {
     const get = id => document.getElementById(id)?.value;
-    const data = {
-      location_id: parseInt(get('add-loc'),10),
-      truck: parseInt(get('add-truck'),10),
-      scheduled_date: get('add-date'),
-      start_time: get('add-start'),
-      end_time: get('add-end'),
-      recurrence_rule: get('add-rule') || 'one-time',
-      notes: get('add-notes') || null,
-      source: 'manual',
-      status: 'scheduled'
-    };
-    if (!data.location_id || !data.scheduled_date) { alert('Pick a location and date.'); return; }
-    const loc = state.locations.find(l => l.id === data.location_id);
-    if (loc && loc.truck_lock && loc.preferred_truck && loc.preferred_truck !== data.truck) {
-      if (!confirm(`${loc.location_name} is locked to Truck ${loc.preferred_truck}. Override?`)) return;
+    const kind = get('add-kind') || 'location';
+    const pickedId = parseInt(get('add-loc'), 10);
+    const scheduled_date = get('add-date');
+    const truck = parseInt(get('add-truck'), 10);
+
+    if (!pickedId || !scheduled_date) {
+      alert(kind === 'route' ? 'Pick a route and date.' : 'Pick a location and date.');
+      return;
+    }
+
+    let data;
+    if (kind === 'route') {
+      // Route stop: mirrors the shape the auto-scheduler commits — route_id set,
+      // location_id null. renderStopRow and openRouteStopDetail key off route_id.
+      const route = state.routes.find(r => r.id === pickedId);
+      if (!route) { alert('Route not found (it may have been deleted).'); return; }
+      if (route.truck_lock && route.preferred_truck && route.preferred_truck !== truck) {
+        if (!confirm(`${route.name} is locked to Truck ${route.preferred_truck}. Override?`)) return;
+      }
+      data = {
+        location_id: null,
+        route_id: route.id,
+        truck,
+        scheduled_date,
+        start_time: get('add-start'),
+        end_time: get('add-end'),
+        recurrence_rule: 'one-time',
+        notes: get('add-notes') || null,
+        source: 'manual-route',
+        status: 'scheduled'
+      };
+    } else {
+      data = {
+        location_id: pickedId,
+        truck,
+        scheduled_date,
+        start_time: get('add-start'),
+        end_time: get('add-end'),
+        recurrence_rule: get('add-rule') || 'one-time',
+        notes: get('add-notes') || null,
+        source: 'manual',
+        status: 'scheduled'
+      };
+      const loc = state.locations.find(l => l.id === data.location_id);
+      if (loc && loc.truck_lock && loc.preferred_truck && loc.preferred_truck !== data.truck) {
+        if (!confirm(`${loc.location_name} is locked to Truck ${loc.preferred_truck}. Override?`)) return;
+      }
     }
     try {
       const { data: ins, error } = await sb.from('crm_stops').insert(data).select().single();
@@ -8234,7 +8300,7 @@ window.CRM = (function(){
           <button class="btn btn-sm" onclick="CRM.setScheduleView('week')" style="border-radius:0;border:none;border-left:1px solid var(--border);${weekActive}">Week</button>
         </div>
         <input type="date" value="${pickerValue}" onchange="CRM.pickScheduleDate(this.value)" style="flex:1;min-width:120px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px">
-        <button class="btn btn-sm btn-accent" onclick="CRM.openAddStop()" title="Add Stop"><i class="ti ti-plus"></i></button>
+        <button class="btn btn-sm btn-accent" onclick="CRM.openAddStop()" title="Add Stop" style="white-space:nowrap"><i class="ti ti-plus"></i> Add Stop</button>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px">
         <button class="btn btn-sm" onclick="CRM.shiftWeek(-1)"><i class="ti ti-chevron-left"></i></button>
@@ -8271,6 +8337,17 @@ window.CRM = (function(){
             }
             const loc = state.locations.find(l=>l.id===s.location_id);
             const past = isStopPast(s);
+            // Same sales badge as the desktop schedule: green revenue/transaction
+            // chip for past stops once the visit is attributed, placeholder until then.
+            const visit = state.visits.find(v => v.stop_id === s.id);
+            let salesBadge = '';
+            if (past) {
+              if (visit && visit.total_revenue != null) {
+                salesBadge = `<div style="margin-top:4px"><span style="font-size:11px;padding:3px 8px;border-radius:4px;background:var(--green-bg);color:var(--green);font-weight:700;white-space:nowrap"><i class="ti ti-currency-dollar" style="font-size:11px"></i> ${fmtMoney(visit.total_revenue)} \u00b7 ${visit.transaction_count||0} sales</span></div>`;
+              } else {
+                salesBadge = `<div style="margin-top:4px"><span style="font-size:11px;padding:3px 8px;border-radius:4px;background:var(--bg2);color:var(--text3);font-weight:700;white-space:nowrap">Loading sales...</span></div>`;
+              }
+            }
             let navUrl = null;
             if (loc && loc.geocode_status === 'success' && !past) {
               const addrParts = [loc.full_address, loc.city, loc.state, loc.zip].filter(Boolean);
@@ -8283,6 +8360,7 @@ window.CRM = (function(){
                 <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.02em">${loc?esc(loc.location_name):'Unknown'}</div>
                 <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)}</div>
                 ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
+                ${salesBadge}
               </div>
               <button class="btn btn-sm" onclick="event.stopPropagation();CRM.openEditStop(${s.id})" title="Edit stop" style="flex-shrink:0"><i class="ti ti-edit"></i></button>
               ${navUrl ? `<a href="${navUrl}" target="_blank" rel="noopener" style="text-decoration:none;flex-shrink:0"><button class="btn btn-sm" style="background:var(--green);color:#fff;border-color:var(--green)"><i class="ti ti-navigation"></i></button></a>` : ''}
@@ -8292,6 +8370,23 @@ window.CRM = (function(){
       }).join('');
     }
     root.innerHTML = `<div class="card">${headerHtml}${tabsHtml}${body}</div>`;
+
+    // Attribute sales for past stops, same as the desktop schedule. Each visit
+    // write propagates via Supabase realtime, but renderCurrent() only refreshes
+    // the desktop sections — so re-render the mobile schedule once here when new
+    // sales come back. Loop-safe: on the follow-up render the visits already
+    // exist, so `newly` stays 0 and it doesn't render again. Route stops are
+    // skipped (they show no per-stop sales badge, matching desktop).
+    const pastStops = truckStops.filter(s => isStopPast(s) && !s.route_id).slice(0, 10);
+    (async () => {
+      let newly = 0;
+      for (const s of pastStops) {
+        const had = state.visits.some(v => v.stop_id === s.id && v.total_revenue != null);
+        const r = await ensureSalesForStop(s);
+        if (r && !had) newly++;
+      }
+      if (newly > 0 && document.getElementById('crm-schedule-mob')) renderMobSchedule();
+    })();
   }
   function setMobScheduleTruck(t){ state.currentTruck=t; renderMobSchedule(); }
   function renderMobForecast(){
