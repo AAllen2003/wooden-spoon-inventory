@@ -1129,6 +1129,13 @@ let _lastRealtimeEvent=0;
 
 // ── DB OPS ────────────────────────────────────────────────────────
 async function dbInv(item,loc,qty){if(sb)await sb.from('inventory').upsert({item_name:item,location:loc,quantity:qty});}
+// Atomic inventory movement — the DB adds the delta under a row lock, so
+// concurrent writers (other devices, the Worker's Square/Toast deductions)
+// compose instead of clobbering each other. Use for anything that represents
+// stock MOVING (transfer, pick, production, delivery). Absolute SETs stay only
+// for deliberate human count corrections (updateInventory). Negatives allowed.
+async function dbAdjust(item,loc,delta){if(sb)return sb.rpc('adjust_inventory',{p_item:item,p_location:loc,p_delta:delta});}
+async function dbAdjustBatch(adjustments){if(sb)return sb.rpc('adjust_inventory_batch',{p_adjustments:adjustments});}
 async function dbPar(rows){
   if(!sb)return;
   try{
@@ -1723,7 +1730,7 @@ async function doTransfer(){
   if(!confirm('You are about to transfer '+qty+' '+item+' from '+from+' to '+to+'. Confirm?'))return;
   S.inventory[item][from]-=qty;S.inventory[item][to]=(S.inventory[item][to]||0)+qty;
   const t={item,from,to,qty,time:new Date().toLocaleString(),by:currentUser?.email||''};S.transfers.unshift(t);if(S.transfers.length>200)S.transfers=S.transfers.slice(0,200);
-  await dbInv(item,from,S.inventory[item][from]);await dbInv(item,to,S.inventory[item][to]);await dbXfr(t);checkAlerts();renderAll();
+  await dbAdjustBatch([{item_name:item,location:from,delta:-qty},{item_name:item,location:to,delta:qty}]);await dbXfr(t);checkAlerts();renderAll();
 }
 function calcProd(item){const oh=LOCS.reduce((s,l)=>s+(S.inventory[item]?.[l]||0),0),tp=LOCS.reduce((s,l)=>s+(S.par[item]?.[l]||0),0),y=S.batchYields[item]||0,nd=Math.max(0,tp-oh),b=(y>0&&nd>0)?Math.ceil(nd/y):0,pr=b*y,su=pr-nd;return{oh,tp,nd,y,b,pr,su};}
 function sl(s){return s.replace(/[^a-z0-9]/gi,'_');}
@@ -1917,9 +1924,9 @@ async function executePick(truck,item,requestedQty){
   S.inventory[item].Warehouse=whCur-actual;
   S.inventory[item][truck]=(S.inventory[item][truck]||0)+actual;
   try{
-    await sb.from('inventory').upsert([
-      {item_name:item,location:'Warehouse',quantity:S.inventory[item].Warehouse},
-      {item_name:item,location:truck,quantity:S.inventory[item][truck]}
+    await dbAdjustBatch([
+      {item_name:item,location:'Warehouse',delta:-actual},
+      {item_name:item,location:truck,delta:actual}
     ]);
     await sb.from('transfers').insert({
       item_name:item,
@@ -1953,9 +1960,9 @@ async function executePickAll(truck){
     S.inventory[row.item].Warehouse-=actual;
     S.inventory[row.item][truck]=(S.inventory[row.item][truck]||0)+actual;
     try{
-      await sb.from('inventory').upsert([
-        {item_name:row.item,location:'Warehouse',quantity:S.inventory[row.item].Warehouse},
-        {item_name:row.item,location:truck,quantity:S.inventory[row.item][truck]}
+      await dbAdjustBatch([
+        {item_name:row.item,location:'Warehouse',delta:-actual},
+        {item_name:row.item,location:truck,delta:actual}
       ]);
       await sb.from('transfers').insert({
         item_name:row.item,
@@ -2036,7 +2043,7 @@ async function logProduction(){
   if(!S.inventory[item])S.inventory[item]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};
   S.inventory[item].Warehouse=newTotal;
   try{
-    await sb.from('inventory').upsert({item_name:item,location:'Warehouse',quantity:newTotal});
+    await dbAdjust(item,'Warehouse',qty);
   }catch(e){
     if(status){status.textContent='Save failed: '+e.message;status.style.color='#A82020';}
     S.inventory[item].Warehouse=current; // revert local state
@@ -2066,7 +2073,7 @@ async function mobLogProduction(){
   if(!S.inventory[item])S.inventory[item]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0};
   S.inventory[item].Warehouse=newTotal;
   try{
-    await sb.from('inventory').upsert({item_name:item,location:'Warehouse',quantity:newTotal});
+    await dbAdjust(item,'Warehouse',qty);
   }catch(e){
     if(status){status.textContent='Save failed: '+e.message;status.style.color='#A82020';}
     S.inventory[item].Warehouse=current;
@@ -2450,14 +2457,11 @@ async function saveLossEntry() {
     }).select().single();
     if (error) throw error;
 
-    // 2) Subtract from inventory in memory and persist
-    const newQty = currentQty - qty;
+    // 2) Deduct the loss from inventory atomically (delta, not absolute)
     if (!S.inventory[item]) S.inventory[item] = {};
-    S.inventory[item][loc] = newQty;
-    // Persist inventory change: assumes an 'inventory' table keyed by item + location
-    // (uses the same path the inventory inputs use; we mirror it here)
+    S.inventory[item][loc] = currentQty - qty; // optimistic local preview
     try {
-      await sb.from('inventory').upsert({ item_name: item, location: loc, quantity: newQty }, { onConflict: 'item_name,location' });
+      await dbAdjust(item, loc, -qty);
     } catch (invErr) {
       console.error('[loss] inventory upsert failed (loss log was saved):', invErr);
       // We don't roll back the loss row — the audit trail is more important
@@ -3117,7 +3121,7 @@ async function mobDoXfr(){
   S.inventory[item][from]-=qty;S.inventory[item][to]=(S.inventory[item][to]||0)+qty;
   const t={item,from,to,qty,time:new Date().toLocaleString(),by:currentUser?.email||''};
   S.transfers.unshift(t);
-  if(sb){await sb.from('inventory').upsert([{item_name:item,location:from,quantity:S.inventory[item][from]},{item_name:item,location:to,quantity:S.inventory[item][to]}]);await sb.from('transfers').insert({item_name:item,from_location:from,to_location:to,quantity:qty,transferred_by:t.by});}
+  if(sb){await dbAdjustBatch([{item_name:item,location:from,delta:-qty},{item_name:item,location:to,delta:qty}]);await sb.from('transfers').insert({item_name:item,from_location:from,to_location:to,quantity:qty,transferred_by:t.by});}
   checkAlerts();mobRender();
 }
 
@@ -9880,16 +9884,15 @@ window.CRM = (function(){
       const { data: ins, error } = await sb.from('deliveries').insert(insertPayload).select().single();
       if (error) throw error;
 
-      // 2. Deduct each item from the truck's inventory
-      const invUpdates = [];
+      // 2. Deduct each item from the truck's inventory (atomic delta)
+      const invAdjust = [];
       for (const it of items) {
         if (!S.inventory[it.name]) S.inventory[it.name] = {};
         const have = S.inventory[it.name][truck] || 0;
-        const next = have - it.qty;
-        S.inventory[it.name][truck] = next;
-        invUpdates.push({ item_name: it.name, location: truck, quantity: next });
+        S.inventory[it.name][truck] = have - it.qty; // optimistic local preview
+        invAdjust.push({ item_name: it.name, location: truck, delta: -it.qty });
       }
-      if (invUpdates.length) await sb.from('inventory').upsert(invUpdates);
+      if (invAdjust.length) await dbAdjustBatch(invAdjust);
 
       // 3. Add to in-memory list, close modal, re-render
       state.deliveries.unshift(ins);
@@ -9946,30 +9949,31 @@ window.CRM = (function(){
     }
     if (!truck || !newItems.length) { alert('Pick a truck and at least one item.'); return; }
     try {
-      // Compute net inventory change: restore old items, deduct new items
+      // Compute net inventory change: restore old items, deduct new items.
+      // Accumulate PURE deltas per (item,loc) so the DB adds them atomically.
       const oldItems = Array.isArray(d.items) ? d.items : [];
       const oldTruck = d.truck;
-      const invUpdates = {};  // {itemName||loc: newQty}
+      const invDeltas = {};  // {itemName||loc: netDelta}
       const bump = (item, loc, delta) => {
         const key = item + '||' + loc;
-        if (!(key in invUpdates)) {
-          const have = (S.inventory[item] || {})[loc] || 0;
-          invUpdates[key] = have;
-        }
-        invUpdates[key] += delta;
+        invDeltas[key] = (invDeltas[key] || 0) + delta;
       };
       for (const it of oldItems) bump(it.name, oldTruck, +it.qty);  // restore
       for (const it of newItems) bump(it.name, truck, -it.qty);     // deduct
-      // Apply to in-memory + DB
-      const dbRows = [];
-      for (const key of Object.keys(invUpdates)) {
+      // Apply optimistic local preview + one atomic delta batch to the DB.
+      const invAdjust = [];
+      for (const key of Object.keys(invDeltas)) {
+        const delta = invDeltas[key];
+        if (!delta) continue; // net-zero change, skip
         const [name, loc] = key.split('||');
         if (!S.inventory[name]) S.inventory[name] = {};
-        S.inventory[name][loc] = invUpdates[key];
-        dbRows.push({ item_name: name, location: loc, quantity: invUpdates[key] });
+        S.inventory[name][loc] = ((S.inventory[name][loc] || 0) + delta);
+        invAdjust.push({ item_name: name, location: loc, delta });
       }
-      const { error: invErr } = await sb.from('inventory').upsert(dbRows);
-      if (invErr) throw invErr;
+      if (invAdjust.length) {
+        const { error: invErr } = await dbAdjustBatch(invAdjust);
+        if (invErr) throw invErr;
+      }
       // Update delivery row
       const { data: upd, error } = await sb.from('deliveries').update({
         truck, items: newItems,
