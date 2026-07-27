@@ -1064,14 +1064,13 @@ async function skipMigration(){
 function setupRT(){
   if(!sb)return;
   sb.channel('ws-rt')
-    .on('postgres_changes',{event:'*',schema:'public',table:'inventory'},async()=>{const{data}=await sb.from('inventory').select('*');S.items.forEach(n=>S.inventory[n]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0});(data||[]).forEach(r=>{if(S.inventory[r.item_name])S.inventory[r.item_name][r.location]=r.quantity;});checkAlerts();renderAll();})
-    .on('postgres_changes',{event:'*',schema:'public',table:'par_levels'},async()=>{const{data}=await sb.from('par_levels').select('*');S.items.forEach(n=>S.par[n]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0});(data||[]).forEach(r=>{if(S.par[r.item_name])S.par[r.item_name][r.location]=r.quantity;});checkAlerts();renderAll();})
-    .on('postgres_changes',{event:'*',schema:'public',table:'items'},async()=>{await loadAll();renderAll();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'inventory'},async()=>{const{data}=await sb.from('inventory').select('*');S.items.forEach(n=>S.inventory[n]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0});(data||[]).forEach(r=>{if(S.inventory[r.item_name])S.inventory[r.item_name][r.location]=r.quantity;});checkAlerts();requestRender();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'par_levels'},async()=>{const{data}=await sb.from('par_levels').select('*');S.items.forEach(n=>S.par[n]={Warehouse:0,Restaurant:0,'Truck 1':0,'Truck 2':0,'Truck 3':0});(data||[]).forEach(r=>{if(S.par[r.item_name])S.par[r.item_name][r.location]=r.quantity;});checkAlerts();requestRender();})
+    .on('postgres_changes',{event:'*',schema:'public',table:'items'},async()=>{await loadAll();requestRender();})
     .on('postgres_changes',{event:'*',schema:'public',table:'transfers'},async()=>{
       const{data:xd}=await sb.from('transfers').select('*').order('created_at',{ascending:false}).limit(200);
       S.transfers=(xd||[]).map(t=>({time:new Date(t.created_at).toLocaleString(),item:t.item_name,from:t.from_location,to:t.to_location,qty:t.quantity,by:t.transferred_by||''}));
-      renderTransfers();
-      if(isMob()&&mobSection==='transfers')mobRender();
+      requestRender();
     })
     .on('postgres_changes',{event:'*',schema:'public',table:'app_settings'},async()=>{
       const{data}=await sb.from('app_settings').select('*');
@@ -1110,15 +1109,16 @@ function setupRT(){
     try{
       console.log('[Periodic refresh] loading data...');
       await loadAll();
-      renderAll();
+      requestRender();
       if(window.CRM&&CRM.refreshEditLogBadge)CRM.refreshEditLogBadge();
       // Silently refresh today's sales display every 45s so both desktop and
       // mobile pick up new sales without anyone pressing a button. Quiet mode
       // suppresses status-message updates.
       if(typeof refreshDisplay==='function'){
         refreshDisplay({quiet:true}).then(()=>{
-          // Re-render mobile if we're on it — desktop updates via renderAll above
-          if(typeof isMob==='function'&&isMob()&&typeof mobRender==='function')mobRender();
+          // Re-render if we're on mobile — deferred while a field is focused so
+          // it can't wipe an in-progress entry (requestRender handles both).
+          if(typeof isMob==='function'&&isMob())requestRender();
         }).catch(()=>{});
       }
     }catch(e){console.error('[Periodic refresh] failed:',e);}
@@ -1793,6 +1793,38 @@ function withFocusPreservation(renderFn) {
 
 function _renderAllRaw(){renderOverview();renderLocations();if(currentLoc)renderLocDetail();renderInventory();renderPar();renderAlerts();renderTransfers();renderPickList();renderProduction();renderSales();renderSettings();if(isMob()){try{mobRender();}catch(e){console.error('mobRender error:',e);}}applyPermissions();}
 const renderAll = withFocusPreservation(_renderAllRaw);
+
+// ── Defer automatic re-renders while the user is actively typing ───────────
+// Realtime events and the 45-second poll rebuild whole sections via innerHTML.
+// On mobile that destroys the focused <input>, dismisses the soft keyboard, and
+// interrupts entry (number fields can't even have their cursor restored), so a
+// salesperson mid-way through a transfer quantity loses their place. Background
+// refreshes now route through requestRender(): if a field is focused we mark a
+// render pending and run it once — as soon as the user leaves the field. The
+// underlying data (S / state) is always updated by the handlers first, so
+// nothing is lost; only the visual rebuild waits. User-initiated renders (tab
+// switches, button taps) still call renderAll/mobRender directly.
+function _isEditingField(){
+  const el = document.activeElement;
+  if(!el || el===document.body || el===document.documentElement) return false;
+  const t = el.tagName;
+  return t==='INPUT' || t==='TEXTAREA' || t==='SELECT' || el.isContentEditable === true;
+}
+let _renderPending = false;
+function requestRender(){
+  if(_isEditingField()){ _renderPending = true; return; }
+  _renderPending = false;
+  renderAll();
+}
+function _flushPendingRender(){
+  if(_renderPending && !_isEditingField()){
+    _renderPending = false;
+    renderAll();
+  }
+}
+// When focus leaves a field, wait a beat (so tabbing between fields doesn't
+// flush prematurely) then run any refresh that was held back while editing.
+document.addEventListener('focusout', () => { setTimeout(_flushPendingRender, 200); });
 
 // Use actual revenue from Square if available (covers WooCommerce items with no catalog price)
 
