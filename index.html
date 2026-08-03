@@ -6742,6 +6742,28 @@ window.CRM = (function(){
     return ({ high: 14, medium: 28, low: 56, pending: 56 })[tier] || 56;
   }
 
+  // Fixed Monday used as the grid origin for staggering. Deterministic so a
+  // location's staggered weeks don't shift depending on when the scheduler runs.
+  const SCHED_EPOCH = new Date(2020, 0, 6);
+
+  // Stable pseudo-random offset in [0, mod) derived from a location id. Knuth
+  // multiplicative hash → uint32 → mod. Same id always yields the same phase,
+  // so a location keeps its slot in the cadence window across runs.
+  function _locPhase(id, mod) {
+    if (!mod || mod < 1) return 0;
+    const h = (Number(id) * 2654435761) >>> 0;
+    return h % mod;
+  }
+
+  // Smallest grid day (as a Date) >= weekStart on the schedule
+  // epoch+phase+k*cadence grid. Used to spread no-history customers across
+  // their cadence window instead of all cresting the current week.
+  function _staggeredGridDue(phase, cadence, weekStart) {
+    const wsDays = Math.round((weekStart - SCHED_EPOCH) / 86400000);
+    const k = Math.ceil((wsDays - phase) / cadence);
+    return addDays(SCHED_EPOCH, phase + k * cadence);
+  }
+
   function isoOfDate(d) { return new Date(d).toISOString().slice(0,10); }
 
   /**
@@ -6833,13 +6855,19 @@ window.CRM = (function(){
       const lastVisit = pattern.lastVisit;
       let dueDate = null;
       if (lastVisit) {
-        const due = addDays(new Date(lastVisit + 'T12:00:00'), cadenceDays);
-        if (due > weekEnd) continue; // not yet due
-        dueDate = due;
+        // Real history: exact cadence — never delay a due visit.
+        dueDate = addDays(new Date(lastVisit + 'T12:00:00'), cadenceDays);
       } else {
-        // No history — propose mid-week
-        dueDate = addDays(weekStart, 2);
+        // No history: stagger the first appearance across the cadence window
+        // using a stable per-location phase, so seeded/new customers don't all
+        // crest the same week (which was lumping every high-tier stop together).
+        // A high-tier stop surfaces in the week its phase points to; over the
+        // 14-day window ~half appear each week, medium over 28 days, low over 56
+        // — giving every week a consistent mix of tiers.
+        const phase = _locPhase(loc.id, cadenceDays);
+        dueDate = _staggeredGridDue(phase, cadenceDays, weekStart);
       }
+      if (dueDate > weekEnd) continue; // not yet due, or its staggered week hasn't arrived
 
       // Pick day-of-week within the target week
       let chosenDow = null;
