@@ -6789,6 +6789,9 @@ window.CRM = (function(){
     existingInWeek.forEach(s => { alreadyScheduled.set(s.location_id, s); });
 
     const proposals = [];
+    // Capacity/day-rule collectors, surfaced in the review's attention list.
+    const capacityDeferred = []; // couldn't fit any eligible day this week (Trucks 1&2 full)
+    const saturdayDue = [];      // Saturday-only customers that are due — need manual placement
 
     for (const loc of state.locations) {
       if (loc.status !== 'active') continue;
@@ -6958,7 +6961,19 @@ window.CRM = (function(){
       else reasons.push(`Tier-based (${loc.tier || 'pending'}, ${cadenceDays}d cadence)`);
       if (dowSource === 'history') reasons.push(`${DOW_NAMES[chosenDow]} typical from history`);
 
-      proposals.push({
+      // Allowed weekdays for capacity placement. Saturday-only customers that
+      // are due can't be auto-placed (the scheduler never schedules Saturdays)
+      // so they're flagged for manual handling; Sunday/weekend-only aren't
+      // auto-scheduled either.
+      let allowedDows = null; // null = any weekday (Mon–Fri)
+      let weekendOnly = null; // 'saturday' | 'other' | null
+      if (pref?.dows?.length) {
+        const wd = pref.dows.filter(d => d >= 1 && d <= 5);
+        if (wd.length === 0) weekendOnly = pref.dows.includes(6) ? 'saturday' : 'other';
+        else allowedDows = wd;
+      }
+
+      const prop = {
         id: `prop-${loc.id}-${isoOfDate(proposedDate)}`,
         location_id: loc.id,
         location_name: loc.location_name,
@@ -6974,12 +6989,25 @@ window.CRM = (function(){
         pattern,
         reasons,
         truck_lock: !!loc.truck_lock,
+        _preferredTruck: loc.preferred_truck || null,
+        _allowedDows: allowedDows,
         isFlexible,
         flexWindowStart: isFlexible ? startTime : null,
         flexWindowEnd:   isFlexible ? endTime   : null,
         flexDurationMin: isFlexible ? flexDurationMin : null,
         enabled: true,
-      });
+      };
+
+      if (weekendOnly === 'saturday') {
+        saturdayDue.push({ ...prop, conflict: 'Saturday-only preference — due this week, needs manual placement (auto-scheduler does not place Saturdays)' });
+        continue;
+      }
+      if (weekendOnly === 'other') {
+        capacityDeferred.push({ ...prop, conflict: 'Weekend-only preference — not auto-scheduled' });
+        continue;
+      }
+
+      proposals.push(prop);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -7115,6 +7143,63 @@ window.CRM = (function(){
     const placed = []; // accepted proposals
     const skippedConflict = [];
 
+    // ─── Capacity assignment: per-truck daily cap + truck balancing ──────
+    // Trucks 1 & 2 each accept at most CAP_PER_DAY auto-proposed stops per day
+    // (Mon–Fri). Truck 3 is never auto-scheduled. Existing/manual stops count
+    // toward the cap but are never blocked. Customers without a truck lock or a
+    // preferred truck are balanced onto whichever of Trucks 1 & 2 is lighter
+    // that day. A stop that can't fit its preferred day tries its other eligible
+    // weekdays this week; if none have room, it defers (surfaced for review).
+    const CAP_PER_DAY = 3;
+    const _capKey = (t, d) => `${t}|${d}`;
+    const capLoad = new Map();
+    for (const s of existingInWeek) {
+      if (s.truck === 1 || s.truck === 2) {
+        capLoad.set(_capKey(s.truck, s.scheduled_date), (capLoad.get(_capKey(s.truck, s.scheduled_date)) || 0) + 1);
+      }
+    }
+    const _weekdayISO = dow => isoOfDate(addDays(weekStart, (dow === 0 ? 7 : dow) - 1)); // Mon=1..Fri=5
+    const _truckOpts = p => {
+      if (p.truck_lock && (p.truck === 1 || p.truck === 2)) return [p.truck];
+      if (p._preferredTruck === 1 || p._preferredTruck === 2) return [p._preferredTruck];
+      return [1, 2]; // unlocked → balance across Trucks 1 & 2 (never Truck 3)
+    };
+    const _dateOpts = p => {
+      const dows = (p._allowedDows && p._allowedDows.length) ? p._allowedDows : [1, 2, 3, 4, 5];
+      const dates = dows.map(_weekdayISO);
+      const prefDate = p.scheduled_date;
+      const rest = dates.filter(d => d !== prefDate).sort();
+      return dates.includes(prefDate) ? [prefDate, ...rest] : dates.slice().sort(); // preferred day first
+    };
+    // Process in the sorted priority order (fixed/preference first, then tier).
+    for (const p of proposals) {
+      const origDate = p.scheduled_date, origTruck = p.truck;
+      const truckOpts = _truckOpts(p);
+      let chosen = null;
+      for (const date of _dateOpts(p)) {
+        let bestT = null, bestL = Infinity;
+        for (const t of truckOpts) {
+          const l = capLoad.get(_capKey(t, date)) || 0;
+          if (l < CAP_PER_DAY && l < bestL) { bestL = l; bestT = t; }
+        }
+        if (bestT != null) { chosen = { truck: bestT, date }; break; }
+      }
+      if (chosen) {
+        p.truck = chosen.truck;
+        p.scheduled_date = chosen.date;
+        capLoad.set(_capKey(chosen.truck, chosen.date), (capLoad.get(_capKey(chosen.truck, chosen.date)) || 0) + 1);
+        if (chosen.date !== origDate || chosen.truck !== origTruck) {
+          p.reasons.push(`Balanced to Truck ${chosen.truck} to keep within ${CAP_PER_DAY}/day`);
+        }
+      } else {
+        p._deferred = true;
+        capacityDeferred.push({ ...p, conflict: `Deferred — Trucks 1 & 2 at capacity (${CAP_PER_DAY}/day) on every eligible day this week` });
+      }
+    }
+    // Surface capacity deferrals and Saturday-due flags in the review's attention list.
+    for (const x of saturdayDue) skippedConflict.push(x);
+    for (const x of capacityDeferred) skippedConflict.push(x);
+
     const timeToMin = t => {
       if (!t) return 0;
       const [hh, mm] = t.toString().split(':');
@@ -7140,6 +7225,7 @@ window.CRM = (function(){
     console.log(`[CRM] auto-schedule baseline: ${baseline.length} existing stops in week`, baseline);
 
     for (const p of proposals) {
+      if (p._deferred) continue; // capacity pass held this one for a later week
       // FLEXIBLE proposals: search within their window for the best-fit slot
       // instead of trying the fixed times. Best-fit = the slot that packs
       // tightest against existing stops (minimizes wasted gap-time before it).
@@ -7202,7 +7288,7 @@ window.CRM = (function(){
           placed.push(p);
         } else {
           // Try alternate truck if not locked
-          if (!p.truck_lock && altTruck !== p.truck) {
+          if (!p.truck_lock && altTruck !== p.truck && (capLoad.get(_capKey(altTruck, p.scheduled_date)) || 0) < CAP_PER_DAY) {
             const altStops = [...placed, ...baseline].filter(s =>
               s.truck === altTruck && s.scheduled_date === p.scheduled_date
             ).sort((a, b) => _t2m(a.start_time) - _t2m(b.start_time));
@@ -7213,6 +7299,8 @@ window.CRM = (function(){
                 return !(endM <= sM || eM <= startM);
               });
               if (!conflictHere) {
+                capLoad.set(_capKey(p.truck, p.scheduled_date), Math.max(0, (capLoad.get(_capKey(p.truck, p.scheduled_date)) || 0) - 1));
+                capLoad.set(_capKey(altTruck, p.scheduled_date), (capLoad.get(_capKey(altTruck, p.scheduled_date)) || 0) + 1);
                 p.truck = altTruck;
                 p.start_time = _minutesToTimeStr(startM);
                 p.end_time   = _minutesToTimeStr(startM + dur);
@@ -7257,11 +7345,13 @@ window.CRM = (function(){
         }
       }
 
-      // If still conflicting, try the OTHER truck (unless locked)
+      // If still conflicting, try the OTHER truck (unless locked, and only if it has capacity)
       if (conflict && !p.truck_lock) {
         const altTruck = p.truck === 1 ? 2 : 1;
         const cand = { ...p, truck: altTruck };
-        if (!conflictsWith(cand, [...placed, ...baseline])) {
+        if ((capLoad.get(_capKey(altTruck, p.scheduled_date)) || 0) < CAP_PER_DAY && !conflictsWith(cand, [...placed, ...baseline])) {
+          capLoad.set(_capKey(p.truck, p.scheduled_date), Math.max(0, (capLoad.get(_capKey(p.truck, p.scheduled_date)) || 0) - 1));
+          capLoad.set(_capKey(altTruck, p.scheduled_date), (capLoad.get(_capKey(altTruck, p.scheduled_date)) || 0) + 1);
           p.truck = altTruck;
           p.reasons.push(`Reassigned to Truck ${altTruck} (Truck ${altTruck === 2 ? 1 : 2} conflict)`);
           conflict = null;
