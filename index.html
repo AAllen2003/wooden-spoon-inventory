@@ -3427,6 +3427,7 @@ window.CRM = (function(){
       });
       state.loaded = true;
       if (!state.weekStart) state.weekStart = mondayOf(new Date());
+      restoreDraftIntoState();  // resume an in-progress draft schedule if one was saved
       console.log(`[CRM] loaded: ${state.locations.length} locations, ${state.stops.length} stops, ${state.visits.length} visits`);
       subscribeRealtime();
       refreshEditLogBadge();
@@ -4915,6 +4916,13 @@ window.CRM = (function(){
     const label = document.getElementById('crm-week-label');
     if (!root) return;
 
+    // If a draft schedule is in progress, resume it instead of the live
+    // calendar — unless the user has chosen to peek at the live calendar.
+    if (state.proposalSession && state.viewDraft !== false) {
+      renderProposalReview();
+      return;
+    }
+
     // Default view + dates
     if (!state.scheduleView) state.scheduleView = 'week';
     if (!state.weekStart) state.weekStart = mondayOf(new Date());
@@ -4977,7 +4985,15 @@ window.CRM = (function(){
       }).join('');
     }
 
-    root.innerHTML = truckTabs + body;
+    const draftBanner = (state.proposalSession && state.viewDraft === false) ? `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--amber-bg,#fdf0dc);border:1px solid var(--amber,#B05A00);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px">
+        <div style="font-size:13px;color:var(--amber,#B05A00)"><i class="ti ti-file-pencil"></i> Draft schedule in progress — the live calendar below is unchanged until you save it.</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm btn-primary" onclick="CRM.resumeDraft()"><i class="ti ti-arrow-back-up"></i> Resume draft</button>
+          <button class="btn btn-sm" onclick="CRM.cancelProposals()"><i class="ti ti-trash"></i> Discard</button>
+        </div>
+      </div>` : '';
+    root.innerHTML = draftBanner + truckTabs + body;
     applyPermissions();
     const pastStops = truckStops.filter(s => isStopPast(s)).slice(0, 10);
     (async () => {
@@ -7555,6 +7571,49 @@ window.CRM = (function(){
 
   // State for the active proposal session
   state.proposalSession = null;
+  // When true (or unset) the schedule tab resumes the draft; false = peeking at
+  // the live calendar while a draft is parked.
+  state.viewDraft = true;
+
+  // ─── Draft persistence (device-local autosave) ─────────────────────
+  // The proposed schedule is a work-in-progress that must survive tab
+  // navigation AND full reloads, without ever touching the official calendar
+  // until the user hits Save. We autosave the session to localStorage on every
+  // edit and restore it on load. Cleared only on commit or explicit discard.
+  const DRAFT_KEY = 'ws_crm_draft_v1';
+  const _ymdLocal = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+  function saveDraft() {
+    try {
+      if (!state.proposalSession) { localStorage.removeItem(DRAFT_KEY); return; }
+      const payload = {
+        v: 1,
+        weekStart: state.weekStart ? _ymdLocal(state.weekStart) : null,
+        session: state.proposalSession,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
+    } catch (e) { console.warn('[CRM] saveDraft failed', e); }
+  }
+
+  function clearDraft() {
+    try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+  }
+
+  // Read a persisted draft into state (called once during load). Restores the
+  // session and snaps weekStart to the draft's week so the view lines up.
+  function restoreDraftIntoState() {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const payload = JSON.parse(raw);
+      if (!payload || !payload.session || !Array.isArray(payload.session.proposals)) { clearDraft(); return; }
+      state.proposalSession = payload.session;
+      if (payload.weekStart) state.weekStart = _parseDate(payload.weekStart);
+      state.viewDraft = true;
+      console.log(`[CRM] restored draft schedule (${payload.session.proposals.length} proposals, saved ${payload.savedAt})`);
+    } catch (e) { console.warn('[CRM] restoreDraftIntoState failed', e); clearDraft(); }
+  }
 
   function startAutoSchedule() {
     if (!state.weekStart) state.weekStart = mondayOf(new Date());
@@ -7570,7 +7629,8 @@ window.CRM = (function(){
       try {
         const result = await generateOptimizedWeekProposals(state.weekStart);
         state.proposalSession = result;
-        renderProposalReview();
+        state.viewDraft = true;
+        renderProposalReview();  // autosaves the fresh draft
       } catch (e) {
         console.error('[CRM] auto-schedule failed', e);
         if (root) {
@@ -7840,6 +7900,8 @@ window.CRM = (function(){
   function renderProposalReview() {
     const root = document.getElementById('crm-schedule-content');
     if (!root || !state.proposalSession) return;
+    saveDraft();  // autosave: every edit re-renders through here
+    state.viewDraft = true;
     const { proposals, skippedConflict, skippedPairing = [], suppressedByRoute = [], routeWarnings = [], existingStops } = state.proposalSession;
     const weekStart = state.weekStart;
     const weekEnd = addDays(weekStart, 6);
@@ -7854,7 +7916,8 @@ window.CRM = (function(){
         <div style="font-size:12px;color:var(--text3)">Week of ${fmtDateShort(weekStart)} – ${fmtDateShort(weekEnd)}</div>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-sm" onclick="CRM.cancelProposals()"><i class="ti ti-x"></i> Cancel</button>
+        <button class="btn btn-sm" onclick="CRM.cancelProposals()"><i class="ti ti-x"></i> Discard</button>
+        <button class="btn btn-sm" onclick="CRM.peekLiveCalendar()"><i class="ti ti-calendar"></i> View live calendar</button>
         <button class="btn btn-sm" onclick="CRM.toggleAllProposals()"><i class="ti ti-checks"></i> Toggle All</button>
         <button class="btn btn-sm btn-primary" onclick="CRM.approveProposals()" data-admin-only><i class="ti ti-check"></i> Save ${enabledCount}${editedExistingCount?' + '+editedExistingCount+' edits':''}</button>
       </div>
@@ -8019,8 +8082,24 @@ window.CRM = (function(){
     renderProposalReview(); // re-render so edit indicators and re-sorting update
   }
 
+  // Peek at the live calendar without discarding the draft.
+  function peekLiveCalendar() {
+    state.viewDraft = false;
+    renderSchedule();
+  }
+
+  // Return from the live-calendar peek to the draft.
+  function resumeDraft() {
+    if (!state.proposalSession) { renderSchedule(); return; }
+    state.viewDraft = true;
+    renderProposalReview();
+  }
+
   function cancelProposals() {
+    if (state.proposalSession && !confirm('Discard this draft schedule? Your edits will be lost.')) return;
     state.proposalSession = null;
+    state.viewDraft = true;
+    clearDraft();
     renderSchedule();
   }
 
@@ -8086,6 +8165,8 @@ window.CRM = (function(){
 
       await Promise.all(tasks);
       state.proposalSession = null;
+      state.viewDraft = true;
+      clearDraft();
       renderSchedule();
     } catch (e) {
       alert('Failed to save: ' + e.message);
@@ -10955,6 +11036,8 @@ window.CRM = (function(){
     addRouteMember, removeRouteMember, moveRouteMember, optimizeRouteOrder,
     filterRouteAddCandidates,
     openRouteStopDetail, closeRouteStopDetail,
+    // Draft schedule navigation
+    peekLiveCalendar, resumeDraft,
     _state: state
   };
 })();
