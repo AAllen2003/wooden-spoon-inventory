@@ -7613,17 +7613,30 @@ window.CRM = (function(){
     for (const [k, group] of byBucket.entries()) {
       if (group.length < 2) continue; // nothing to optimize
 
-      // Verify every stop has coordinates
-      const enrich = group.map(p => {
-        const loc = state.locations.find(l => l.id === p.location_id);
-        return { ...p, _lat: loc?.lat, _lng: loc?.lng, _locName: loc?.location_name };
+      // Attach coordinates to every proposal in the day (one lookup each).
+      const enrichAll = group.map(p => {
+        const loc = p.location_id ? state.locations.find(l => l.id === p.location_id) : null;
+        return { p, lat: loc?.lat ?? null, lng: loc?.lng ?? null, name: loc?.location_name ?? null };
       });
-      const missingCoords = enrich.filter(p => p._lat == null || p._lng == null);
-      if (missingCoords.length) {
-        // Mark proposals that can't be optimized — keep original ordering
-        for (const p of group) p.reasons.push('Skipped route optimization (location missing geocode)');
-        continue;
+
+      // Fault isolation: one un-geocoded stop must NOT poison the whole day.
+      // - Un-geocoded single-location stops keep their preferred time slot (we don't
+      //   pull them out of the day) but get flagged so the user knows the address is
+      //   missing and the timing likely needs manual adjustment for travel we couldn't
+      //   compute. This flag lives on the proposal for review only; it is not persisted.
+      // - Route proposals carry no single location_id by design — a route is optimized
+      //   internally elsewhere — so they are neither flagged nor treated as an error.
+      for (const e of enrichAll) {
+        if (e.p.location_id && (e.lat == null || e.lng == null)) {
+          e.p.reasons.push('⚠ needs address — adjust for travel');
+        }
       }
+
+      // Optimize only the stops we actually have coordinates for.
+      const enrich = enrichAll
+        .filter(e => e.p.location_id && e.lat != null && e.lng != null)
+        .map(e => ({ ...e.p, _lat: e.lat, _lng: e.lng, _locName: e.name }));
+      if (enrich.length < 2) continue; // fewer than 2 optimizable stops — nothing to reorder
 
       // Fetch drive times between all pairs (n×n matrix) via worker /drive-time/batch
       const pairs = [];
