@@ -7789,7 +7789,8 @@ window.CRM = (function(){
 
     // For each bucket, optimize order + compute drive times
     for (const [k, group] of byBucket.entries()) {
-      if (group.length < 2) continue; // nothing to optimize
+      // (No early skip on small buckets — a single proposal next to an existing
+      //  stop still needs its travel buffer computed and flagged.)
 
       // Attach coordinates to every proposal in the day (one lookup each).
       const enrichAll = group.map(p => {
@@ -7817,180 +7818,147 @@ window.CRM = (function(){
       // window, even past 6 PM) and is never retimed by the drive-chain, so a
       // stated preference is always respected. Only history-derived or fallback
       // times are eligible to be reordered and retimed for travel efficiency.
+      const [truckStr, dateStr] = k.split('|');
+      const truckNum = parseInt(truckStr, 10);
+      const t2m = t => { if (!t) return 0; const [hh, mm] = t.toString().split(':'); return (parseInt(hh,10)||0)*60 + (parseInt(mm,10)||0); };
+      const m2t = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(Math.round(m)%60).padStart(2,'0')}:00`;
+      const WORK_OPEN = 8*60, END_OF_DAY_MIN = 18*60, PADDING_SEC = 300;
+
+      // Geocoded, single-location proposals in this bucket.
       const geocoded = enrichAll
         .filter(e => e.p.location_id && e.lat != null && e.lng != null)
         .map(e => ({ ...e.p, _lat: e.lat, _lng: e.lng, _locName: e.name }));
-      const enrich = geocoded.filter(p => p.timeSource !== 'preference'); // free stops to optimize
-      if (enrich.length < 2) continue; // fewer than 2 free stops — nothing to reorder
 
-      // Fetch drive times between all pairs (n×n matrix) via worker /drive-time/batch
-      const pairs = [];
-      for (let i = 0; i < enrich.length; i++) {
-        for (let j = 0; j < enrich.length; j++) {
-          if (i === j) continue;
-          pairs.push({
-            from: { lat: enrich[i]._lat, lng: enrich[i]._lng },
-            to:   { lat: enrich[j]._lat, lng: enrich[j]._lng },
-          });
-        }
-      }
+      // MOVABLE = free (history/fallback) stops + flexible-window preference
+      // stops. Flexible windows may slide WITHIN their window to respect travel;
+      // fixed exact-time preferences stay pinned and become anchors below.
+      const movable = geocoded
+        .filter(p => p.timeSource !== 'preference' || p.isFlexible)
+        .map(p => {
+          const isFlex = p.timeSource === 'preference' && p.isFlexible;
+          const durRaw = isFlex ? (p.flexDurationMin || 60) : Math.max(30, t2m(p.end_time) - t2m(p.start_time));
+          const dur = Math.max(30, Math.ceil(durRaw / 15) * 15);
+          const winStart = isFlex ? t2m(p.flexWindowStart) : WORK_OPEN;
+          const winEnd   = isFlex ? t2m(p.flexWindowEnd)   : END_OF_DAY_MIN;
+          return { p, isFlex, dur, winStart, winEnd, lat: p._lat, lng: p._lng, _ni: -1 };
+        });
+      if (movable.length === 0) continue; // only pinned/existing here — nothing to (re)time
 
-      let driveTimes;
-      try {
-        driveTimes = await fetchDriveTimesBatch(pairs);
-      } catch (e) {
-        throw new Error('Drive time lookup failed: ' + e.message);
-      }
-
-      // Build distance matrix
-      const n = enrich.length;
-      const matrix = Array.from({ length: n }, () => new Array(n).fill(0));
-      let pi = 0;
-      for (let i = 0; i < n; i++) {
-        for (let j = 0; j < n; j++) {
-          if (i === j) continue;
-          const d = driveTimes[pi++];
-          if (d.error) throw new Error('Drive time error between stops: ' + d.error);
-          matrix[i][j] = d.duration_seconds;
-        }
-      }
-
-      // Nearest-neighbor TSP starting from the FIRST proposal (preserves "first stop of day" intent)
-      // Find the proposal with earliest original start_time as starting point
-      enrich.sort((a, b) => a.start_time.localeCompare(b.start_time));
-      const visited = new Set([0]);
-      const order = [0];
-      while (order.length < n) {
-        const last = order[order.length - 1];
-        let bestNext = -1, bestDist = Infinity;
-        for (let j = 0; j < n; j++) {
-          if (visited.has(j)) continue;
-          if (matrix[last][j] < bestDist) { bestDist = matrix[last][j]; bestNext = j; }
-        }
-        if (bestNext === -1) break;
-        visited.add(bestNext);
-        order.push(bestNext);
-      }
-
-      // 2-opt improvement pass
-      const tour = order.slice();
-      let improved = true;
-      let iters = 0;
-      while (improved && iters < 50) {
-        improved = false;
-        iters++;
-        for (let i = 1; i < tour.length - 1; i++) {
-          for (let k = i + 1; k < tour.length; k++) {
-            const a = tour[i-1], b = tour[i], c = tour[k], d = tour[k+1] ?? null;
-            const before = matrix[a][b] + (d != null ? matrix[c][d] : 0);
-            const after  = matrix[a][c] + (d != null ? matrix[b][d] : 0);
-            if (after < before - 5) {
-              tour.splice(i, k - i + 1, ...tour.slice(i, k+1).reverse());
-              improved = true;
-            }
-          }
-        }
-      }
-
-      // Reassign start/end times following the optimized order
-      // First stop keeps its original start (which is the earliest from the user's history pattern).
-      // Each subsequent stop starts at: previous end + drive_time + 5min padding.
-      // Constraints: (a) round to quarter-hour, (b) hard stop at 6 PM, (c) skip over any existing stops on this truck this day.
-      const PADDING_SEC = 300;
-      const END_OF_DAY_MIN = 18 * 60; // 18:00 = 6 PM
-      const ordered = tour.map(i => enrich[i]);
-      const firstStartMin = parseInt(ordered[0].start_time.slice(0,2),10)*60 + parseInt(ordered[0].start_time.slice(3,5),10);
-      const durationMin = (s) => {
-        const sm = parseInt(s.start_time.slice(0,2),10)*60 + parseInt(s.start_time.slice(3,5),10);
-        const em = parseInt(s.end_time.slice(0,2),10)*60 + parseInt(s.end_time.slice(3,5),10);
-        return Math.max(30, em - sm); // min 30 min stop
-      };
-      // Compute existing-stop blocks on this truck this day (sorted by start time)
-      const [truckStr, dateStr] = k.split('|');
-      const truckNum = parseInt(truckStr, 10);
-      const parseTimeStr = t => {
-        if (!t) return 0;
-        const [hh, mm] = t.toString().split(':');
-        return (parseInt(hh,10) || 0) * 60 + (parseInt(mm,10) || 0);
-      };
-      const blocks = []; // [{startMin, endMin}]
+      // ANCHORS = fixed points the movable stops must route around, carrying
+      // coordinates when available so real travel time to them is enforced:
+      // existing stops on this truck/day, pinned fixed-time preferences, routes.
+      const anchors = [];
       for (const ex of existingInWeek) {
         if (ex.truck !== truckNum || ex.scheduled_date !== dateStr) continue;
-        blocks.push({ startMin: parseTimeStr(ex.start_time), endMin: parseTimeStr(ex.end_time) });
+        const loc = state.locations.find(l => l.id === ex.location_id);
+        anchors.push({ startMin: t2m(ex.start_time), endMin: t2m(ex.end_time), lat: loc?.lat ?? null, lng: loc?.lng ?? null, _ni: -1 });
       }
-      // Pinned preference stops, routes, and un-geocoded flagged stops all keep
-      // their pass-1 slot. Treat them as immovable blocks so the free-stop chain
-      // routes around them instead of ever overwriting their times.
+      const movableIds = new Set(movable.map(m => m.p.id));
       for (const p of group) {
-        if (enrich.some(e => e.id === p.id)) continue; // skip the free stops we're placing
-        const sM = parseTimeStr(p.start_time), eM = parseTimeStr(p.end_time);
-        if (Number.isFinite(sM) && Number.isFinite(eM) && eM > sM) blocks.push({ startMin: sM, endMin: eM });
+        if (movableIds.has(p.id)) continue;
+        const g = geocoded.find(x => x.id === p.id);
+        if (g) anchors.push({ startMin: t2m(p.start_time), endMin: t2m(p.end_time), lat: g._lat, lng: g._lng, _ni: -1 }); // pinned fixed-time pref
+        else { const sM = t2m(p.start_time), eM = t2m(p.end_time); if (eM > sM) anchors.push({ startMin: sM, endMin: eM, lat: null, lng: null, _ni: -1 }); } // route / ungeocoded
       }
-      blocks.sort((a,b) => a.startMin - b.startMin);
-      console.log(`[CRM] optimizer bucket truck=${truckNum} date=${dateStr}: ${group.length} proposals, ${blocks.length} existing blocks`, blocks);
 
-      // If a proposed time slot [startMin, endMin] overlaps any existing block,
-      // push the cursor PAST the last overlapping block (rounded to quarter).
-      const advancePastConflicts = (startMin, dur) => {
-        let s = startMin;
-        let e = s + dur;
-        // Repeat: as long as we overlap any block, jump past it.
-        let safety = 0;
-        while (safety++ < 20) {
-          const hit = blocks.find(b => !(e <= b.startMin || s >= b.endMin));
-          if (!hit) break;
-          s = roundUpToQuarter(hit.endMin);
-          e = s + dur;
+      // Drive-time matrix over every coords-bearing node (movables + coord
+      // anchors), so buffers to existing stops are computed from real travel.
+      const coordNodes = [];
+      const addNode = obj => { if (obj.lat == null || obj.lng == null) { obj._ni = -1; return; } obj._ni = coordNodes.length; coordNodes.push({ lat: obj.lat, lng: obj.lng }); };
+      movable.forEach(addNode);
+      anchors.forEach(addNode);
+      let dmatrix = [];
+      if (coordNodes.length >= 2) {
+        const pairs = [];
+        for (let i = 0; i < coordNodes.length; i++) for (let j = 0; j < coordNodes.length; j++) if (i !== j) pairs.push({ from: coordNodes[i], to: coordNodes[j] });
+        let dt;
+        try { dt = await fetchDriveTimesBatch(pairs); } catch (e) { throw new Error('Drive time lookup failed: ' + e.message); }
+        dmatrix = Array.from({ length: coordNodes.length }, () => new Array(coordNodes.length).fill(0));
+        let pi = 0;
+        for (let i = 0; i < coordNodes.length; i++) for (let j = 0; j < coordNodes.length; j++) { if (i === j) continue; const d = dt[pi++]; if (d.error) throw new Error('Drive time error between stops: ' + d.error); dmatrix[i][j] = d.duration_seconds; }
+      }
+      const _drive = (a, b) => (a && b && a._ni >= 0 && b._ni >= 0 && dmatrix.length) ? dmatrix[a._ni][b._ni] : null;
+      const bufMin = (a, b) => { const d = _drive(a, b); return Math.ceil(((d == null ? 0 : d) + PADDING_SEC) / 60); };
+      const driveMinBetween = (a, b) => { const d = _drive(a, b); return d == null ? null : Math.round(d / 60); };
+
+      // Place one movable: scan 15-min slots in its window, honoring no-overlap
+      // plus travel buffers to the temporally-adjacent items. Prefers a slot
+      // with full buffers (least added driving); falls back to the earliest
+      // in-window slot with no room for a buffer, flagged tight.
+      const placeOne = (m, placedItems) => {
+        const cap = m.isFlex ? m.winEnd : Math.min(m.winEnd, END_OF_DAY_MIN);
+        const lo = Math.max(m.winStart, WORK_OPEN);
+        let full = null, fullScore = Infinity, tight = null, tightScore = Infinity;
+        for (let s = roundUpToQuarter(lo); s + m.dur <= cap; s += 15) {
+          const e = s + m.dur;
+          if (placedItems.some(it => !(e <= it.startMin || s >= it.endMin))) continue;
+          const prev = placedItems.filter(it => it.endMin <= s).sort((a,b) => b.endMin - a.endMin)[0] || null;
+          const next = placedItems.filter(it => it.startMin >= e).sort((a,b) => a.startMin - b.startMin)[0] || null;
+          const prevOK = !prev || s >= prev.endMin + bufMin(prev, m);
+          const nextOK = !next || e + bufMin(m, next) <= next.startMin;
+          const addDrive = (prev ? (driveMinBetween(prev, m) || 0) : 0) + (next ? (driveMinBetween(m, next) || 0) : 0);
+          if (prevOK && nextOK) { if (addDrive < fullScore) { full = { s, e, prev, next }; fullScore = addDrive; } }
+          else if (s < tightScore) { tight = { s, e, prev, next }; tightScore = s; }
         }
-        return s;
+        return full ? { ...full, tight: false } : (tight ? { ...tight, tight: true } : null);
       };
 
-      let cursorMin = roundUpToQuarter(firstStartMin);
-      const droppedTooLate = [];
-      const placedThisDay = []; // for "Couldn't Fit" reporting
-      for (let i = 0; i < ordered.length; i++) {
-        const p = ordered[i];
-        const dur = Math.max(30, Math.ceil(durationMin(p) / 15) * 15);
-        if (i === 0) {
-          // First stop: still must not overlap any existing baseline stop
-          cursorMin = advancePastConflicts(cursorMin, dur);
-        } else {
-          const prevIdx = tour[i-1];
-          const driveSec = matrix[prevIdx][tour[i]];
-          cursorMin = roundUpToQuarter(cursorMin + Math.ceil((driveSec + PADDING_SEC) / 60));
-          cursorMin = advancePastConflicts(cursorMin, dur);
-          p.reasons.push(`Drive ${Math.round(driveSec/60)}min from previous stop`);
+      // Try every visit order (tiny n); keep the one placing the most stops,
+      // then fewest tight-travel flags, then least total driving.
+      const permute = arr => arr.length <= 1 ? [arr] : arr.flatMap((x,i) => permute(arr.slice(0,i).concat(arr.slice(i+1))).map(r => [x, ...r]));
+      const orders = movable.length <= 4 ? permute(movable) : [movable.slice().sort((a,b) => a.winStart - b.winStart)];
+      let best = null;
+      for (const order of orders) {
+        const placedItems = anchors.map(a => ({ ...a }));
+        const sol = { slots: [], dropped: [], drive: 0, tight: 0, placed: 0 };
+        for (const m of order) {
+          const slot = placeOne(m, placedItems);
+          if (!slot) { sol.dropped.push(m); continue; }
+          placedItems.push({ startMin: slot.s, endMin: slot.e, lat: m.lat, lng: m.lng, _ni: m._ni });
+          sol.slots.push({ m, s: slot.s, e: slot.e, tight: slot.tight, prev: slot.prev });
+          sol.placed++; if (slot.tight) sol.tight++;
+          if (slot.prev) { const d = driveMinBetween(slot.prev, m); if (d) sol.drive += d; }
         }
-        const startMin = cursorMin;
-        const endMin = cursorMin + dur;
-        if (endMin > END_OF_DAY_MIN) {
-          // Doesn't fit in the working day — drop from proposals, list under "Couldn't Fit"
-          p.conflict = `Would end after 6 PM (proposed ${String(Math.floor(startMin/60)).padStart(2,'0')}:${String(startMin%60).padStart(2,'0')}\u2013${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')})`;
-          droppedTooLate.push(p);
-          // Don't advance cursor; just skip this proposal
-          continue;
-        }
-        const fmt = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}:00`;
-        p.start_time = fmt(startMin);
-        p.end_time = fmt(endMin);
-        cursorMin = endMin;
-        placedThisDay.push(p);
+        const better = !best
+          || sol.placed > best.placed
+          || (sol.placed === best.placed && sol.tight < best.tight)
+          || (sol.placed === best.placed && sol.tight === best.tight && sol.drive < best.drive);
+        if (better) best = sol;
       }
 
-      // Remove dropped proposals from base.proposals; add them to skippedConflict
+      // Apply the chosen arrangement to the movable proposals.
+      const droppedTooLate = [];
+      const _clean = r => !/within flexible window|Drive \d+min from previous stop|tight travel/i.test(r);
+      for (const slot of best.slots) {
+        const p = slot.m.p;
+        p.reasons = (p.reasons || []).filter(_clean);
+        p.start_time = m2t(slot.s);
+        p.end_time = m2t(slot.e);
+        const dmin = slot.prev ? driveMinBetween(slot.prev, slot.m) : null;
+        if (dmin != null) p.reasons.push(`Drive ${dmin}min from previous stop`);
+        if (slot.m.isFlex) p.reasons.push(`Placed at ${p.start_time.slice(0,5)} within flexible window ${p.flexWindowStart.slice(0,5)}\u2013${p.flexWindowEnd.slice(0,5)}`);
+        if (slot.tight) p.reasons.push('\u26a0 tight travel to an adjacent stop \u2014 verify timing');
+      }
+      for (const m of best.dropped) {
+        const p = m.p;
+        p.conflict = m.isFlex
+          ? `No slot within flexible window ${p.flexWindowStart.slice(0,5)}\u2013${p.flexWindowEnd.slice(0,5)} that clears travel to neighboring stops`
+          : `Couldn't fit within the working day with travel buffers`;
+        droppedTooLate.push(p);
+      }
+
+      // Remove dropped from base.proposals; record as conflicts.
       for (const p of droppedTooLate) {
         const idx = base.proposals.findIndex(x => x.id === p.id);
         if (idx >= 0) base.proposals.splice(idx, 1);
         base.skippedConflict.push(p);
       }
-
-      // Replace the bucket's proposals with the reordered list
-      // Find their indices in base.proposals and update them in place
-      for (const p of ordered) {
+      // Write back the (re)timed movable stops.
+      for (const slot of best.slots) {
+        const p = slot.m.p;
         const idx = base.proposals.findIndex(x => x.id === p.id);
         if (idx >= 0) {
           base.proposals[idx] = { ...p };
-          // Strip internal _ fields
           delete base.proposals[idx]._lat;
           delete base.proposals[idx]._lng;
           delete base.proposals[idx]._locName;
