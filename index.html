@@ -7720,11 +7720,18 @@ window.CRM = (function(){
         }
       }
 
-      // Optimize only the stops we actually have coordinates for.
-      const enrich = enrichAll
+      // Geocoded, single-location stops are candidates for driving-order
+      // optimization. But a stop with an EXPLICIT stated time preference
+      // (timeSource === 'preference' — fixed times AND flexible windows) is
+      // PINNED: it keeps the placement pass 1 gave it (which already honored the
+      // window, even past 6 PM) and is never retimed by the drive-chain, so a
+      // stated preference is always respected. Only history-derived or fallback
+      // times are eligible to be reordered and retimed for travel efficiency.
+      const geocoded = enrichAll
         .filter(e => e.p.location_id && e.lat != null && e.lng != null)
         .map(e => ({ ...e.p, _lat: e.lat, _lng: e.lng, _locName: e.name }));
-      if (enrich.length < 2) continue; // fewer than 2 optimizable stops — nothing to reorder
+      const enrich = geocoded.filter(p => p.timeSource !== 'preference'); // free stops to optimize
+      if (enrich.length < 2) continue; // fewer than 2 free stops — nothing to reorder
 
       // Fetch drive times between all pairs (n×n matrix) via worker /drive-time/batch
       const pairs = [];
@@ -7820,6 +7827,14 @@ window.CRM = (function(){
       for (const ex of existingInWeek) {
         if (ex.truck !== truckNum || ex.scheduled_date !== dateStr) continue;
         blocks.push({ startMin: parseTimeStr(ex.start_time), endMin: parseTimeStr(ex.end_time) });
+      }
+      // Pinned preference stops, routes, and un-geocoded flagged stops all keep
+      // their pass-1 slot. Treat them as immovable blocks so the free-stop chain
+      // routes around them instead of ever overwriting their times.
+      for (const p of group) {
+        if (enrich.some(e => e.id === p.id)) continue; // skip the free stops we're placing
+        const sM = parseTimeStr(p.start_time), eM = parseTimeStr(p.end_time);
+        if (Number.isFinite(sM) && Number.isFinite(eM) && eM > sM) blocks.push({ startMin: sM, endMin: eM });
       }
       blocks.sort((a,b) => a.startMin - b.startMin);
       console.log(`[CRM] optimizer bucket truck=${truckNum} date=${dateStr}: ${group.length} proposals, ${blocks.length} existing blocks`, blocks);
