@@ -7832,8 +7832,14 @@ window.CRM = (function(){
       // MOVABLE = free (history/fallback) stops + flexible-window preference
       // stops. Flexible windows may slide WITHIN their window to respect travel;
       // fixed exact-time preferences stay pinned and become anchors below.
+      // PAIRED stops are NOT movable — they must stay immediately next to their
+      // parent where the pairing pass placed them, so they're pinned as anchors.
       const movable = geocoded
-        .filter(p => p.timeSource !== 'preference' || p.isFlexible)
+        .filter(p => {
+          if (p.timeSource === 'paired') return false;             // stays adjacent to parent
+          if (p.timeSource === 'preference') return !!p.isFlexible; // fixed pinned; flexible slides
+          return true;                                             // history/fallback: free
+        })
         .map(p => {
           const isFlex = p.timeSource === 'preference' && p.isFlexible;
           const durRaw = isFlex ? (p.flexDurationMin || 60) : Math.max(30, t2m(p.end_time) - t2m(p.start_time));
