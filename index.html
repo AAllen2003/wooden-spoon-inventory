@@ -7466,6 +7466,12 @@ window.CRM = (function(){
     // parent is now in placedByLocId. Stop when a full pass places nothing.
     let progress = true;
     const remaining = [...pairedCandidates];
+    // When a parent has multiple paired children, each new child must follow the
+    // LAST one placed, not stack on the parent's edge. These cursors track, per
+    // parent, the running edge of its child chain (absolute minutes from midnight;
+    // may exceed 1440 when a late parent pushes children past midnight).
+    const chainAfter = new Map();  // parent.id -> next available start (after-chain)
+    const chainBefore = new Map(); // parent.id -> next available end   (before-chain)
     while (progress) {
       progress = false;
       for (let i = remaining.length - 1; i >= 0; i--) {
@@ -7532,24 +7538,29 @@ window.CRM = (function(){
         // "before": B ends when the parent starts (B sits directly ahead of it).
         // Guard the before case against underflowing midnight, since addMin()
         // wraps modulo 24 and would otherwise emit a malformed time.
-        let bStart, bEnd;
+        // Sequence relative to the parent's child-chain edge (not the parent's
+        // own edge), so a second child follows the first instead of stacking.
+        const _pm = t => parseInt(t.slice(0,2),10) * 60 + parseInt(t.slice(3,5),10);
+        const _fmtAbs = m => { const mm = ((m % 1440) + 1440) % 1440; return `${String(Math.floor(mm/60)).padStart(2,'0')}:${String(mm%60).padStart(2,'0')}:00`; };
+        let bStart, bEnd, bStartAbs, bEndAbs;
         if (isBefore) {
-          bEnd = parentPlaced.start_time;
-          const bEndTotal = parseInt(bEnd.slice(0,2),10) * 60 + parseInt(bEnd.slice(3,5),10);
-          if (bEndTotal - bDur < 0) {
+          bEndAbs = chainBefore.has(parent.id) ? chainBefore.get(parent.id) : _pm(parentPlaced.start_time);
+          bStartAbs = bEndAbs - bDur;
+          if (bStartAbs < 0) {
             skippedPairing.push({
               location_id: loc.id,
               location_name: loc.location_name,
-              reason: `Slot before ${parent.location_name} would start before 00:00 — no room ahead of it`,
+              reason: `No room before ${parent.location_name} earlier than 00:00`,
             });
             remaining.splice(i, 1);
             continue;
           }
-          bStart = addMin(bEnd, -bDur);
         } else {
-          bStart = parentPlaced.end_time;
-          bEnd = addMin(bStart, bDur);
+          bStartAbs = chainAfter.has(parent.id) ? chainAfter.get(parent.id) : _pm(parentPlaced.end_time);
+          bEndAbs = bStartAbs + bDur;
         }
+        bStart = _fmtAbs(bStartAbs);
+        bEnd = _fmtAbs(bEndAbs);
 
         // Check for conflicts with anything else placed on this truck/day
         const conflict = placed.find(p =>
@@ -7599,6 +7610,9 @@ window.CRM = (function(){
         };
         placed.push(newProp);
         placedByLocId.set(loc.id, newProp);
+        // Advance this parent's chain edge so the next child sequences after this one.
+        if (isBefore) chainBefore.set(parent.id, bStartAbs);
+        else chainAfter.set(parent.id, bEndAbs);
         remaining.splice(i, 1);
         progress = true;
       }
@@ -8088,10 +8102,11 @@ window.CRM = (function(){
       allRows.forEach(p => { (byDay[p.scheduled_date] = byDay[p.scheduled_date] || []).push(p); });
       for (const d of Object.keys(byDay).sort()) {
         const dt = new Date(d + 'T00:00:00');
-        // Sort within day by truck then start time
+        // Sort within day chronologically (time first), then by truck for ties.
         byDay[d].sort((a,b) => {
-          if (a.truck !== b.truck) return a.truck - b.truck;
-          return (a.start_time||'').localeCompare(b.start_time||'');
+          const t = (a.start_time||'').localeCompare(b.start_time||'');
+          if (t !== 0) return t;
+          return a.truck - b.truck;
         });
         html += `<div style="margin-bottom:16px">
           <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">
