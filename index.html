@@ -3658,16 +3658,19 @@ window.CRM = (function(){
     const list = document.getElementById('crm-customer-list');
     if (!stats || !list) return;
 
-    const total = state.locations.length;
+    const nonArch = state.locations.filter(l => l.status !== 'archived');
+    const total = nonArch.length;                       // archived excluded from the count
     const active = state.locations.filter(l => l.status === 'active').length;
-    const flagged = state.locations.filter(l => l.internal_flags).length;
-    const tierH = state.locations.filter(l => l.tier === 'high').length;
+    const flagged = nonArch.filter(l => l.internal_flags).length;
+    const tierH = nonArch.filter(l => l.tier === 'high').length;
+    const archivedCount = state.locations.length - nonArch.length;
 
     stats.innerHTML = `
       <div class="metric"><div class="metric-label">Total Locations</div><div class="metric-value">${total}</div></div>
       <div class="metric"><div class="metric-label">Active</div><div class="metric-value">${active}</div></div>
       <div class="metric"><div class="metric-label">High Tier</div><div class="metric-value">${tierH}</div></div>
       <div class="metric clickable" onclick="document.getElementById('crm-flag-filter').value='flagged';CRM.filterCustomers()" style="cursor:pointer"><div class="metric-label">Needs Review</div><div class="metric-value">${flagged}</div></div>
+      <div class="metric"><div class="metric-label">Archived</div><div class="metric-value">${archivedCount}</div></div>
     `;
     filterCustomers();
     renderManualList();
@@ -4323,30 +4326,47 @@ window.CRM = (function(){
     const list = document.getElementById('crm-customer-list');
     if (!list) return;
 
-    let rows = state.locations.slice();
-    if (q) rows = rows.filter(l =>
+    const matchesSearch = l => !q ||
       (l.location_name||'').toLowerCase().includes(q) ||
       (l.point_of_contact||'').toLowerCase().includes(q) ||
       (l.city||'').toLowerCase().includes(q) ||
-      (l.full_address||'').toLowerCase().includes(q));
-    if (tier) rows = rows.filter(l => l.tier === tier);
-    if (flag === 'flagged') rows = rows.filter(l => l.internal_flags);
+      (l.full_address||'').toLowerCase().includes(q);
+    const byName = (a,b) => (a.location_name||'').localeCompare(b.location_name||'', 'en', { sensitivity: 'base' });
 
-    rows.sort((a,b) => (a.location_name||'').localeCompare(b.location_name||'', 'en', { sensitivity: 'base' }));
+    // Active (non-archived) customers — respect the tier/flag filters.
+    let activeRows = state.locations.filter(l => l.status !== 'archived' && matchesSearch(l));
+    if (tier) activeRows = activeRows.filter(l => l.tier === tier);
+    if (flag === 'flagged') activeRows = activeRows.filter(l => l.internal_flags);
+    activeRows.sort(byName);
 
-    if (!rows.length) {
-      list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-style:italic">No locations match.</div>';
-      return;
-    }
+    // Archived customers — their own section, independent of tier/flag filters.
+    const archivedRows = state.locations.filter(l => l.status === 'archived' && matchesSearch(l)).sort(byName);
 
-    list.innerHTML = `<div class="crm-tile-grid">${rows.map(l => {
+    const tile = l => {
       const flagDot = l.internal_flags ? '<span class="crm-tile-dot crm-tile-dot-flag" title="Needs review"></span>' : '';
       const tierDot = l.tier && l.tier !== 'pending' ? `<span class="crm-tile-tier crm-tile-tier-${l.tier}" title="${tierLabel(l.tier)} tier"></span>` : '';
-      return `<button class="crm-tile" onclick="CRM.openProfile(${l.id})">
-        ${flagDot}${tierDot}
-        <span class="crm-tile-name">${esc(l.location_name)}</span>
-      </button>`;
-    }).join('')}</div>`;
+      return `<button class="crm-tile" onclick="CRM.openProfile(${l.id})">${flagDot}${tierDot}<span class="crm-tile-name">${esc(l.location_name)}</span></button>`;
+    };
+
+    let html = '';
+    if (!activeRows.length) {
+      html += '<div style="padding:20px;text-align:center;color:var(--text3);font-style:italic">No active locations match.</div>';
+    } else {
+      html += `<div class="crm-tile-grid">${activeRows.map(tile).join('')}</div>`;
+    }
+
+    if (archivedRows.length) {
+      html += `<div style="margin-top:24px;padding-top:14px;border-top:1px solid var(--bg2)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <span style="font-family:var(--font-display);font-size:14px;color:var(--text3)"><i class="ti ti-archive"></i> Archived</span>
+          <span style="background:var(--text3);color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${archivedRows.length}</span>
+          <span style="font-size:11px;color:var(--text3);font-style:italic">Not counted in your totals and not auto-scheduled</span>
+        </div>
+        <div class="crm-tile-grid" style="opacity:.55">${archivedRows.map(tile).join('')}</div>
+      </div>`;
+    }
+
+    list.innerHTML = html;
   }
 
   // ─── Customer profile ──────────────────────────────────────────────
@@ -8372,8 +8392,8 @@ window.CRM = (function(){
       return;
     }
     const rows = state.locations.slice().sort((a,b)=>(a.location_name||'').localeCompare(b.location_name||'','en',{sensitivity:'base'}));
-    const total = state.locations.length;
-    const flagged = state.locations.filter(l=>l.internal_flags).length;
+    const total = state.locations.filter(l=>l.status!=='archived').length;
+    const flagged = state.locations.filter(l=>l.status!=='archived' && l.internal_flags).length;
     root.innerHTML = `
       <div style="margin-bottom:12px;display:flex;gap:8px">
         <input type="text" id="crm-mob-search" placeholder="Search..." oninput="CRM.filterMobCustomers()" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:14px;box-sizing:border-box">
@@ -8388,12 +8408,26 @@ window.CRM = (function(){
   function renderMobCustomerList(rows){
     const list = document.getElementById('crm-mob-list');
     if(!list) return;
-    if(!rows.length){ list.innerHTML='<div style="grid-column:1/-1;padding:20px;text-align:center;color:var(--text3);font-style:italic">No matches.</div>'; return; }
-    list.innerHTML = rows.map(l=>{
+    const activeRows = rows.filter(l => l.status !== 'archived');
+    const archivedRows = rows.filter(l => l.status === 'archived');
+    const tile = (l, muted) => {
       const flagDot = l.internal_flags ? '<span class="crm-tile-dot crm-tile-dot-flag"></span>' : '';
       const tierDot = l.tier && l.tier !== 'pending' ? `<span class="crm-tile-tier crm-tile-tier-${l.tier}"></span>` : '';
-      return `<button class="crm-tile" onclick="CRM.openMobProfile(${l.id})">${flagDot}${tierDot}<span class="crm-tile-name">${esc(l.location_name)}</span></button>`;
-    }).join('');
+      return `<button class="crm-tile" onclick="CRM.openMobProfile(${l.id})"${muted?' style="opacity:.55"':''}>${flagDot}${tierDot}<span class="crm-tile-name">${esc(l.location_name)}</span></button>`;
+    };
+    if(!activeRows.length && !archivedRows.length){ list.innerHTML='<div style="grid-column:1/-1;padding:20px;text-align:center;color:var(--text3);font-style:italic">No matches.</div>'; return; }
+    let html = activeRows.length
+      ? activeRows.map(l=>tile(l,false)).join('')
+      : '<div style="grid-column:1/-1;padding:16px;text-align:center;color:var(--text3);font-style:italic">No active matches.</div>';
+    if(archivedRows.length){
+      html += `<div style="grid-column:1/-1;display:flex;align-items:center;gap:8px;margin-top:16px;padding-top:10px;border-top:1px solid var(--bg2)">
+        <span style="font-family:var(--font-display);font-size:13px;color:var(--text3)"><i class="ti ti-archive"></i> Archived</span>
+        <span style="background:var(--text3);color:#fff;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700">${archivedRows.length}</span>
+        <span style="font-size:10px;color:var(--text3);font-style:italic">Not in your totals</span>
+      </div>`;
+      html += archivedRows.map(l=>tile(l,true)).join('');
+    }
+    list.innerHTML = html;
   }
   function filterMobCustomers(){
     const q = (document.getElementById('crm-mob-search')?.value || '').toLowerCase();
