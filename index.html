@@ -2913,6 +2913,7 @@ function syncMobTitle(){
 
 function mobShow(sec,btn){
   mobSection=sec;
+  mobLocName=''; // navigating to any tab drops the location drill-down
   document.querySelectorAll('.mob-tab').forEach(t=>t.classList.remove('active'));
   if(btn)btn.classList.add('active');
   if(btn)btn.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
@@ -2933,7 +2934,10 @@ function _mobRenderRaw(){
   if(mobSection==='home')el.innerHTML=mobHomeHTML();
   else if(mobSection==='overview')el.innerHTML=mobOverviewHTML();
   else if(mobSection==='inventory')el.innerHTML=mobInvHTML();
-  else if(mobSection==='locations')el.innerHTML=mobLocsHTML();
+  else if(mobSection==='locations'){
+    if(mobLocName){ el.innerHTML=mobLocDetailHTML(mobLocName); const _t=document.getElementById('mob-title'); if(_t)_t.textContent=mobLocName; }
+    else el.innerHTML=mobLocsHTML();
+  }
   else if(mobSection==='par')el.innerHTML=mobParHTML();
   else if(mobSection==='alerts')el.innerHTML=mobAlertsHTML();
   else if(mobSection==='picklist')el.innerHTML=mobPickListHTML();
@@ -3042,8 +3046,12 @@ function mobLocsHTML(){
 let mobLocName='';
 function mobOpenLoc(loc){
   mobLocName=loc;
-  document.getElementById('mob-title').textContent=loc;
-  document.getElementById('mob-body').innerHTML=mobLocDetailHTML(loc);
+  mobRender(); // render through the tracked path so auto-refreshes preserve the drill-down
+}
+function mobCloseLoc(){
+  mobLocName='';
+  syncMobTitle();
+  mobRender();
 }
 function mobLocDetailHTML(loc){
   const rows=S.items.map(item=>{
@@ -3053,7 +3061,7 @@ function mobLocDetailHTML(loc){
     const id='ld-'+mobSl(item);
     return`<div class="m-par-row"><span class="m-par-name">${item}</span><input type="number" id="${id}" class="m-par-inp" value="${qty}" min="0" onchange="mobUpdateInv('${mobEsc(item)}','${loc}',this.value)"></div>`;
   }).join('');
-  return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Tap Back to return</div><button class="m-btn" style="width:auto;padding:8px 16px" onclick="mobShow('locations',document.querySelector('.mob-tab[data-sec=locations]'))"><i class="ti ti-arrow-left"></i> Back</button></div><div class="m-par-list">${rows}</div>`;
+  return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Tap Back to return</div><button class="m-btn" style="width:auto;padding:8px 16px" onclick="mobCloseLoc()"><i class="ti ti-arrow-left"></i> Back</button></div><div class="m-par-list">${rows}</div>`;
 }
 async function mobUpdateInv(item,loc,val){
   if(!isAdmin()){alert('Only admins can edit inventory directly. Staff: use the Production tab "Log Production" to add inventory, or the Pick List to restock trucks.');mobRender();return;}
@@ -3669,7 +3677,6 @@ window.CRM = (function(){
       <div class="metric"><div class="metric-label">Total Locations</div><div class="metric-value">${total}</div></div>
       <div class="metric"><div class="metric-label">Active</div><div class="metric-value">${active}</div></div>
       <div class="metric"><div class="metric-label">High Tier</div><div class="metric-value">${tierH}</div></div>
-      <div class="metric clickable" onclick="document.getElementById('crm-flag-filter').value='flagged';CRM.filterCustomers()" style="cursor:pointer"><div class="metric-label">Needs Review</div><div class="metric-value">${flagged}</div></div>
       <div class="metric"><div class="metric-label">Archived</div><div class="metric-value">${archivedCount}</div></div>
     `;
     filterCustomers();
