@@ -10155,13 +10155,22 @@ window.CRM = (function(){
       state.deliveries.unshift(ins);
       closeLogDelivery();
       _renderDeliveriesContent();
-      // Refresh dependent views
-      if (typeof renderInventory === 'function') renderInventory();
-      if (typeof renderOverview === 'function') renderOverview();
-      if (typeof checkAlerts === 'function') checkAlerts();
     } catch (e) {
       console.error('[deliveries] save failed', e);
       alert('Save failed: ' + (e.message || e));
+      return;
+    }
+    // Refresh dependent views. These are cosmetic — the delivery is already
+    // saved, so an error here must NOT be reported as a save failure. Use
+    // window.* explicitly: inside this module, an unqualified `renderOverview`
+    // resolves to the CRM profile-overview renderer (which needs a location),
+    // not the global inventory dashboard.
+    try {
+      if (typeof window.renderInventory === 'function') window.renderInventory();
+      if (typeof window.renderOverview === 'function') window.renderOverview();
+      if (typeof window.checkAlerts === 'function') window.checkAlerts();
+    } catch (e) {
+      console.warn('[deliveries] post-save view refresh failed (delivery still saved):', e);
     }
   }
 
