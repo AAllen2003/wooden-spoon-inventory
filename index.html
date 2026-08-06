@@ -5593,7 +5593,38 @@ window.CRM = (function(){
             .catch(e => console.error('[CRM] geocode new customer failed', e));
         }
       }
-    } catch (e) { alert('Failed: '+e.message); }
+    } catch (e) {
+      const msg = (e && (e.message || e.details)) ? (e.message || e.details) : String(e);
+      // A name collision almost always means a previously-DELETED customer is
+      // still holding this name under the unique constraint. Offer to restore it
+      // (or, if it's an active row, say so plainly) instead of a raw DB error.
+      if (/crm_locations_name_unique|duplicate key/i.test(msg)) {
+        try {
+          const { data: rows } = await sb.from('crm_locations')
+            .select('id, location_name, deleted_at')
+            .ilike('location_name', name);
+          const match = (rows || []).find(r => (r.location_name || '') === name) || (rows || [])[0];
+          if (match && match.deleted_at) {
+            if (confirm(`A previously-deleted customer named "${name}" is still holding that name. Restore it with the details you just entered?`)) {
+              const { data: upd, error: uerr } = await sb.from('crm_locations')
+                .update({ ...data, deleted_at: null, deleted_by: null }).eq('id', match.id).select().single();
+              if (uerr) throw uerr;
+              const idx = state.locations.findIndex(l => l.id === upd.id);
+              if (idx >= 0) state.locations[idx] = upd; else state.locations.push(upd);
+              if (Array.isArray(state.deletedLocations)) state.deletedLocations = state.deletedLocations.filter(l => l.id !== upd.id);
+              const onMobile = typeof isMob === 'function' && isMob();
+              if (onMobile) { closeMergeModal(); openMobProfile(upd.id); } else { openProfile(upd.id); }
+            }
+            return;
+          }
+          alert(`A customer named "${name}" already exists. Please use a distinct name.`);
+        } catch (e2) {
+          alert('Failed: ' + (e2.message || e2));
+        }
+        return;
+      }
+      alert('Failed: ' + msg);
+    }
   }
 
   // ─── Auto-Scheduler ────────────────────────────────────────────────
