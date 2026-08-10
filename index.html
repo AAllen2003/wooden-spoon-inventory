@@ -7254,9 +7254,10 @@ window.CRM = (function(){
         capacityDeferred.push({ ...p, conflict: `Deferred — Trucks 1 & 2 at capacity (${CAP_PER_DAY}/day) on every eligible day this week` });
       }
     }
-    // Surface capacity deferrals and Saturday-due flags in the review's attention list.
+    // Surface Saturday-due flags in the review's attention list. Capacity
+    // deferrals are kept as a SEPARATE promotable pool (deferredPool) so that
+    // deselecting a proposed stop can pull one of them into the freed slot.
     for (const x of saturdayDue) skippedConflict.push(x);
-    for (const x of capacityDeferred) skippedConflict.push(x);
 
     const timeToMin = t => {
       if (!t) return 0;
@@ -7756,7 +7757,7 @@ window.CRM = (function(){
       }
     });
 
-    return { proposals: finalPlaced, skippedConflict, skippedPairing, suppressedByRoute, routeWarnings, existingStops };
+    return { proposals: finalPlaced, skippedConflict, skippedPairing, suppressedByRoute, routeWarnings, existingStops, deferredPool: capacityDeferred };
   }
 
   // State for the active proposal session
@@ -8081,7 +8082,7 @@ window.CRM = (function(){
     if (!root || !state.proposalSession) return;
     saveDraft();  // autosave: every edit re-renders through here
     state.viewDraft = true;
-    const { proposals, skippedConflict, skippedPairing = [], suppressedByRoute = [], routeWarnings = [], existingStops } = state.proposalSession;
+    const { proposals, skippedConflict, skippedPairing = [], suppressedByRoute = [], routeWarnings = [], existingStops, deferredPool = [] } = state.proposalSession;
     const weekStart = state.weekStart;
     const weekEnd = addDays(weekStart, 6);
 
@@ -8136,6 +8137,18 @@ window.CRM = (function(){
         <div style="font-size:11px;color:var(--text3);margin-bottom:8px;font-style:italic">These routes fit on the schedule but the driving+dwell time estimate exceeds the allotted duration. Consider extending duration or removing stops.</div>
         ${routeWarnings.map(w => `<div style="font-size:12px;padding:4px 0">
           <strong>${esc(w.location_name)}</strong> \u2014 ${esc(w.reason)}
+        </div>`).join('')}
+      </div>`;
+    }
+
+    // Deferred — waiting for capacity. These were due this week but bumped for
+    // room. Deselecting a proposed stop pulls the best-fitting one into the slot.
+    if (deferredPool.length) {
+      html += `<div class="card" style="background:var(--amber-bg,#fdf0dc);border:1px solid var(--amber,#B05A00);margin-bottom:14px">
+        <div style="font-family:var(--font-display);font-size:13px;color:var(--amber,#B05A00);margin-bottom:6px"><i class="ti ti-clock-pause"></i> Waiting for capacity (${deferredPool.length})</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px;font-style:italic">Due this week but bumped for room. Deselect a proposed stop and the best-fitting one here drops into the freed slot.</div>
+        ${deferredPool.map(p => `<div style="font-size:12px;padding:4px 0">
+          <strong>${esc(p.location_name)}</strong>${p.location_tier && p.location_tier!=='pending' ? ` <span style="font-size:10px;color:var(--text3)">${esc(p.location_tier)}</span>` : ''}
         </div>`).join('')}
       </div>`;
     }
@@ -8234,10 +8247,67 @@ window.CRM = (function(){
     </div>`;
   }
 
+  // Best-fit a candidate into a given truck/day around the stops already there
+  // (enabled proposals + existing stops). Synchronous, window/preference-aware
+  // but travel-approximate — the replacement carries a "verify timing" flag.
+  function _bestFitTimeForDay(cand, truck, dateStr) {
+    const S = state.proposalSession;
+    const t2m = t => { if (!t) return 0; const [h,m] = String(t).split(':'); return (+h)*60 + (+m); };
+    const m2t = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(Math.round(m)%60).padStart(2,'0')}:00`;
+    const occupied = [];
+    for (const p of S.proposals) if (p !== cand && p.enabled && p.truck === truck && p.scheduled_date === dateStr) occupied.push([t2m(p.start_time), t2m(p.end_time)]);
+    for (const ex of (S.existingStops || [])) if (ex.truck === truck && ex.scheduled_date === dateStr) occupied.push([t2m(ex.start_time), t2m(ex.end_time)]);
+    const isFlex = !!cand.isFlexible;
+    const dur = Math.max(30, isFlex ? (cand.flexDurationMin || 60) : ((t2m(cand.end_time) - t2m(cand.start_time)) || 60));
+    const winStart = isFlex ? t2m(cand.flexWindowStart) : 8*60;
+    const winEnd   = isFlex ? t2m(cand.flexWindowEnd)   : 18*60;
+    const clamp = v => Math.max(winStart, Math.min(v, winEnd - dur));
+    const fits = s => !occupied.some(([a,b]) => !(s + dur <= a || s >= b));
+    const preferred = clamp(Math.round((t2m(cand.start_time) || winStart) / 15) * 15);
+    const order = [preferred];
+    for (let s = Math.ceil(winStart/15)*15; s + dur <= winEnd; s += 15) order.push(s);
+    for (const s of order) { const cs = clamp(s); if (fits(cs)) return { start: m2t(cs), end: m2t(cs + dur), clean: true }; }
+    return { start: m2t(preferred), end: m2t(preferred + dur), clean: false }; // no clean slot — placed anyway, flagged
+  }
+
+  // When a proposed stop is rejected, promote the best waiting deferred stop
+  // (bumped only for capacity) into the freed truck/day, if one fits its rules.
+  function promoteDeferredInto(truck, dateStr) {
+    const S = state.proposalSession;
+    if (!S || !Array.isArray(S.deferredPool) || !S.deferredPool.length) return null;
+    const dow = new Date(dateStr + 'T12:00:00').getDay(); // 0=Sun..6=Sat
+    const idx = S.deferredPool.findIndex(c => {
+      const dowOK = !c._allowedDows || !c._allowedDows.length || c._allowedDows.includes(dow);
+      const truckOK = (c.truck_lock && (c.truck === 1 || c.truck === 2)) ? c.truck === truck
+                    : (c._preferredTruck === 1 || c._preferredTruck === 2) ? c._preferredTruck === truck
+                    : true; // unlocked can take either truck
+      return dowOK && truckOK;
+    });
+    if (idx < 0) return null; // nothing waiting fits this slot
+    const [cand] = S.deferredPool.splice(idx, 1);
+    cand.truck = truck;
+    cand.scheduled_date = dateStr;
+    const slot = _bestFitTimeForDay(cand, truck, dateStr);
+    cand.start_time = slot.start;
+    cand.end_time = slot.end;
+    cand.enabled = true;
+    delete cand.conflict;
+    cand.reasons = (cand.reasons || []).filter(r => !/Deferred —|Trucks 1 & 2 at capacity|Balanced to Truck/i.test(r));
+    cand.reasons.push('Replacement — filled a slot you cleared\u2003⚠ verify timing/travel');
+    cand._replacement = true;
+    S.proposals.push(cand);
+    return cand;
+  }
+
   function toggleProposal(id) {
     if (!state.proposalSession) return;
     const p = state.proposalSession.proposals.find(x => x.id === id);
-    if (p) { p.enabled = !p.enabled; renderProposalReview(); }
+    if (!p) return;
+    const wasEnabled = p.enabled;
+    p.enabled = !p.enabled;
+    // Rejecting a stop frees its slot — try to promote a deferred stop into it.
+    if (wasEnabled && !p.enabled) promoteDeferredInto(p.truck, p.scheduled_date);
+    renderProposalReview();
   }
 
   function toggleAllProposals() {
