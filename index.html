@@ -8098,6 +8098,7 @@ window.CRM = (function(){
       <div style="display:flex;gap:8px">
         <button class="btn btn-sm" onclick="CRM.cancelProposals()"><i class="ti ti-x"></i> Discard</button>
         <button class="btn btn-sm" onclick="CRM.peekLiveCalendar()"><i class="ti ti-calendar"></i> View live calendar</button>
+        <button class="btn btn-sm" onclick="CRM.openAddProposalStop()"><i class="ti ti-plus"></i> Add stop</button>
         <button class="btn btn-sm" onclick="CRM.toggleAllProposals()"><i class="ti ti-checks"></i> Toggle All</button>
         <button class="btn btn-sm btn-primary" onclick="CRM.approveProposals()" data-admin-only><i class="ti ti-check"></i> Save ${enabledCount}${editedExistingCount?' + '+editedExistingCount+' edits':''}</button>
       </div>
@@ -8247,7 +8248,84 @@ window.CRM = (function(){
     </div>`;
   }
 
-  // Best-fit a candidate into a given truck/day around the stops already there
+  // ─── Manually add a stop to the proposed schedule ───────────────────
+  function openAddProposalStop() {
+    if (!state.proposalSession) return;
+    const ws = state.weekStart;
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(ws, i);
+      days.push({ v: isoOfDate(d), label: d.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'}) });
+    }
+    const locs = state.locations
+      .filter(l => l.status === 'active' && !(l.location_name||'').startsWith('[Personal'))
+      .sort((a,b) => (a.location_name||'').localeCompare(b.location_name||'','en',{sensitivity:'base'}));
+    const old = document.getElementById('add-prop-overlay');
+    if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 'add-prop-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto';
+    ov.onclick = e => { if (e.target === ov) ov.remove(); };
+    const fld = 'padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:var(--font-body);width:100%;background:var(--surface);color:var(--text)';
+    const lbl = 'display:block;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px';
+    ov.innerHTML = `
+      <div class="card" style="max-width:440px;width:100%" onclick="event.stopPropagation()">
+        <div style="font-family:var(--font-display);font-size:18px;color:var(--sidebar);margin-bottom:14px"><i class="ti ti-plus"></i> Add a stop</div>
+        <div style="margin-bottom:12px"><label style="${lbl}">Customer</label>
+          <select id="ap-loc" style="${fld}">${locs.map(l => `<option value="${l.id}">${esc(l.location_name)}</option>`).join('')}</select></div>
+        <div style="margin-bottom:12px"><label style="${lbl}">Day</label>
+          <select id="ap-date" style="${fld}">${days.map(d => `<option value="${d.v}">${d.label}</option>`).join('')}</select></div>
+        <div style="margin-bottom:12px"><label style="${lbl}">Truck</label>
+          <select id="ap-truck" style="${fld}"><option value="1">Truck 1</option><option value="2">Truck 2</option><option value="3">Truck 3</option></select></div>
+        <div style="display:flex;gap:10px;margin-bottom:16px">
+          <div style="flex:1"><label style="${lbl}">Start</label><input id="ap-start" type="time" value="09:00" style="${fld}"></div>
+          <div style="flex:1"><label style="${lbl}">End</label><input id="ap-end" type="time" value="10:00" style="${fld}"></div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-sm" onclick="document.getElementById('add-prop-overlay').remove()">Cancel</button>
+          <button class="btn btn-sm btn-primary" onclick="CRM.confirmAddProposalStop()"><i class="ti ti-plus"></i> Add stop</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+  }
+
+  function confirmAddProposalStop() {
+    const S = state.proposalSession;
+    if (!S) return;
+    const locId = parseInt(document.getElementById('ap-loc').value, 10);
+    const date = document.getElementById('ap-date').value;
+    const truck = parseInt(document.getElementById('ap-truck').value, 10);
+    let start = document.getElementById('ap-start').value;
+    let end = document.getElementById('ap-end').value;
+    if (!locId || !date || !start || !end) { alert('Please fill in every field.'); return; }
+    if (end <= start) { alert('End time must be after start time.'); return; }
+    const loc = state.locations.find(l => l.id === locId);
+    if (!loc) { alert('Customer not found.'); return; }
+    const fix = t => t.length === 5 ? t + ':00' : t; // HH:MM -> HH:MM:SS
+    S.proposals.push({
+      id: `manual-${locId}-${date}-${Date.now()}`,
+      location_id: locId,
+      location_name: loc.location_name,
+      location_tier: loc.tier || 'pending',
+      scheduled_date: date,
+      start_time: fix(start),
+      end_time: fix(end),
+      truck,
+      confidence: 'manual',
+      timeSource: 'preference',
+      isFlexible: false,
+      reasons: ['Manually added'],
+      truck_lock: !!loc.truck_lock,
+      _preferredTruck: loc.preferred_truck || null,
+      enabled: true,
+      _manual: true,
+    });
+    const ov = document.getElementById('add-prop-overlay');
+    if (ov) ov.remove();
+    renderProposalReview();
+  }
+
+
   // (enabled proposals + existing stops). Synchronous, window/preference-aware
   // but travel-approximate — the replacement carries a "verify timing" flag.
   function _bestFitTimeForDay(cand, truck, dateStr) {
@@ -11311,6 +11389,8 @@ window.CRM = (function(){
     openRouteStopDetail, closeRouteStopDetail,
     // Draft schedule navigation
     peekLiveCalendar, resumeDraft,
+    // Manual add-stop into the proposal review
+    openAddProposalStop, confirmAddProposalStop,
     _state: state
   };
 })();
