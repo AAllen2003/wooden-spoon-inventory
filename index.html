@@ -8077,6 +8077,19 @@ window.CRM = (function(){
     return data.results || [];
   }
 
+  // Forecasted sales for a location = average total_revenue across its last 3
+  // visits (most recent by date). If it has fewer than 3 visits on record, use
+  // the average of whatever visits it does have. No history → 0.
+  function _forecastForLocation(locId) {
+    if (!locId) return 0;
+    const vs = (state.visits || [])
+      .filter(v => v.location_id === locId && v.total_revenue != null)
+      .sort((a, b) => String(b.visit_date || '').localeCompare(String(a.visit_date || '')));
+    if (!vs.length) return 0;
+    const recent = vs.slice(0, 3);
+    return recent.reduce((s, v) => s + (Number(v.total_revenue) || 0), 0) / recent.length;
+  }
+
   function renderProposalReview() {
     const root = document.getElementById('crm-schedule-content');
     if (!root || !state.proposalSession) return;
@@ -8105,10 +8118,14 @@ window.CRM = (function(){
     </div>`;
 
     // Summary metrics
+    const forecastTotal = proposals
+      .filter(p => p.enabled && p.location_id)
+      .reduce((s, p) => s + _forecastForLocation(p.location_id), 0);
     html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px">
       <div class="metric"><div class="metric-label">New Proposals</div><div class="metric-value">${proposals.length}</div></div>
       <div class="metric"><div class="metric-label">Existing Stops</div><div class="metric-value">${existingStops.length}</div></div>
       <div class="metric"><div class="metric-label">Conflicts</div><div class="metric-value">${skippedConflict.length}</div></div>
+      <div class="metric"><div class="metric-label">Forecasted Sales</div><div class="metric-value">${fmtMoney(forecastTotal)}</div></div>
     </div>`;
 
     // Conflicts section
