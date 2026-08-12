@@ -8117,10 +8117,12 @@ window.CRM = (function(){
       </div>
     </div>`;
 
-    // Summary metrics
-    const forecastTotal = proposals
-      .filter(p => p.enabled && p.location_id)
-      .reduce((s, p) => s + _forecastForLocation(p.location_id), 0);
+    // Summary metrics. Forecast covers the whole week on the calendar: enabled
+    // proposals PLUS the existing stops the scheduler didn't propose. Each stop
+    // contributes its location's recent-visit average (see _forecastForLocation).
+    const forecastTotal =
+      proposals.filter(p => p.enabled && p.location_id).reduce((s, p) => s + _forecastForLocation(p.location_id), 0) +
+      (existingStops || []).filter(e => e.location_id).reduce((s, e) => s + _forecastForLocation(e.location_id), 0);
     html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px">
       <div class="metric"><div class="metric-label">New Proposals</div><div class="metric-value">${proposals.length}</div></div>
       <div class="metric"><div class="metric-label">Existing Stops</div><div class="metric-value">${existingStops.length}</div></div>
