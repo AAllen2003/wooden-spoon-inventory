@@ -7208,7 +7208,10 @@ window.CRM = (function(){
     // preferred truck are balanced onto whichever of Trucks 1 & 2 is lighter
     // that day. A stop that can't fit its preferred day tries its other eligible
     // weekdays this week; if none have room, it defers (surfaced for review).
-    const CAP_PER_DAY = 3;
+    // Per-truck daily cap REMOVED — unlimited stops per truck per day. Truck
+    // balancing is kept: unlocked stops still go to whichever of Trucks 1 & 2 is
+    // lighter that day, so they spread instead of all piling onto Truck 1.
+    const CAP_PER_DAY = Infinity;
     const _capKey = (t, d) => `${t}|${d}`;
     const capLoad = new Map();
     for (const s of existingInWeek) {
@@ -7247,7 +7250,7 @@ window.CRM = (function(){
         p.scheduled_date = chosen.date;
         capLoad.set(_capKey(chosen.truck, chosen.date), (capLoad.get(_capKey(chosen.truck, chosen.date)) || 0) + 1);
         if (chosen.date !== origDate || chosen.truck !== origTruck) {
-          p.reasons.push(`Balanced to Truck ${chosen.truck} to keep within ${CAP_PER_DAY}/day`);
+          p.reasons.push(`Balanced to Truck ${chosen.truck}`);
         }
       } else {
         p._deferred = true;
@@ -8161,18 +8164,6 @@ window.CRM = (function(){
       </div>`;
     }
 
-    // Deferred — waiting for capacity. These were due this week but bumped for
-    // room. Deselecting a proposed stop pulls the best-fitting one into the slot.
-    if (deferredPool.length) {
-      html += `<div class="card" style="background:var(--amber-bg,#fdf0dc);border:1px solid var(--amber,#B05A00);margin-bottom:14px">
-        <div style="font-family:var(--font-display);font-size:13px;color:var(--amber,#B05A00);margin-bottom:6px"><i class="ti ti-clock-pause"></i> Waiting for capacity (${deferredPool.length})</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:8px;font-style:italic">Due this week but bumped for room. Deselect a proposed stop and the best-fitting one here drops into the freed slot.</div>
-        ${deferredPool.map(p => `<div style="font-size:12px;padding:4px 0">
-          <strong>${esc(p.location_name)}</strong>${p.location_tier && p.location_tier!=='pending' ? ` <span style="font-size:10px;color:var(--text3)">${esc(p.location_tier)}</span>` : ''}
-        </div>`).join('')}
-      </div>`;
-    }
-
     // Suppressed standalone stops — member customers whose route is scheduled the same day
     if (suppressedByRoute.length) {
       html += `<div class="card" style="background:var(--bg2);margin-bottom:14px">
@@ -8344,90 +8335,10 @@ window.CRM = (function(){
     renderProposalReview();
   }
 
-
-  // (enabled proposals + existing stops). Synchronous, window/preference-aware
-  // but travel-approximate — the replacement carries a "verify timing" flag.
-  function _bestFitTimeForDay(cand, truck, dateStr) {
-    const S = state.proposalSession;
-    const t2m = t => { if (!t) return 0; const [h,m] = String(t).split(':'); return (+h)*60 + (+m); };
-    const m2t = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(Math.round(m)%60).padStart(2,'0')}:00`;
-    const occupied = [];
-    for (const p of S.proposals) if (p !== cand && p.enabled && p.truck === truck && p.scheduled_date === dateStr) occupied.push([t2m(p.start_time), t2m(p.end_time)]);
-    for (const ex of (S.existingStops || [])) if (ex.truck === truck && ex.scheduled_date === dateStr) occupied.push([t2m(ex.start_time), t2m(ex.end_time)]);
-    const isFlex = !!cand.isFlexible;
-    const dur = Math.max(30, isFlex ? (cand.flexDurationMin || 60) : ((t2m(cand.end_time) - t2m(cand.start_time)) || 60));
-    const winStart = isFlex ? t2m(cand.flexWindowStart) : 8*60;
-    const winEnd   = isFlex ? t2m(cand.flexWindowEnd)   : 18*60;
-    const clamp = v => Math.max(winStart, Math.min(v, winEnd - dur));
-    const fits = s => !occupied.some(([a,b]) => !(s + dur <= a || s >= b));
-    const preferred = clamp(Math.round((t2m(cand.start_time) || winStart) / 15) * 15);
-    const order = [preferred];
-    for (let s = Math.ceil(winStart/15)*15; s + dur <= winEnd; s += 15) order.push(s);
-    for (const s of order) { const cs = clamp(s); if (fits(cs)) return { start: m2t(cs), end: m2t(cs + dur), clean: true }; }
-    return { start: m2t(preferred), end: m2t(preferred + dur), clean: false }; // no clean slot — placed anyway, flagged
-  }
-
-  // When a proposed stop is rejected, promote the best waiting deferred stop
-  // (bumped only for capacity) into the freed truck/day, if one fits its rules.
-  function promoteDeferredInto(truck, dateStr, freedStart, freedEnd) {
-    const S = state.proposalSession;
-    if (!S) return null;
-    const dow = new Date(dateStr + 'T12:00:00').getDay(); // 0=Sun..6=Sat
-    const t2m = t => { if (!t) return 0; const [h,m] = String(t).split(':'); return (+h)*60 + (+m); };
-
-    const eligible = c => {
-      if (!c || !c.location_id) return false;
-      const dowOK = !c._allowedDows || !c._allowedDows.length || c._allowedDows.includes(dow);
-      const truckOK = (c.truck_lock && (c.truck === 1 || c.truck === 2)) ? c.truck === truck
-                    : (c._preferredTruck === 1 || c._preferredTruck === 2) ? c._preferredTruck === truck
-                    : true; // unlocked can take either truck
-      return dowOK && truckOK;
-    };
-    // Promotable pool: capacity-deferred stops PLUS genuine time-conflict skips
-    // (a stop bumped because something took its slot). Exclude Saturday/weekend-
-    // only skips — those genuinely can't go on a weekday.
-    const promotableConflict = c => !/saturday-only|weekend-only/i.test(c.conflict || '');
-    const candidates = [];
-    for (const c of (S.deferredPool || [])) if (eligible(c)) candidates.push({ c, src: S.deferredPool });
-    for (const c of (S.skippedConflict || [])) if (promotableConflict(c) && eligible(c)) candidates.push({ c, src: S.skippedConflict });
-    if (!candidates.length) return null;
-
-    // Prefer the candidate whose own preferred window overlaps the slot that
-    // just opened — that's the stop the removed one was most likely blocking.
-    const overlapsFreed = c => {
-      if (freedStart == null) return false;
-      const cs = t2m(c.isFlexible ? c.flexWindowStart : c.start_time);
-      const ce = t2m(c.isFlexible ? c.flexWindowEnd : c.end_time);
-      return !(ce <= t2m(freedStart) || cs >= t2m(freedEnd));
-    };
-    candidates.sort((a, b) => (overlapsFreed(b.c) ? 1 : 0) - (overlapsFreed(a.c) ? 1 : 0));
-    const { c: cand, src } = candidates[0];
-
-    const i = src.indexOf(cand);
-    if (i >= 0) src.splice(i, 1);
-    cand.truck = truck;
-    cand.scheduled_date = dateStr;
-    const slot = _bestFitTimeForDay(cand, truck, dateStr);
-    cand.start_time = slot.start;
-    cand.end_time = slot.end;
-    cand.enabled = true;
-    delete cand.conflict;
-    cand.reasons = (cand.reasons || []).filter(r => !/Deferred —|Trucks 1 & 2 at capacity|Balanced to Truck|No slot|[Cc]ouldn't fit/i.test(r));
-    cand.reasons.push('Replacement — filled a slot you cleared\u2003⚠ verify timing/travel');
-    cand._replacement = true;
-    S.proposals.push(cand);
-    return cand;
-  }
-
   function toggleProposal(id) {
     if (!state.proposalSession) return;
     const p = state.proposalSession.proposals.find(x => x.id === id);
-    if (!p) return;
-    const wasEnabled = p.enabled;
-    p.enabled = !p.enabled;
-    // Rejecting a stop frees its slot — try to promote a deferred stop into it.
-    if (wasEnabled && !p.enabled) promoteDeferredInto(p.truck, p.scheduled_date, p.start_time, p.end_time);
-    renderProposalReview();
+    if (p) { p.enabled = !p.enabled; renderProposalReview(); }
   }
 
   function toggleAllProposals() {
