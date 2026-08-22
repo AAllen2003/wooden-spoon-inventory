@@ -5113,6 +5113,7 @@ window.CRM = (function(){
         <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)} · <i class="ti ti-repeat" style="font-size:11px"></i> ${ruleLabel}</div>
         ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
       </div>
+      ${_stopStatusBadges(s)}
       ${salesBadge}
       ${navBtn}
       ${isLocked?'<span class="tier-tag" style="background:var(--amber-bg);color:var(--amber)" title="Truck-locked"><i class="ti ti-lock"></i></span>':''}
@@ -5152,6 +5153,37 @@ window.CRM = (function(){
       state.stops = state.stops.filter(s => s.id !== stopId);
       if (typeof isMob === 'function' && isMob()) renderMobSchedule(); else renderSchedule();
     } catch (e) { alert('Failed: '+e.message); }
+  }
+
+  // Per-stop scheduling-task badges: Contacted / Confirmed / Flyer sent.
+  // Red = not done, green = done. Applied to individual customer stops (not
+  // grouped route stops). New stops default to red (columns default false).
+  function _stopStatusBadges(s) {
+    const defs = [
+      { f: 'contacted',  icon: 'ti-phone', label: 'Contacted' },
+      { f: 'confirmed',  icon: 'ti-check', label: 'Confirmed' },
+      { f: 'flyer_sent', icon: 'ti-send',  label: 'Flyer sent' },
+    ];
+    return `<div style="display:inline-flex;gap:5px;flex-shrink:0">${defs.map(d => {
+      const on = !!s[d.f];
+      return `<button title="${d.label}: ${on ? 'done' : 'not done'} — tap to change" onclick="event.stopPropagation();CRM.toggleStopStatus(${s.id},'${d.f}')" style="width:30px;height:24px;border:none;border-radius:6px;cursor:pointer;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:13px;background:${on ? 'var(--green)' : 'var(--red)'}"><i class="ti ${d.icon}"></i></button>`;
+    }).join('')}</div>`;
+  }
+
+  // Toggle one badge, with a confirm to prevent accidental taps (either way).
+  async function toggleStopStatus(stopId, field) {
+    const labels = { contacted: 'Contacted', confirmed: 'Confirmed', flyer_sent: 'Flyer sent' };
+    if (!labels[field]) return;
+    const s = state.stops.find(x => x.id === stopId);
+    if (!s) return;
+    const next = !s[field];
+    if (!confirm(`Mark "${labels[field]}" as ${next ? 'done' : 'not done'} for this stop?`)) return;
+    try {
+      const { error } = await sb.from('crm_stops').update({ [field]: next }).eq('id', stopId);
+      if (error) throw error;
+      s[field] = next;
+      if (typeof isMob === 'function' && isMob()) renderMobSchedule(); else renderSchedule();
+    } catch (e) { alert('Failed: ' + (e.message || e)); }
   }
 
   // ─── Filter helper for the Add Stop searchable picker ────────────
@@ -8805,6 +8837,7 @@ window.CRM = (function(){
                 <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)}</div>
                 ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
                 ${salesBadge}
+                <div style="margin-top:6px">${_stopStatusBadges(s)}</div>
               </div>
               <button class="btn btn-sm" onclick="event.stopPropagation();CRM.openEditStop(${s.id})" title="Edit stop" style="flex-shrink:0"><i class="ti ti-edit"></i></button>
               <button class="btn btn-sm" onclick="event.stopPropagation();CRM.deleteStop(${s.id})" title="Delete stop" style="flex-shrink:0"><i class="ti ti-trash"></i></button>
@@ -11318,7 +11351,7 @@ window.CRM = (function(){
     init: loadAll,
     renderCustomers, filterCustomers, renderManualList,
     openProfile, setProfileTab, startEdit, cancelEdit, saveEdit,
-    renderSchedule, shiftWeek, setScheduleTruck, setScheduleView, pickScheduleDate, reassignStopTruck, deleteStop,
+    renderSchedule, shiftWeek, setScheduleTruck, setScheduleView, pickScheduleDate, reassignStopTruck, deleteStop, toggleStopStatus,
     openAddStop, saveNewStop, scheduleStopFor, openEditStop, saveEditStop, closeAddStop,
     _filterAddStopLocations, _pickAddStopLocation,
     openAddCustomer, saveNewCustomer, closeAddCustomer,
