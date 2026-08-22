@@ -5068,7 +5068,7 @@ window.CRM = (function(){
           <option value="2" ${s.truck===2?'selected':''}>Truck 2</option>
         </select>
         <button class="btn btn-sm" onclick="event.stopPropagation();CRM.openEditStop(${s.id})" title="Edit route stop"><i class="ti ti-edit"></i></button>
-        <button class="btn btn-sm" onclick="event.stopPropagation();CRM.deleteStop(${s.id})" data-admin-only title="Delete route stop"><i class="ti ti-trash"></i></button>
+        <button class="btn btn-sm" onclick="event.stopPropagation();CRM.deleteStop(${s.id})" title="Delete route stop"><i class="ti ti-trash"></i></button>
       </div>`;
     }
     const loc = state.locations.find(l => l.id === s.location_id);
@@ -5121,7 +5121,7 @@ window.CRM = (function(){
         <option value="2" ${s.truck===2?'selected':''}>Truck 2</option>
       </select>
       <button class="btn btn-sm" onclick="event.stopPropagation();CRM.openEditStop(${s.id})" title="Edit stop"><i class="ti ti-edit"></i></button>
-      <button class="btn btn-sm" onclick="event.stopPropagation();CRM.deleteStop(${s.id})" data-admin-only title="Delete stop"><i class="ti ti-trash"></i></button>
+      <button class="btn btn-sm" onclick="event.stopPropagation();CRM.deleteStop(${s.id})" title="Delete stop"><i class="ti ti-trash"></i></button>
     </div>`;
   }
 
@@ -8788,6 +8788,7 @@ window.CRM = (function(){
                 ${salesBadge}
               </div>
               <button class="btn btn-sm" onclick="event.stopPropagation();CRM.openEditStop(${s.id})" title="Edit stop" style="flex-shrink:0"><i class="ti ti-edit"></i></button>
+              <button class="btn btn-sm" onclick="event.stopPropagation();CRM.deleteStop(${s.id})" title="Delete stop" style="flex-shrink:0"><i class="ti ti-trash"></i></button>
               ${navUrl ? `<a href="${navUrl}" target="_blank" rel="noopener" style="text-decoration:none;flex-shrink:0"><button class="btn btn-sm" style="background:var(--green);color:#fff;border-color:var(--green)"><i class="ti ti-navigation"></i></button></a>` : ''}
             </div>`;
           }).join('')}
