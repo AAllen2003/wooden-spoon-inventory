@@ -5150,7 +5150,7 @@ window.CRM = (function(){
       const { error } = await sb.from('crm_stops').delete().eq('id', stopId);
       if (error) throw error;
       state.stops = state.stops.filter(s => s.id !== stopId);
-      renderSchedule();
+      if (typeof isMob === 'function' && isMob()) renderMobSchedule(); else renderSchedule();
     } catch (e) { alert('Failed: '+e.message); }
   }
 
@@ -5399,8 +5399,7 @@ window.CRM = (function(){
   function openEditStop(stopId) {
     const s = state.stops.find(x => x.id === stopId);
     if (!s) { alert('Stop not found.'); return; }
-    const root = document.getElementById('crm-schedule-content');
-    if (!root) return;
+    const onMobile = typeof isMob === 'function' && isMob();
     const locOptions = state.locations
       .filter(l => l.status === 'active')
       .sort((a, b) => a.location_name.localeCompare(b.location_name))
@@ -5411,10 +5410,10 @@ window.CRM = (function(){
       .map(r => `<option value="${r}" ${s.recurrence_rule===r?'selected':''}>${r}</option>`).join('');
 
     state._editStopId = stopId;
-    root.innerHTML = `<div class="card" style="background:var(--bg)">
-      <div class="card-header"><span class="card-title">Edit Stop</span></div>
+    const colsStyle = onMobile ? 'display:flex;flex-direction:column' : 'display:grid;grid-template-columns:1fr 1fr;gap:14px';
+    const formInner = `
       <p class="section-intro" style="margin-bottom:14px">Editing affects only this single stop. Changing the customer reassigns it; changing the date moves it on the calendar. Sales already attributed to this stop are unaffected (manage those via Sales History → Reassign).</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div style="${colsStyle}">
         <div>
           ${selField('Location','edit-loc',locOptions)}
           ${editField('Date','edit-date',s.scheduled_date || '')}
@@ -5428,13 +5427,32 @@ window.CRM = (function(){
         </div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
-        <button class="btn btn-sm" onclick="CRM.renderSchedule()">Cancel</button>
+        <button class="btn btn-sm" onclick="${onMobile ? 'CRM.closeAddStop()' : 'CRM.renderSchedule()'}">Cancel</button>
         <button class="btn btn-sm btn-primary" onclick="CRM.saveEditStop()"><i class="ti ti-check"></i> Save Changes</button>
-      </div>
-    </div>`;
-    document.getElementById('edit-date').type = 'date';
-    document.getElementById('edit-start').type = 'time';
-    document.getElementById('edit-end').type = 'time';
+      </div>`;
+    const setTypes = () => {
+      const d = document.getElementById('edit-date'); if (d) d.type = 'date';
+      const st = document.getElementById('edit-start'); if (st) st.type = 'time';
+      const en = document.getElementById('edit-end'); if (en) en.type = 'time';
+    };
+
+    if (onMobile) {
+      // Full-screen overlay, same pattern as Add Stop — a background refresh
+      // can't clobber it, unlike rendering into the schedule div.
+      closeMergeModal();
+      const modal = document.createElement('div');
+      modal.id = 'merge-modal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;overflow-y:auto;-webkit-overflow-scrolling:touch';
+      modal.innerHTML = `<div style="background:var(--surface);min-height:100vh;padding:18px 16px;box-sizing:border-box"><div style="font-family:var(--font-display);font-size:20px;color:var(--sidebar);margin-bottom:14px">Edit Stop</div>${formInner}</div>`;
+      document.body.appendChild(modal);
+      setTypes();
+      return;
+    }
+
+    const root = document.getElementById('crm-schedule-content');
+    if (!root) return;
+    root.innerHTML = `<div class="card" style="background:var(--bg)"><div class="card-header"><span class="card-title">Edit Stop</span></div>${formInner}</div>`;
+    setTypes();
   }
 
   async function saveEditStop() {
@@ -5468,7 +5486,8 @@ window.CRM = (function(){
       const i = state.stops.findIndex(x => x.id === stopId);
       if (i >= 0) state.stops[i] = upd;
       state._editStopId = null;
-      renderSchedule();
+      if (typeof isMob === 'function' && isMob()) { if (typeof closeMergeModal === 'function') closeMergeModal(); renderMobSchedule(); }
+      else renderSchedule();
     } catch (e) {
       console.error('[CRM] save edit stop failed', e);
       alert('Save failed: ' + (e.message || e));
