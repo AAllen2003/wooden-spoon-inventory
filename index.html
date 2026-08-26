@@ -5020,7 +5020,12 @@ window.CRM = (function(){
           <button class="btn btn-sm" onclick="CRM.cancelProposals()"><i class="ti ti-trash"></i> Discard</button>
         </div>
       </div>` : '';
-    root.innerHTML = draftBanner + truckTabs + body;
+    const projected = stops.reduce((sum, s) => sum + _forecastForLocation(s.location_id), 0);
+    const projBanner = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px">
+      <div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;font-weight:700"><i class="ti ti-trending-up"></i> Projected sales ${state.scheduleView==='day'?'today':'this week'}</div>
+      <div style="font-size:22px;font-weight:800;color:var(--sidebar);font-family:var(--font-display)">${fmtMoney(projected)}</div>
+    </div>`;
+    root.innerHTML = draftBanner + projBanner + truckTabs + body;
     applyPermissions();
     const pastStops = truckStops.filter(s => isStopPast(s)).slice(0, 10);
     (async () => {
@@ -8847,7 +8852,12 @@ window.CRM = (function(){
         </div>`;
       }).join('');
     }
-    root.innerHTML = `<div class="card">${headerHtml}${tabsHtml}${body}</div>`;
+    const projectedMob = stops.reduce((sum, s) => sum + _forecastForLocation(s.location_id), 0);
+    const projBannerMob = `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:9px 12px;margin-bottom:12px">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;font-weight:700"><i class="ti ti-trending-up"></i> Projected ${state.scheduleView==='day'?'today':'this week'}</div>
+      <div style="font-size:19px;font-weight:800;color:var(--sidebar);font-family:var(--font-display)">${fmtMoney(projectedMob)}</div>
+    </div>`;
+    root.innerHTML = `<div class="card">${headerHtml}${projBannerMob}${tabsHtml}${body}</div>`;
 
     // Attribute sales for past stops, same as the desktop schedule. Each visit
     // write propagates via Supabase realtime, but renderCurrent() only refreshes
