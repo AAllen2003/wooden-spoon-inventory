@@ -9923,10 +9923,29 @@ window.CRM = (function(){
       </div>`;
   }
 
+  // Human label for an edit-log target. Stops show the customer name + date
+  // (from the live stop, or the log's stored snapshot if the stop was deleted)
+  // rather than an internal id the user can't see anywhere.
+  function _editLogStopLabel(e) {
+    const src = state.stops.find(s => s.id === e.row_id) || e.after_row || e.before_row || {};
+    const locId = src.location_id;
+    const locName = locId != null
+      ? (state.locations.find(l => l.id === locId)?.location_name
+         || state.deletedLocations?.find(l => l.id === locId)?.location_name)
+      : null;
+    const namePart = locName || 'Stop';
+    let datePart = '';
+    if (src.scheduled_date) {
+      try { datePart = fmtDateShort(new Date(src.scheduled_date + 'T12:00:00')); }
+      catch (_) { datePart = String(src.scheduled_date); }
+    }
+    return datePart ? `${namePart} · ${datePart}` : namePart;
+  }
+
   function _editLogRow(e) {
     const target = e.table_name === 'crm_locations'
       ? (state.locations.find(l => l.id === e.row_id)?.location_name || state.deletedLocations?.find(l => l.id === e.row_id)?.location_name || `#${e.row_id}`)
-      : `Stop #${e.row_id}`;
+      : _editLogStopLabel(e);
     const summary = _editLogSummary(e);
     const reverted = e.reverted_at;
     const rowStyle = reverted ? 'opacity:0.55' : '';
