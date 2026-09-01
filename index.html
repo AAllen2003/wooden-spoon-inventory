@@ -5058,6 +5058,17 @@ window.CRM = (function(){
     })();
   }
 
+  // Show manually-typed stop notes on the calendar, but hide the scheduler's
+  // and seed data's auto-generated notes (e.g. "Auto-proposed: ..." and
+  // "(Truck N historical record)"), which are clutter for salesmen.
+  function _displayNote(notes) {
+    if (!notes) return '';
+    const n = String(notes).trim();
+    if (/^auto-proposed:/i.test(n)) return '';
+    if (/^\(?\s*truck\s*\d*\s*historical record\s*\)?$/i.test(n)) return '';
+    return notes;
+  }
+
   function renderStopRow(s) {
     // ─ Route stops: distinct visual treatment; clicking opens the route detail view
     if (s.route_id) {
@@ -5088,7 +5099,7 @@ window.CRM = (function(){
         <div style="flex:1;min-width:0;cursor:pointer">
           <div style="font-size:13px;font-weight:700;color:var(--sidebar);text-transform:uppercase;letter-spacing:.02em"><i class="ti ti-route"></i> ${esc(routeName)} <span style="font-weight:400;font-size:11px;color:var(--text3);text-transform:none;letter-spacing:0">· ${memberCount} stop${memberCount === 1 ? '' : 's'}</span></div>
           <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)}</div>
-          ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
+          ${(()=>{const _dn=_displayNote(s.notes);return _dn?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(_dn)}</div>`:'';})()}
         </div>
         ${navBtn}
         <select onchange="CRM.reassignStopTruck(${s.id}, this.value)" onclick="event.stopPropagation()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;font-family:var(--font-body)">
@@ -5140,7 +5151,7 @@ window.CRM = (function(){
         <div style="font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.02em">${esc(name)}</div>
         ${(() => { const a = [loc?.full_address, loc?.city, loc?.state, loc?.zip].filter(Boolean).join(', '); return a ? `<div style="font-size:11px;color:var(--text2);margin-top:2px"><i class="ti ti-map-pin" style="font-size:11px"></i> ${esc(a)}</div>` : ''; })()}
         <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)} · <i class="ti ti-repeat" style="font-size:11px"></i> ${ruleLabel}</div>
-        ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
+        ${(()=>{const _dn=_displayNote(s.notes);return _dn?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(_dn)}</div>`:'';})()}
       </div>
       ${_stopStatusBadges(s)}
       ${salesBadge}
@@ -8841,7 +8852,7 @@ window.CRM = (function(){
                 <div style="flex:1;cursor:pointer;min-width:0">
                   <div style="font-size:13px;font-weight:700;color:var(--sidebar);text-transform:uppercase;letter-spacing:.02em"><i class="ti ti-route"></i> ${esc(routeName)}</div>
                   <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} \u2013 ${fmtTime(s.end_time)} \u00b7 ${memberCount} stop${memberCount === 1 ? '' : 's'}</div>
-                  ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
+                  ${(()=>{const _dn=_displayNote(s.notes);return _dn?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(_dn)}</div>`:'';})()}
                 </div>
                 <i class="ti ti-chevron-right" style="color:var(--text3);flex-shrink:0"></i>
               </div>`;
@@ -8871,7 +8882,7 @@ window.CRM = (function(){
                 <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.02em">${loc?esc(loc.location_name):'Unknown'}</div>
                 ${(() => { const a = [loc?.full_address, loc?.city, loc?.state, loc?.zip].filter(Boolean).join(', '); return a ? `<div style="font-size:11px;color:var(--text2);margin-top:2px"><i class="ti ti-map-pin" style="font-size:11px"></i> ${esc(a)}</div>` : ''; })()}
                 <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)}</div>
-                ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
+                ${(()=>{const _dn=_displayNote(s.notes);return _dn?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(_dn)}</div>`:'';})()}
                 ${salesBadge}
                 <div style="margin-top:6px">${_stopStatusBadges(s)}</div>
               </div>
