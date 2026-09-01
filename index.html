@@ -5138,6 +5138,7 @@ window.CRM = (function(){
       <div style="width:8px;height:40px;background:${s.truck===1?'var(--sidebar)':'var(--green)'};border-radius:2px;flex-shrink:0"></div>
       <div style="flex:1;min-width:0;cursor:pointer">
         <div style="font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.02em">${esc(name)}</div>
+        ${(() => { const a = [loc?.full_address, loc?.city, loc?.state, loc?.zip].filter(Boolean).join(', '); return a ? `<div style="font-size:11px;color:var(--text2);margin-top:2px"><i class="ti ti-map-pin" style="font-size:11px"></i> ${esc(a)}</div>` : ''; })()}
         <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)} · <i class="ti ti-repeat" style="font-size:11px"></i> ${ruleLabel}</div>
         ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
       </div>
@@ -8868,6 +8869,7 @@ window.CRM = (function(){
             return `<div style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;display:flex;gap:10px;align-items:center">
               <div onclick="CRM.openMobProfile(${s.location_id})" style="flex:1;cursor:pointer;min-width:0">
                 <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.02em">${loc?esc(loc.location_name):'Unknown'}</div>
+                ${(() => { const a = [loc?.full_address, loc?.city, loc?.state, loc?.zip].filter(Boolean).join(', '); return a ? `<div style="font-size:11px;color:var(--text2);margin-top:2px"><i class="ti ti-map-pin" style="font-size:11px"></i> ${esc(a)}</div>` : ''; })()}
                 <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)}</div>
                 ${s.notes?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(s.notes)}</div>`:''}
                 ${salesBadge}
