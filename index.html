@@ -3332,6 +3332,29 @@ window.CRM = (function(){
   const fmtDate = d => { const dt = _parseDate(d); return dt ? dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—'; };
   const fmtDateShort = d => { const dt = _parseDate(d); return dt ? dt.toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—'; };
   const fmtDOW = d => { const dt = (d instanceof Date)?d:new Date(d); return dt.toLocaleDateString('en-US',{weekday:'short'}); };
+
+  // Near-universal business-closure federal holidays — the ones most companies
+  // close for. Returns the holiday name for a YYYY-MM-DD (accounting for the
+  // weekday a weekend holiday is observed on), else null. Deliberately excludes
+  // MLK Day, Presidents' Day, Juneteenth, Columbus Day, Veterans Day, which many
+  // private employers still work.
+  function _holidayName(dateStr) {
+    if (!dateStr) return null;
+    const d = new Date(dateStr + 'T12:00:00');
+    if (isNaN(d.getTime())) return null;
+    const m = d.getMonth() + 1, day = d.getDate(), dow = d.getDay();
+    const fixed = (mm, dd) => (mm === 1 && dd === 1) ? "New Year's Day"
+                : (mm === 7 && dd === 4) ? 'Independence Day'
+                : (mm === 12 && dd === 25) ? 'Christmas Day' : null;
+    const nm = fixed(m, day);
+    if (nm && dow !== 0 && dow !== 6) return nm;                        // actual weekday holiday
+    if (dow === 5) { const nx = new Date(d); nx.setDate(day + 1); const n = fixed(nx.getMonth()+1, nx.getDate()); if (n) return n + ' (observed)'; } // Fri before a Sat holiday
+    if (dow === 1) { const pv = new Date(d); pv.setDate(day - 1); const n = fixed(pv.getMonth()+1, pv.getDate()); if (n) return n + ' (observed)'; } // Mon after a Sun holiday
+    if (m === 5  && dow === 1 && day > 24)              return 'Memorial Day';  // last Mon of May
+    if (m === 9  && dow === 1 && day <= 7)              return 'Labor Day';     // 1st Mon of Sep
+    if (m === 11 && dow === 4 && day >= 22 && day <= 28) return 'Thanksgiving'; // 4th Thu of Nov
+    return null;
+  }
   const fmtTime = t => { if(!t) return '—'; const [h,m] = t.split(':'); const hh=parseInt(h,10); const ap=hh>=12?'PM':'AM'; const h12=((hh%12)||12); return `${h12}:${m} ${ap}`; };
   const tierLabel = t => ({high:'High',medium:'Medium',low:'Low',pending:'Pending'})[t]||'—';
   const tierClass = t => ({high:'tier-hi',medium:'tier-med',low:'tier-low',pending:'tier-pend'})[t]||'tier-pend';
@@ -5005,7 +5028,7 @@ window.CRM = (function(){
         const dt = new Date(d + 'T00:00:00');
         return `<div style="margin-bottom:18px">
           <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">
-            ${dt.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}
+            ${dt.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}${(()=>{const h=_holidayName(d);return h?' <span style="color:var(--red);font-weight:700;font-size:12px">· '+h+'</span>':'';})()}
           </div>
           ${byDay[d].map(s => renderStopRow(s)).join('')}
         </div>`;
@@ -5376,6 +5399,8 @@ window.CRM = (function(){
       alert(kind === 'route' ? 'Pick a route and date.' : 'Pick a location and date.');
       return;
     }
+    const _newStopHoliday = _holidayName(scheduled_date);
+    if (_newStopHoliday && !confirm(`${scheduled_date} is ${_newStopHoliday} — most businesses are closed that day. Schedule anyway?`)) return;
 
     let data;
     if (kind === 'route') {
@@ -5508,6 +5533,8 @@ window.CRM = (function(){
       notes: get('edit-notes') || null
     };
     if (!patch.location_id || !patch.scheduled_date) { alert('Pick a location and date.'); return; }
+    const _editHoliday = _holidayName(patch.scheduled_date);
+    if (_editHoliday && !confirm(`${patch.scheduled_date} is ${_editHoliday} — most businesses are closed that day. Move it there anyway?`)) return;
     // Validate the time order
     if (patch.start_time && patch.end_time && patch.end_time <= patch.start_time) {
       alert('End time must be after start time.');
@@ -7283,7 +7310,7 @@ window.CRM = (function(){
     };
     const _dateOpts = p => {
       const dows = (p._allowedDows && p._allowedDows.length) ? p._allowedDows : [1, 2, 3, 4, 5];
-      const dates = dows.map(_weekdayISO);
+      const dates = dows.map(_weekdayISO).filter(dt => !_holidayName(dt)); // never auto-schedule on a holiday
       const prefDate = p.scheduled_date;
       const rest = dates.filter(d => d !== prefDate).sort();
       return dates.includes(prefDate) ? [prefDate, ...rest] : dates.slice().sort(); // preferred day first
@@ -8248,7 +8275,7 @@ window.CRM = (function(){
         });
         html += `<div style="margin-bottom:16px">
           <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">
-            ${dt.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}
+            ${dt.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}${(()=>{const h=_holidayName(d);return h?' <span style="color:var(--red);font-weight:700;font-size:12px">· '+h+'</span>':'';})()}
           </div>
           ${byDay[d].map(p => renderProposalRow(p)).join('')}
         </div>`;
@@ -8365,6 +8392,8 @@ window.CRM = (function(){
     let end = document.getElementById('ap-end').value;
     if (!locId || !date || !start || !end) { alert('Please fill in every field.'); return; }
     if (end <= start) { alert('End time must be after start time.'); return; }
+    const _apHoliday = _holidayName(date);
+    if (_apHoliday && !confirm(`${date} is ${_apHoliday} — most businesses are closed that day. Add it anyway?`)) return;
     const loc = state.locations.find(l => l.id === locId);
     if (!loc) { alert('Customer not found.'); return; }
     const fix = t => t.length === 5 ? t + ':00' : t; // HH:MM -> HH:MM:SS
@@ -8800,7 +8829,7 @@ window.CRM = (function(){
       body = Object.keys(byDay).sort().map(d=>{
         const dt = new Date(d+'T00:00:00');
         return `<div style="margin-bottom:16px">
-          <div style="font-family:var(--font-display);font-size:13px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">${dt.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}</div>
+          <div style="font-family:var(--font-display);font-size:13px;color:var(--sidebar);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--bg2)">${dt.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}${(()=>{const h=_holidayName(d);return h?' <span style="color:var(--red);font-weight:700;font-size:12px">· '+h+'</span>':'';})()}</div>
           ${byDay[d].map(s=>{
             // Route stops on mobile: distinct styling, opens the route detail modal
             if (s.route_id) {
