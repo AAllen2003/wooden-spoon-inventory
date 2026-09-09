@@ -503,6 +503,11 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
         <p class="section-intro">Set each item's batch yield (units per batch). Yields are saved to cloud and shared with all staff.</p>
         <div class="tbl-wrap"><table><thead><tr><th>Item</th><th style="text-align:center">On Hand</th><th style="text-align:center">Total Par</th><th style="text-align:center">Needed</th><th style="text-align:center">Batch Yield</th><th style="text-align:center">Batches</th><th>Result</th></tr></thead><tbody id="prod-table"></tbody></table></div>
       </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title"><i class="ti ti-history"></i> Production Log</span></div>
+        <p class="section-intro">Every production entry, newest first — item, quantity added to the warehouse, when, and who logged it.</p>
+        <div id="prod-log"></div>
+      </div>
     </div>
 
     <div class="section" id="sec-sales">
@@ -1209,7 +1214,7 @@ function showSection(name,btn){
   if(name==='inventory')renderInventory();
   if(name==='locations')renderLocations();
   if(name==='par')renderPar();
-  if(name==='production')renderProduction();
+  if(name==='production'){renderProduction();loadProductionLog().then(renderProductionLog);}
   if(name==='sales'){renderSales();loadAvailDates();}
   if(name==='transfers')renderTransfers();
   if(name==='settings'){renderSettings();syncCI(S.colors);syncBI(S.badges);}
@@ -2050,6 +2055,10 @@ async function logProduction(){
     return;
   }
   if(status){status.textContent='✓ Added '+qty+' '+item+' to Warehouse. New total: '+newTotal;status.style.color='#2A6B3A';}
+  try{
+    const {data:pl}=await sb.from('production_log').insert({item,qty,location:'Warehouse',logged_by:currentUser?.id||null,logged_by_email:(currentUser?.email||'').toLowerCase()}).select().single();
+    if(pl){ S.productionLog=S.productionLog||[]; S.productionLog.unshift(pl); renderProductionLog(); }
+  }catch(plErr){ console.error('[production] log insert failed (inventory was updated):',plErr); }
   qtyInp.value='';
   itemSel.value='';
   checkAlerts();renderAll();
@@ -2080,6 +2089,10 @@ async function mobLogProduction(){
     return;
   }
   if(status){status.textContent='✓ Added '+qty+' '+item+' to Warehouse. New total: '+newTotal;status.style.color='#2A6B3A';}
+  try{
+    const {data:pl}=await sb.from('production_log').insert({item,qty,location:'Warehouse',logged_by:currentUser?.id||null,logged_by_email:(currentUser?.email||'').toLowerCase()}).select().single();
+    if(pl){ S.productionLog=S.productionLog||[]; S.productionLog.unshift(pl); renderProductionLog(); }
+  }catch(plErr){ console.error('[production] log insert failed (inventory was updated):',plErr); }
   qtyInp.value='';
   itemSel.value='';
   checkAlerts();renderAll();
@@ -2266,6 +2279,35 @@ function renderSales(){
 
 // In-memory cache of recent loss entries
 S.lossEntries = S.lossEntries || [];
+// In-memory cache of recent production log entries
+S.productionLog = S.productionLog || [];
+
+async function loadProductionLog(){
+  if(!sb) return;
+  try{
+    const {data,error}=await sb.from('production_log').select('*').order('logged_at',{ascending:false}).limit(500);
+    if(error) throw error;
+    S.productionLog = data||[];
+  }catch(e){ console.error('[production] log load failed:',e); }
+}
+
+function _prodWhen(ts){ try{ return new Date(ts).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }catch(e){ return ts||''; } }
+
+function renderProductionLog(){
+  const rows=(S.productionLog||[]).slice(0,150);
+  const d=document.getElementById('prod-log');
+  if(d){
+    d.innerHTML = rows.length
+      ? `<div class="tbl-wrap"><table><thead><tr><th>When</th><th>Item</th><th style="text-align:center">Qty Added</th><th>Logged By</th></tr></thead><tbody>${rows.map(e=>`<tr><td style="white-space:nowrap;color:var(--text3);font-size:12px">${esc(_prodWhen(e.logged_at))}</td><td style="font-weight:700">${esc(e.item)}</td><td style="text-align:center;font-family:'Abril Fatface',serif;font-size:16px;color:var(--green)">+${e.qty}</td><td style="font-size:12px;color:var(--text3)">${esc(e.logged_by_email||'—')}</td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="section-intro" style="text-align:center">No production logged yet.</p>';
+  }
+  const m=document.getElementById('mob-prod-log');
+  if(m){
+    m.innerHTML = rows.length
+      ? rows.map(e=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)"><div style="min-width:0"><div style="font-weight:700;font-size:13px">${esc(e.item)}</div><div style="font-size:11px;color:var(--text3)">${esc(_prodWhen(e.logged_at))}${e.logged_by_email?' · '+esc(e.logged_by_email):''}</div></div><div style="font-family:'Abril Fatface',serif;font-size:18px;color:var(--green);flex-shrink:0">+${e.qty}</div></div>`).join('')
+      : '<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px">No production logged yet.</div>';
+  }
+}
 
 const LOSS_CATEGORIES = [
   { value:'spoilage', label:'Spoilage' },
@@ -2942,7 +2984,7 @@ function _mobRenderRaw(){
   else if(mobSection==='alerts')el.innerHTML=mobAlertsHTML();
   else if(mobSection==='picklist')el.innerHTML=mobPickListHTML();
   else if(mobSection==='transfers')el.innerHTML=mobXfrHTML();
-  else if(mobSection==='production')el.innerHTML=mobProdHTML();
+  else if(mobSection==='production'){el.innerHTML=mobProdHTML();loadProductionLog().then(renderProductionLog);}
   else if(mobSection==='sales')el.innerHTML=mobSalesHTML();
   else if(mobSection==='loss'){
     el.innerHTML='<div style="padding:8px 0"><button class="btn btn-sm btn-accent" onclick="openLogLoss()" style="margin-bottom:14px;width:100%"><i class="ti ti-plus"></i> Log Loss</button><div id="loss-content"></div></div>';
@@ -3153,6 +3195,7 @@ function mobProdHTML(){
     return`<div class="m-card"><div class="m-prod-hdr"><span class="m-prod-name">${item}</span><span class="m-ic-badge">${cat==='Frozen Foods'?'Food':'Dessert'}</span></div><div class="m-prod-stats"><div class="m-prod-stat"><div class="m-prod-sv ${ohC}">${oh}</div><div class="m-prod-sl">On Hand</div></div><div class="m-prod-stat"><div class="m-prod-sv" style="color:var(--text3)">${tp||'—'}</div><div class="m-prod-sl">Total Par</div></div><div class="m-prod-stat"><div class="m-prod-sv ${ndC}">${nd>0?'+'+nd:'✓'}</div><div class="m-prod-sl">Needed</div></div></div><div class="m-prod-yield"><span class="m-prod-yield-lbl">Batch yield</span><input type="number" class="m-prod-yield-inp" value="${y||''}" min="1" placeholder="e.g. 15" style="${yErr}" onchange="S.batchYields['${mobEsc(item)}']=Math.max(0,parseInt(this.value)||0);document.getElementById('mob-body').innerHTML=mobProdHTML()"></div><div class="m-prod-result ${rc}">${rt}</div></div>`;
   }).join('');
   h+=`<button class="m-btn" onclick="mobSaveYields()" style="margin-top:6px">Save Batch Yields</button>`;
+  h+=`<div class="m-card" style="margin-top:14px"><div style="font-size:15px;font-weight:700;color:var(--sidebar);margin-bottom:8px"><i class="ti ti-history"></i> Production Log</div><div id="mob-prod-log"></div></div>`;
   return h;
 }
 async function mobSaveYields(){
