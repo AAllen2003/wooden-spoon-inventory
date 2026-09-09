@@ -4520,6 +4520,7 @@ window.CRM = (function(){
         <div style="font-size:12px;color:var(--text3);line-height:1.6">
           <div><strong style="color:var(--text)">Preferred truck:</strong> ${l.preferred_truck?'Truck '+l.preferred_truck:'Either'}</div>
           <div><strong style="color:var(--text)">Truck lock:</strong> ${l.truck_lock?'Yes — only preferred truck':'No — any truck'}</div>
+          <div><strong style="color:var(--text)">Social media:</strong> ${l.no_social_media?'<span style="color:var(--red);font-weight:700">Not allowed</span>':'Allowed'}</div>
           <div><strong style="color:var(--text)">Status:</strong> ${esc(l.status||'active')}</div>
           <div><strong style="color:var(--text)">Tier:</strong> ${tierLabel(l.tier)}</div>
         </div>
@@ -4593,6 +4594,12 @@ window.CRM = (function(){
             ${['active','pending','archived'].map(s => `<option value="${s}" ${l.status===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
           </select>
         </div>
+        <div style="margin-bottom:10px">
+          <label style="font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="f-nosocial" ${l.no_social_media?'checked':''}>
+            <span>Do not post this customer's stops on social media</span>
+          </label>
+        </div>
       </div>
     </div>`;
   }
@@ -4628,7 +4635,8 @@ window.CRM = (function(){
       preferred_truck: document.getElementById('f-truck')?.value ? parseInt(document.getElementById('f-truck').value,10) : null,
       truck_lock: document.getElementById('f-lock')?.checked || false,
       tier: get('f-tier'),
-      status: get('f-status')
+      status: get('f-status'),
+      no_social_media: document.getElementById('f-nosocial')?.checked || false
     };
 
     // Detect if any address-relevant field changed
@@ -5148,7 +5156,7 @@ window.CRM = (function(){
     return `<div style="display:flex;gap:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;align-items:center" onclick="CRM.openProfile(${s.location_id})" data-cursor="pointer">
       <div style="width:8px;height:40px;background:${s.truck===1?'var(--sidebar)':'var(--green)'};border-radius:2px;flex-shrink:0"></div>
       <div style="flex:1;min-width:0;cursor:pointer">
-        <div style="font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.02em">${esc(name)}</div>
+        <div style="font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.02em">${esc(name)}${loc?.no_social_media?' <span style="color:var(--red);font-size:10px;font-weight:700;text-transform:none;letter-spacing:0">(No Social Media)</span>':''}</div>
         ${(() => { const a = [loc?.full_address, loc?.city, loc?.state, loc?.zip].filter(Boolean).join(', '); return a ? `<div style="font-size:11px;color:var(--text2);margin-top:2px"><i class="ti ti-map-pin" style="font-size:11px"></i> ${esc(a)}</div>` : ''; })()}
         <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)} · <i class="ti ti-repeat" style="font-size:11px"></i> ${ruleLabel}</div>
         ${(()=>{const _dn=_displayNote(s.notes);return _dn?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(_dn)}</div>`:'';})()}
@@ -8751,6 +8759,7 @@ window.CRM = (function(){
           <div style="font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Scheduling</div>
           <div style="margin-top:3px;font-weight:700">${esc(l.scheduling_preference||'No preference set')}</div>
           <div style="font-size:12px;color:var(--text3);margin-top:4px">Truck: ${l.preferred_truck?'Truck '+l.preferred_truck+(l.truck_lock?' (locked)':''):'Any'}</div>
+          <div style="font-size:12px;margin-top:4px">Social media: ${l.no_social_media?'<span style="color:var(--red);font-weight:700">Not allowed</span>':'<span style="color:var(--text3)">Allowed</span>'}</div>
         </div>
         ${l.notes ? `<div style="margin-top:10px;font-size:12px;color:var(--text2);font-style:italic">"${esc(l.notes)}"</div>` : ''}
         <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -8879,7 +8888,7 @@ window.CRM = (function(){
             }
             return `<div style="padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;display:flex;gap:10px;align-items:center">
               <div onclick="CRM.openMobProfile(${s.location_id})" style="flex:1;cursor:pointer;min-width:0">
-                <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.02em">${loc?esc(loc.location_name):'Unknown'}</div>
+                <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.02em">${loc?esc(loc.location_name):'Unknown'}${loc?.no_social_media?' <span style="color:var(--red);font-size:10px;font-weight:700;text-transform:none;letter-spacing:0">(No Social Media)</span>':''}</div>
                 ${(() => { const a = [loc?.full_address, loc?.city, loc?.state, loc?.zip].filter(Boolean).join(', '); return a ? `<div style="font-size:11px;color:var(--text2);margin-top:2px"><i class="ti ti-map-pin" style="font-size:11px"></i> ${esc(a)}</div>` : ''; })()}
                 <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)}</div>
                 ${(()=>{const _dn=_displayNote(s.notes);return _dn?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(_dn)}</div>`:'';})()}
