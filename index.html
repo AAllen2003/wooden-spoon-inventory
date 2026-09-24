@@ -5152,6 +5152,7 @@ window.CRM = (function(){
           <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} – ${fmtTime(s.end_time)}</div>
           ${(()=>{const _dn=_displayNote(s.notes);return _dn?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(_dn)}</div>`:'';})()}
         </div>
+        ${_stopStatusBadges(s)}
         ${navBtn}
         <select onchange="CRM.reassignStopTruck(${s.id}, this.value)" onclick="event.stopPropagation()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;font-family:var(--font-body)">
           <option value="1" ${s.truck===1?'selected':''}>Truck 1</option>
@@ -5535,12 +5536,17 @@ window.CRM = (function(){
       .map(r => `<option value="${r}" ${s.recurrence_rule===r?'selected':''}>${r}</option>`).join('');
 
     state._editStopId = stopId;
+    const isRoute = !!s.route_id;
+    const routeName = isRoute ? (state.routes.find(r => r.id === s.route_id)?.name || 'Route') : '';
+    const title = isRoute ? 'Edit Route Stop' : 'Edit Stop';
     const colsStyle = onMobile ? 'display:flex;flex-direction:column' : 'display:grid;grid-template-columns:1fr 1fr;gap:14px';
     const formInner = `
-      <p class="section-intro" style="margin-bottom:14px">Editing affects only this single stop. Changing the customer reassigns it; changing the date moves it on the calendar. Sales already attributed to this stop are unaffected (manage those via Sales History → Reassign).</p>
+      <p class="section-intro" style="margin-bottom:14px">${isRoute ? 'Editing affects only this route stop — change its date, time, or truck. To change which customers are on the route, use the Routes tab.' : 'Editing affects only this single stop. Changing the customer reassigns it; changing the date moves it on the calendar. Sales already attributed to this stop are unaffected (manage those via Sales History → Reassign).'}</p>
       <div style="${colsStyle}">
         <div>
-          ${selField('Location','edit-loc',locOptions)}
+          ${isRoute
+            ? `<div style="margin-bottom:12px"><label style="display:block;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Route</label><div style="padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg2);font-size:13px"><i class="ti ti-route"></i> ${esc(routeName)}</div></div>`
+            : selField('Location','edit-loc',locOptions)}
           ${editField('Date','edit-date',s.scheduled_date || '')}
           ${editField('Notes','edit-notes',s.notes || '',true)}
         </div>
@@ -5548,7 +5554,7 @@ window.CRM = (function(){
           ${editField('Start time','edit-start',s.start_time || '09:00')}
           ${editField('End time','edit-end',s.end_time || '10:00')}
           ${selField('Truck','edit-truck',truckOptions)}
-          ${selField('Recurrence','edit-rule',ruleOptions)}
+          ${isRoute ? '' : selField('Recurrence','edit-rule',ruleOptions)}
         </div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
@@ -5568,7 +5574,7 @@ window.CRM = (function(){
       const modal = document.createElement('div');
       modal.id = 'merge-modal';
       modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;overflow-y:auto;-webkit-overflow-scrolling:touch';
-      modal.innerHTML = `<div style="background:var(--surface);min-height:100vh;padding:18px 16px;box-sizing:border-box"><div style="font-family:var(--font-display);font-size:20px;color:var(--sidebar);margin-bottom:14px">Edit Stop</div>${formInner}</div>`;
+      modal.innerHTML = `<div style="background:var(--surface);min-height:100vh;padding:18px 16px;box-sizing:border-box"><div style="font-family:var(--font-display);font-size:20px;color:var(--sidebar);margin-bottom:14px">${title}</div>${formInner}</div>`;
       document.body.appendChild(modal);
       setTypes();
       return;
@@ -5576,7 +5582,7 @@ window.CRM = (function(){
 
     const root = document.getElementById('crm-schedule-content');
     if (!root) return;
-    root.innerHTML = `<div class="card" style="background:var(--bg)"><div class="card-header"><span class="card-title">Edit Stop</span></div>${formInner}</div>`;
+    root.innerHTML = `<div class="card" style="background:var(--bg)"><div class="card-header"><span class="card-title">${title}</span></div>${formInner}</div>`;
     setTypes();
   }
 
@@ -5586,16 +5592,22 @@ window.CRM = (function(){
     const orig = state.stops.find(x => x.id === stopId);
     if (!orig) { alert('Stop no longer exists.'); return; }
     const get = id => document.getElementById(id)?.value;
+    const isRoute = !!orig.route_id;
     const patch = {
-      location_id: parseInt(get('edit-loc'), 10),
       truck: parseInt(get('edit-truck'), 10),
       scheduled_date: get('edit-date'),
       start_time: get('edit-start'),
       end_time: get('edit-end'),
-      recurrence_rule: get('edit-rule') || 'one-time',
       notes: get('edit-notes') || null
     };
-    if (!patch.location_id || !patch.scheduled_date) { alert('Pick a location and date.'); return; }
+    if (isRoute) {
+      // Route stop: no location, no recurrence — keep route_id intact.
+      if (!patch.scheduled_date) { alert('Pick a date.'); return; }
+    } else {
+      patch.location_id = parseInt(get('edit-loc'), 10);
+      patch.recurrence_rule = get('edit-rule') || 'one-time';
+      if (!patch.location_id || !patch.scheduled_date) { alert('Pick a location and date.'); return; }
+    }
     const _editHoliday = _holidayName(patch.scheduled_date);
     if (_editHoliday && !confirm(`${patch.scheduled_date} is ${_editHoliday} — most businesses are closed that day. Move it there anyway?`)) return;
     // Validate the time order
@@ -5603,9 +5615,11 @@ window.CRM = (function(){
       alert('End time must be after start time.');
       return;
     }
-    const newLoc = state.locations.find(l => l.id === patch.location_id);
-    if (newLoc && newLoc.truck_lock && newLoc.preferred_truck && newLoc.preferred_truck !== patch.truck) {
-      if (!confirm(`${newLoc.location_name} is locked to Truck ${newLoc.preferred_truck}. Override?`)) return;
+    if (!isRoute) {
+      const newLoc = state.locations.find(l => l.id === patch.location_id);
+      if (newLoc && newLoc.truck_lock && newLoc.preferred_truck && newLoc.preferred_truck !== patch.truck) {
+        if (!confirm(`${newLoc.location_name} is locked to Truck ${newLoc.preferred_truck}. Override?`)) return;
+      }
     }
     try {
       const { data: upd, error } = await sb.from('crm_stops').update(patch).eq('id', stopId).select().single();
@@ -8905,8 +8919,10 @@ window.CRM = (function(){
                   <div style="font-size:13px;font-weight:700;color:var(--sidebar);text-transform:uppercase;letter-spacing:.02em"><i class="ti ti-route"></i> ${esc(routeName)}</div>
                   <div style="font-size:11px;color:var(--text3);margin-top:2px"><i class="ti ti-clock" style="font-size:11px"></i> ${fmtTime(s.start_time)} \u2013 ${fmtTime(s.end_time)} \u00b7 ${memberCount} stop${memberCount === 1 ? '' : 's'}</div>
                   ${(()=>{const _dn=_displayNote(s.notes);return _dn?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${esc(_dn)}</div>`:'';})()}
+                  <div style="margin-top:6px">${_stopStatusBadges(s)}</div>
                 </div>
-                <i class="ti ti-chevron-right" style="color:var(--text3);flex-shrink:0"></i>
+                <button class="btn btn-sm" onclick="event.stopPropagation();CRM.openEditStop(${s.id})" title="Edit route stop" style="flex-shrink:0"><i class="ti ti-edit"></i></button>
+                <button class="btn btn-sm" onclick="event.stopPropagation();CRM.deleteStop(${s.id})" title="Delete route stop" style="flex-shrink:0"><i class="ti ti-trash"></i></button>
               </div>`;
             }
             const loc = state.locations.find(l=>l.id===s.location_id);
