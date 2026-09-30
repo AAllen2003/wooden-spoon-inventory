@@ -318,7 +318,6 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
     <button class="nav-item" onclick="showSection('picklist',this)"><i class="ti ti-clipboard-list"></i> Pick List</button>
     <button class="nav-item" onclick="showSection('transfers',this)"><i class="ti ti-arrows-exchange"></i> Transfers</button>
     <button class="nav-item" onclick="showSection('production',this)"><i class="ti ti-tool"></i> Production</button>
-    <button class="nav-item" onclick="showSection('sales',this)"><i class="ti ti-currency-dollar"></i> Sales</button>
     <button class="nav-item" onclick="showSection('loss',this)"><i class="ti ti-trash-x"></i> Loss Log</button>
     <button class="nav-item" onclick="showSection('crm-forecast',this)"><i class="ti ti-trending-up"></i> Mfg Forecast</button>
     <div class="nav-section">CRM</div>
@@ -326,6 +325,7 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
     <button class="nav-item" onclick="showSection('crm-schedule',this)"><i class="ti ti-calendar"></i> Schedule</button>
     <button class="nav-item" onclick="showSection('crm-routes',this)"><i class="ti ti-route"></i> Routes</button>
     <button class="nav-item" onclick="showSection('crm-deliveries',this)"><i class="ti ti-truck-delivery"></i> Deliveries</button>
+    <button class="nav-item" onclick="showSection('sales',this)"><i class="ti ti-currency-dollar"></i> Sales</button>
     <button class="nav-item relog-nav" onclick="showSection('crm-relog',this)"><i class="ti ti-clipboard-text"></i> Relations Log</button>
     <button class="nav-item" onclick="showSection('crm-cleanup',this)" data-admin-only><i class="ti ti-broom"></i> Cleanup</button>
     <button class="nav-item" onclick="showSection('crm-editlog',this)" data-admin-only><i class="ti ti-history"></i> Edit Log<span class="nav-badge" id="nav-editlog-badge"></span></button>
@@ -516,7 +516,8 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
           <span class="card-title">Sales</span>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <button class="btn btn-sm" onclick="loadTodaySales()"><i class="ti ti-calendar-today"></i> Today</button>
-            <input type="date" id="sales-date-picker" onchange="loadArchiveDate(this.value)">
+            <input type="date" id="sales-date-picker" onchange="loadArchDate(this.value)">
+            <button class="btn btn-sm" onclick="loadArchDate(document.getElementById('sales-date-picker').value)" title="Load sales for the selected date"><i class="ti ti-calendar-search"></i> Load</button>
             <span style="font-size:11px;color:var(--text3);margin-left:4px">or range:</span>
             <input type="date" id="sales-range-start" title="Range start date">
             <span style="color:var(--text3)">–</span>
@@ -2871,8 +2872,8 @@ let mobParLoc='Warehouse';
 
 // Category → ordered list of section keys (used to build the tab strip dynamically)
 const MOB_CATEGORIES = {
-  inventory: ['overview','inventory','locations','par','alerts','picklist','transfers','production','sales','loss','crm-forecast'],
-  crm:       ['crm-customers','crm-schedule','crm-deliveries','crm-relog'],
+  inventory: ['overview','inventory','locations','par','alerts','picklist','transfers','production','loss','crm-forecast'],
+  crm:       ['crm-customers','crm-schedule','crm-deliveries','sales','crm-relog'],
 };
 
 // Section icon + label for the tab strip
@@ -3235,7 +3236,7 @@ function mobSalesHTML(){
     liveBadgeHtml=`<div style="font-size:11px;padding:4px 10px;border-radius:12px;background:${badgeBg};color:#fff;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;margin-bottom:8px"><span style="display:inline-block;width:6px;height:6px;background:#90ee90;border-radius:50%;animation:pulse 2s ease-in-out infinite"></span>${badgeText}</div>`;
   }
   const badgeText = salesViewDate ? (salesViewDate.includes('|') ? 'Range' : 'Archived') : 'Live';
-  let h=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap"><span style="font-size:12px;font-weight:700;color:var(--sidebar)">${dateLabel}</span><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:${salesViewDate?'#9f7014':'#5e3303'};color:#fff">${badgeText}</span><input type="date" style="font-size:14px;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-family:'Lato',sans-serif;margin-left:auto" onchange="loadArchDate(this.value)"><button style="background:none;border:none;font-size:10px;color:var(--sidebar);font-weight:700;cursor:pointer;font-family:'Lato',sans-serif;text-decoration:underline" onclick="loadTodaySales();document.getElementById('mob-body').innerHTML=mobSalesHTML()">Today</button></div>
+  let h=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap"><span style="font-size:12px;font-weight:700;color:var(--sidebar)">${dateLabel}</span><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:${salesViewDate?'#9f7014':'#5e3303'};color:#fff">${badgeText}</span><input type="date" id="mob-sales-date" style="font-size:14px;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-family:'Lato',sans-serif;margin-left:auto" onchange="loadArchDate(this.value)"><button style="font-size:11px;font-weight:700;color:#fff;background:var(--accent);border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-family:'Lato',sans-serif" onclick="loadArchDate(document.getElementById('mob-sales-date').value)">Load</button><button style="background:none;border:none;font-size:10px;color:var(--sidebar);font-weight:700;cursor:pointer;font-family:'Lato',sans-serif;text-decoration:underline" onclick="loadTodaySales();document.getElementById('mob-body').innerHTML=mobSalesHTML()">Today</button></div>
   <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap;font-size:11px;color:var(--text3)">
     <span>Range:</span>
     <input type="date" id="mob-range-start" style="font-size:13px;border:1px solid var(--border);border-radius:6px;padding:3px 6px;font-family:'Lato',sans-serif">
@@ -3760,7 +3761,7 @@ window.CRM = (function(){
     if (!el) return;
 
     // Same opt-out regex the parser and scheduler use
-    const optOutRe = /\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|manual\s*sched|call ahead|call first|call before|text ahead|text first|text before|by request|on request|upon request|appointment only|by appointment|as needed|seasonal only|closed for season|inactive|on hold|paused|do not contact|dnc|dns|no contact)\b/i;
+    const optOutRe = /\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|manual\s*sched|by request|on request|upon request|appointment only|by appointment|as needed|seasonal only|closed for season|inactive|on hold|paused|do not contact|dnc|dns|no contact)\b/i;
 
     // Human-readable reason from the raw preference text
     const reasonFor = (loc) => {
@@ -3815,7 +3816,7 @@ window.CRM = (function(){
     if (skipped.length === 0) {
       el.innerHTML = `<div class="card" style="background:var(--surface)">
         <div style="font-family:var(--font-display);font-size:14px;color:var(--sidebar);margin-bottom:6px"><i class="ti ti-calendar-off"></i> Manual Scheduling Required</div>
-        <div style="font-size:12px;color:var(--text3);font-style:italic">No customers or routes are currently set to manual scheduling. Any customer or route with an opt-out phrase in their preference (like "manual only", "DNS", "call ahead") will appear here.</div>
+        <div style="font-size:12px;color:var(--text3);font-style:italic">No customers or routes are currently set to manual scheduling. Any customer or route with an opt-out phrase in their preference (like "manual only", "DNS", "by appointment", "on hold") will appear here.</div>
       </div>`;
       return;
     }
@@ -6416,7 +6417,7 @@ window.CRM = (function(){
     // auto-scheduler from ever generating a proposal for this stop.
     // Note: we deliberately avoid adjectives like "flexible" since they
     // commonly appear in legitimate preferences (e.g., "Tuesday 9am, flexible").
-    if (/\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|manual\s*sched|call ahead|call first|call before|text ahead|text first|text before|by request|on request|upon request|appointment only|by appointment|as needed|seasonal only|closed for season|inactive|on hold|paused|do not contact|dnc|dns|no contact)\b/i.test(text)) {
+    if (/\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|manual\s*sched|by request|on request|upon request|appointment only|by appointment|as needed|seasonal only|closed for season|inactive|on hold|paused|do not contact|dnc|dns|no contact)\b/i.test(text)) {
       return '<span style="color:var(--amber);font-weight:700"><i class="ti ti-hand-stop"></i> AUTO-SCHEDULER WILL SKIP</span> — this stop will not be auto-scheduled. Schedule manually only.';
     }
     const p = parsePreference(text);
@@ -7010,6 +7011,7 @@ window.CRM = (function(){
     // Capacity/day-rule collectors, surfaced in the review's attention list.
     const capacityDeferred = []; // couldn't fit any eligible day this week (Trucks 1&2 full)
     const saturdayDue = [];      // Saturday-only customers that are due — need manual placement
+    const notProposed = [];      // active customers skipped this week, with the reason why
 
     for (const loc of state.locations) {
       if (loc.status !== 'active') continue;
@@ -7018,7 +7020,8 @@ window.CRM = (function(){
       // Respect opt-out: customers whose scheduling_preference contains
       // "no auto-schedule", "manual only", "by request" etc. are skipped.
       // Same detection used by previewPreference for the live preview.
-      if (loc.scheduling_preference && /\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|manual\s*sched|call ahead|call first|call before|text ahead|text first|text before|by request|on request|upon request|appointment only|by appointment|as needed|seasonal only|closed for season|inactive|on hold|paused|do not contact|dnc|dns|no contact)\b/i.test(loc.scheduling_preference)) {
+      if (loc.scheduling_preference && /\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|manual\s*sched|by request|on request|upon request|appointment only|by appointment|as needed|seasonal only|closed for season|inactive|on hold|paused|do not contact|dnc|dns|no contact)\b/i.test(loc.scheduling_preference)) {
+        notProposed.push({ location_name: loc.location_name, reason: 'Scheduling preference opts out of auto-scheduling' });
         continue;
       }
 
@@ -7038,7 +7041,7 @@ window.CRM = (function(){
         const startRule = pref.rules.find(r => r.months.includes(startMonth));
         const endRule   = pref.rules.find(r => r.months.includes(endMonth));
         const chosen = startRule || endRule;
-        if (!chosen) continue;  // uncovered month → skip
+        if (!chosen) { notProposed.push({ location_name: loc.location_name, reason: 'Seasonal preference doesn\'t cover this month' }); continue; }
         pref = chosen.rule;
       }
 
@@ -7055,7 +7058,7 @@ window.CRM = (function(){
         const startMonth = weekStart.getMonth() + 1; // 1-12
         const endMonth   = weekEnd.getMonth() + 1;
         const inSeason = pref.activeMonths.includes(startMonth) || pref.activeMonths.includes(endMonth);
-        if (!inSeason) continue;
+        if (!inSeason) { notProposed.push({ location_name: loc.location_name, reason: 'Out of season this month' }); continue; }
       }
 
       // Determine cadence
@@ -7088,7 +7091,10 @@ window.CRM = (function(){
         const phase = _locPhase(loc.id, cadenceDays);
         dueDate = _staggeredGridDue(phase, cadenceDays, weekStart);
       }
-      if (dueDate > weekEnd) continue; // not yet due, or its staggered week hasn't arrived
+      if (dueDate > weekEnd) {
+        notProposed.push({ location_name: loc.location_name, reason: lastVisit ? ('Not due until ' + fmtDateShort(dueDate)) : ('No visit history — first auto-visit lands the week of ' + fmtDateShort(dueDate)) });
+        continue; // not yet due, or its staggered week hasn't arrived
+      }
 
       // Pick day-of-week within the target week
       let chosenDow = null;
@@ -7244,7 +7250,7 @@ window.CRM = (function(){
       if (existingRouteIds.has(route.id)) continue;  // already on the calendar
 
       // Route opt-out phrases apply to the ROUTE ITSELF (not its members)
-      if (route.scheduling_preference && /\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|manual\s*sched|call ahead|call first|call before|text ahead|text first|text before|by request|on request|upon request|appointment only|by appointment|as needed|seasonal only|closed for season|inactive|on hold|paused|do not contact|dnc|dns|no contact)\b/i.test(route.scheduling_preference)) {
+      if (route.scheduling_preference && /\b(no auto|do not (auto)?\s*schedule|don'?t auto|manual only|manual schedule|manual\s*sched|by request|on request|upon request|appointment only|by appointment|as needed|seasonal only|closed for season|inactive|on hold|paused|do not contact|dnc|dns|no contact)\b/i.test(route.scheduling_preference)) {
         continue;
       }
 
@@ -7920,7 +7926,7 @@ window.CRM = (function(){
       }
     });
 
-    return { proposals: finalPlaced, skippedConflict, skippedPairing, suppressedByRoute, routeWarnings, existingStops, deferredPool: capacityDeferred };
+    return { proposals: finalPlaced, skippedConflict, skippedPairing, suppressedByRoute, routeWarnings, existingStops, deferredPool: capacityDeferred, notProposed };
   }
 
   // State for the active proposal session
@@ -8258,7 +8264,7 @@ window.CRM = (function(){
     if (!root || !state.proposalSession) return;
     saveDraft();  // autosave: every edit re-renders through here
     state.viewDraft = true;
-    const { proposals, skippedConflict, skippedPairing = [], suppressedByRoute = [], routeWarnings = [], existingStops, deferredPool = [] } = state.proposalSession;
+    const { proposals, skippedConflict, skippedPairing = [], suppressedByRoute = [], routeWarnings = [], existingStops, deferredPool = [], notProposed = [] } = state.proposalSession;
     const weekStart = state.weekStart;
     const weekEnd = addDays(weekStart, 6);
 
@@ -8322,6 +8328,19 @@ window.CRM = (function(){
           <strong>${esc(w.location_name)}</strong> \u2014 ${esc(w.reason)}
         </div>`).join('')}
       </div>`;
+    }
+
+    // Why active customers weren't proposed this week — a diagnostic so nothing
+    // silently disappears.
+    if (notProposed.length) {
+      const sorted = notProposed.slice().sort((a,b) => (a.location_name||'').localeCompare(b.location_name||'','en',{sensitivity:'base'}));
+      html += `<details style="margin-bottom:14px">
+        <summary style="cursor:pointer;font-family:var(--font-display);font-size:13px;color:var(--text2);padding:8px 0"><i class="ti ti-eye-off"></i> Not proposed this week — and why (${sorted.length})</summary>
+        <div class="card" style="background:var(--bg2);margin-top:6px">
+          <div style="font-size:11px;color:var(--text3);margin-bottom:8px;font-style:italic">Active customers the scheduler skipped this run. If one you expected is here, the reason tells you what to change.</div>
+          ${sorted.map(x => `<div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;padding:4px 0;border-bottom:1px solid var(--surface)"><strong>${esc(x.location_name||'Unknown')}</strong><span style="color:var(--text3);text-align:right">${esc(x.reason||'')}</span></div>`).join('')}
+        </div>
+      </details>`;
     }
 
     // Suppressed standalone stops — member customers whose route is scheduled the same day
