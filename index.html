@@ -6957,7 +6957,7 @@ window.CRM = (function(){
   }
 
   function tierCadenceDays(tier) {
-    return ({ high: 14, medium: 28, low: 56, pending: 56 })[tier] || 56;
+    return ({ high: 14, medium: 14, low: 56, pending: 56 })[tier] || 56;
   }
 
   // Fixed Monday used as the grid origin for staggering. Deterministic so a
