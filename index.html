@@ -3389,6 +3389,7 @@ window.CRM = (function(){
     const m = d.getMonth() + 1, day = d.getDate(), dow = d.getDay();
     const fixed = (mm, dd) => (mm === 1 && dd === 1) ? "New Year's Day"
                 : (mm === 7 && dd === 4) ? 'Independence Day'
+                : (mm === 12 && dd === 24) ? 'Christmas Eve'
                 : (mm === 12 && dd === 25) ? 'Christmas Day' : null;
     const nm = fixed(m, day);
     if (nm && dow !== 0 && dow !== 6) return nm;                        // actual weekday holiday
@@ -3397,6 +3398,7 @@ window.CRM = (function(){
     if (m === 5  && dow === 1 && day > 24)              return 'Memorial Day';  // last Mon of May
     if (m === 9  && dow === 1 && day <= 7)              return 'Labor Day';     // 1st Mon of Sep
     if (m === 11 && dow === 4 && day >= 22 && day <= 28) return 'Thanksgiving'; // 4th Thu of Nov
+    if (m === 11 && dow === 5 && day >= 23 && day <= 29) return 'Black Friday'; // day after 4th-Thu Thanksgiving
     return null;
   }
   const fmtTime = t => { if(!t) return '—'; const [h,m] = t.split(':'); const hh=parseInt(h,10); const ap=hh>=12?'PM':'AM'; const h12=((hh%12)||12); return `${h12}:${m} ${ap}`; };
