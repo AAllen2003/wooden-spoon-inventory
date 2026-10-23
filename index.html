@@ -11704,15 +11704,19 @@ window.CRM = (function(){
     if (!bf.targets.length) return;
     const targets = bf.targets.slice().sort((a, b) => (a.scheduled_date < b.scheduled_date ? 1 : -1));
 
-    // Preflight: confirm the updated Worker is live before spending 30 minutes.
+    // Preflight: just a reachability check (worker URL / device / network).
+    // We do NOT judge the Worker's version here — the sales endpoint omits the
+    // `timeline` field on a zero-sale window even on the updated Worker, so a
+    // single probe can't tell "old Worker" from "new Worker, quiet stop." We
+    // detect the Worker version inside the loop instead, from the first stop
+    // that actually had sales.
     _an.bfResult = null; _an.backfilling = true; _an.bfTotal = targets.length; _an.bfDone = 0;
     renderAnalytics(_anIsMobile);
     const probe = await _anProbeWorker(targets[0]);
     if (!probe.ok) { _an.bfResult = { phase: 'probe', reason: probe.reason, status: probe.status }; _an.backfilling = false; renderAnalytics(_anIsMobile); return; }
-    if (!probe.hasTimeline) { _an.bfResult = { phase: 'worker-old' }; _an.backfilling = false; renderAnalytics(_anIsMobile); return; }
 
-    // Worker is good — pull each stop. Classify outcomes so a save failure
-    // (missing column / stale schema cache) is reported, not swallowed.
+    // Pull each stop. Classify outcomes so a save failure (missing column /
+    // stale schema cache) or an old Worker is reported, not swallowed.
     const res = { saved: 0, emptyHadSales: 0, emptyNoSales: 0, failed: 0 };
     for (const s of targets) {
       let v = null;
@@ -11729,6 +11733,15 @@ window.CRM = (function(){
       if (_an.bfDone === 1 && res.failed === 1) {
         _an.backfilling = false;
         _an.bfResult = { phase: 'write-failed', ...res, errCode: _lastSalesError?.code || null, errMsg: _lastSalesError?.message || (_lastSalesError ? String(_lastSalesError) : null) };
+        renderAnalytics(_anIsMobile);
+        return;
+      }
+      // Definitive old-Worker signal: a stop that HAD sales but came back with no
+      // timing. The updated Worker always includes timing when there were sales,
+      // so the first time we see this, the deployed Worker is the old version.
+      if (res.emptyHadSales === 1 && res.saved === 0) {
+        _an.backfilling = false;
+        _an.bfResult = { phase: 'worker-old' };
         renderAnalytics(_anIsMobile);
         return;
       }
