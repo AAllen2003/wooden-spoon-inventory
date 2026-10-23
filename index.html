@@ -3674,28 +3674,36 @@ window.CRM = (function(){
         sales_last_synced_at: new Date().toISOString(),
       };
 
-      // Write to Supabase. Use upsert with onConflict on stop_id so racing
-      // calls (e.g. profile open + nightly cron) cooperate — DB has a unique
-      // index on stop_id (added in migration 10), so this is safe.
+      // Write to Supabase. We deliberately DON'T use upsert-on-stop_id here:
+      // crm_visits has no unique constraint that Postgres' ON CONFLICT can match
+      // (it errors 42P10), which silently broke every client-side save. Instead:
+      // update the existing row by its own primary key if we have one, else
+      // insert. This works regardless of the table's index setup.
       let visit;
-      if (stop.id) {
-        const { data: ups, error } = await sb
+      // Prefer an already-loaded row for this stop (from startup load or a prior
+      // write); fall back to a direct lookup so we update rather than duplicate.
+      let existingRow = state.visits.find(v => v.stop_id === stop.id && v.id != null) || null;
+      if (!existingRow) {
+        const { data: found } = await sb.from('crm_visits').select('id').eq('stop_id', stop.id).limit(1);
+        if (found && found[0] && found[0].id != null) existingRow = found[0];
+      }
+      if (existingRow && existingRow.id != null) {
+        const { data: upd, error } = await sb
           .from('crm_visits')
-          .upsert(visitData, { onConflict: 'stop_id' })
+          .update(visitData)
+          .eq('id', existingRow.id)
           .select()
           .single();
         if (error) throw error;
-        visit = ups;
-        const i = state.visits.findIndex(v => v.stop_id === stop.id);
-        if (i >= 0) state.visits[i] = visit;
-        else if (!state.visits.some(v => v.id === visit.id)) state.visits.push(visit);
+        visit = upd;
       } else {
-        // No stop_id — shouldn't happen here since `stop` is required, but be safe
         const { data: ins, error } = await sb.from('crm_visits').insert(visitData).select().single();
         if (error) throw error;
         visit = ins;
-        if (!state.visits.some(v => v.id === visit.id)) state.visits.push(visit);
       }
+      const i = state.visits.findIndex(v => v.stop_id === stop.id);
+      if (i >= 0) state.visits[i] = visit;
+      else if (!state.visits.some(v => v.id === visit.id)) state.visits.push(visit);
 
       salesCache[stop.id] = { ts: Date.now(), visit };
       return visit;
