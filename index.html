@@ -326,6 +326,7 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
     <button class="nav-item" onclick="showSection('crm-routes',this)"><i class="ti ti-route"></i> Routes</button>
     <button class="nav-item" onclick="showSection('crm-deliveries',this)"><i class="ti ti-truck-delivery"></i> Deliveries</button>
     <button class="nav-item" onclick="showSection('sales',this)"><i class="ti ti-currency-dollar"></i> Sales</button>
+    <button class="nav-item" onclick="showSection('crm-analytics',this)"><i class="ti ti-chart-dots"></i> Analytics</button>
     <button class="nav-item relog-nav" onclick="showSection('crm-relog',this)"><i class="ti ti-clipboard-text"></i> Relations Log</button>
     <button class="nav-item" onclick="showSection('crm-cleanup',this)" data-admin-only><i class="ti ti-broom"></i> Cleanup</button>
     <button class="nav-item" onclick="showSection('crm-editlog',this)" data-admin-only><i class="ti ti-history"></i> Edit Log<span class="nav-badge" id="nav-editlog-badge"></span></button>
@@ -543,6 +544,10 @@ body.staff-mode.relog-hidden .relog-nav{display:none !important;}
       </div>
       <div id="sales-breakdown-panel"></div>
         <div id="online-sales-panel" style="display:none"></div>
+    </div>
+
+    <div class="section" id="sec-crm-analytics">
+      <div id="crm-analytics-root"></div>
     </div>
 
     <div class="section" id="sec-loss">
@@ -1188,7 +1193,7 @@ function openMoreDrawer(){document.getElementById('more-overlay').classList.add(
 function closeMoreDrawer(){document.getElementById('more-overlay').classList.remove('open');document.getElementById('more-drawer').classList.remove('open');}
 
 // ── NAV ───────────────────────────────────────────────────────────
-const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',loss:'Loss Log',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop Profile','crm-schedule':'Schedule','crm-routes':'Routes','crm-route-edit':'Edit Route','crm-deliveries':'Deliveries','crm-forecast':'Manufacturing Forecast','crm-relog':'Customer Relations Log','crm-cleanup':'Customer Data Cleanup','crm-editlog':'Staff Edit Log'};
+const TITLES={overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',transfers:'Transfers',production:'Production Planning',sales:'Sales',loss:'Loss Log',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop Profile','crm-schedule':'Schedule','crm-routes':'Routes','crm-route-edit':'Edit Route','crm-deliveries':'Deliveries','crm-forecast':'Manufacturing Forecast','crm-analytics':'Analytics','crm-relog':'Customer Relations Log','crm-cleanup':'Customer Data Cleanup','crm-editlog':'Staff Edit Log'};
 function showSection(name,btn){
   // A sidebar-nav click (btn is a .nav-item) is a fresh navigation. Clear
   // the back-nav stack so the Back button doesn't try to return you to a
@@ -1230,6 +1235,7 @@ function showSection(name,btn){
   if(name==='crm-cleanup')CRM.renderCleanup();
   if(name==='crm-editlog')CRM.renderEditLog();
   if(name==='crm-deliveries')CRM.renderDeliveries();
+  if(name==='crm-analytics')CRM.renderAnalytics();
   applyPermissions();
 }
 // ── UNIVERSAL BACK NAVIGATION ─────────────────────────────────────
@@ -2873,7 +2879,7 @@ let mobParLoc='Warehouse';
 // Category → ordered list of section keys (used to build the tab strip dynamically)
 const MOB_CATEGORIES = {
   inventory: ['overview','inventory','locations','par','alerts','picklist','transfers','production','loss','crm-forecast'],
-  crm:       ['crm-customers','crm-schedule','crm-deliveries','sales','crm-relog'],
+  crm:       ['crm-customers','crm-schedule','crm-deliveries','sales','crm-analytics','crm-relog'],
 };
 
 // Section icon + label for the tab strip
@@ -2892,6 +2898,7 @@ const MOB_SECTION_META = {
   'crm-schedule':  { icon:'ti-calendar',         label:'Schedule' },
   'crm-deliveries':{ icon:'ti-truck-delivery',   label:'Deliveries' },
   'crm-forecast':  { icon:'ti-trending-up',      label:'Mfg Forecast' },
+  'crm-analytics': { icon:'ti-chart-dots',       label:'Analytics' },
   'crm-relog':     { icon:'ti-clipboard-text',   label:'Relations Log' },
 };
 
@@ -2946,7 +2953,7 @@ function rebuildMobTabs(){
 }
 
 function syncMobTitle(){
-  const titles={home:'Home',overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',loss:'Loss Log',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop','crm-schedule':'Schedule','crm-deliveries':'Deliveries','crm-forecast':'Mfg Forecast','crm-relog':'Relations Log'};
+  const titles={home:'Home',overview:'Overview',inventory:'Inventory',locations:'Locations',par:'Par Levels',alerts:'Alerts',picklist:'Pick List',transfers:'Transfers',production:'Production',sales:'Sales',loss:'Loss Log',settings:'Settings','crm-customers':'Stops','crm-profile':'Stop','crm-schedule':'Schedule','crm-deliveries':'Deliveries','crm-forecast':'Mfg Forecast','crm-analytics':'Analytics','crm-relog':'Relations Log'};
   const titleEl = document.getElementById('mob-title');
   if(titleEl) titleEl.textContent = titles[mobSection] || mobSection;
   // Show/hide the home button: visible whenever we're not on the home screen
@@ -3000,6 +3007,7 @@ function _mobRenderRaw(){
     CRM.renderDeliveries();
   }
   else if(mobSection==='crm-forecast'){el.innerHTML='<div id="crm-forecast-mob"></div>';CRM.renderMobForecast();}
+  else if(mobSection==='crm-analytics'){el.innerHTML='<div id="crm-analytics-mob"></div>';CRM.renderAnalytics(true);}
   else if(mobSection==='crm-relog'){el.innerHTML='<div id="crm-relog-mob"></div>';CRM.renderRelog().then(()=>CRM.renderMobRelog());}
   // Only reset scroll when the user actually navigated to a different section.
   // Without this guard, the periodic 45s refresh and realtime subscriptions
@@ -3617,16 +3625,19 @@ window.CRM = (function(){
    * 3. Otherwise, fetch from Worker /sales/window, write a visit row to Supabase, cache, return it.
    * Does nothing for future stops.
    */
-  async function ensureSalesForStop(stop) {
+  async function ensureSalesForStop(stop, opts = {}) {
     if (!stop || !isStopPast(stop)) return null;
 
-    // Check Supabase first
+    // Check Supabase first. In normal use, a visit that already has revenue is
+    // returned as-is (no refetch). The Analytics backfill passes {refetch:true}
+    // to force a re-pull from Square so older visits (saved before the timeline
+    // feature existed) get their sales_timeline filled in.
     const existing = state.visits.find(v => v.stop_id === stop.id);
-    if (existing && existing.total_revenue != null) return existing;
+    if (existing && existing.total_revenue != null && !opts.refetch) return existing;
 
-    // Client cache
+    // Client cache (skipped on a forced refetch)
     const cached = salesCache[stop.id];
-    if (cached && Date.now() - cached.ts < SALES_CACHE_MS) return cached.visit;
+    if (!opts.refetch && cached && Date.now() - cached.ts < SALES_CACHE_MS) return cached.visit;
 
     // Need worker URL
     const workerUrl = (typeof S !== 'undefined' && S.workerUrl) ? S.workerUrl : null;
@@ -3659,6 +3670,7 @@ window.CRM = (function(){
         total_revenue: data.totalRevenue || 0,
         transaction_count: data.transactionCount || 0,
         items_sold: data.items || [],
+        sales_timeline: data.timeline || [],
         sales_last_synced_at: new Date().toISOString(),
       };
 
@@ -3727,6 +3739,7 @@ window.CRM = (function(){
     else if (id === 'sec-crm-relog') renderRelog();
     else if (id === 'sec-crm-cleanup') renderCleanup();
     else if (id === 'sec-crm-editlog') renderEditLog();
+    else if (id === 'sec-crm-analytics') renderAnalytics(false);
   }
 
   // ─── Customers list ────────────────────────────────────────────────
@@ -11507,8 +11520,373 @@ window.CRM = (function(){
     if (m) m.remove();
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // ANALYTICS TAB — per-customer stop analytics + operation-wide insights
+  // ═══════════════════════════════════════════════════════════════════
+  const _an = { locId: null, q: '', backfilling: false, bfDone: 0, bfTotal: 0 };
+  let _anIsMobile = false;
+
+  const _anHost = () => document.getElementById(_anIsMobile ? 'crm-analytics-mob' : 'crm-analytics-root');
+  const _fmtClock = mins => {
+    mins = ((Math.round(mins) % 1440) + 1440) % 1440;
+    let h = Math.floor(mins / 60), m = mins % 60;
+    const ap = h >= 12 ? 'PM' : 'AM'; const h12 = ((h % 12) || 12);
+    return `${h12}:${String(m).padStart(2,'0')} ${ap}`;
+  };
+
+  // Vertical bar chart → responsive inline SVG string.
+  // points: [{label, value, title?}]. o: {height, color, highlightIdx, baseline}
+  function _anBar(points, o = {}) {
+    const H = o.height || 170, padB = 24, padT = 12, padL = 6, padR = 6;
+    if (!points || !points.length) return '<div style="color:var(--text3);padding:24px 0;text-align:center;font-size:13px">No data yet.</div>';
+    const vals = points.map(p => Number(p.value) || 0);
+    const max = Math.max(...vals, 0) || 1;
+    const vbW = 620, innerW = vbW - padL - padR, n = points.length;
+    const slot = innerW / n, barW = Math.max(2, Math.min(46, slot * 0.68));
+    const plotH = H - padT - padB;
+    let bars = '', labels = '';
+    const labelEvery = n <= 14 ? 1 : Math.ceil(n / 14);
+    points.forEach((p, i) => {
+      const v = Number(p.value) || 0;
+      const h = max > 0 ? (v / max) * plotH : 0;
+      const cx = padL + i * slot + slot / 2;
+      const x = cx - barW / 2;
+      const y = H - padB - h;
+      const hl = (o.highlightIdx === i);
+      const fill = hl ? 'var(--green)' : (o.color || 'var(--accent)');
+      const title = p.title || `${p.label}: ${v}`;
+      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0, h).toFixed(1)}" rx="2.5" fill="${fill}" opacity="${hl ? 1 : 0.9}"><title>${esc(title)}</title></rect>`;
+      if (i % labelEvery === 0) {
+        labels += `<text x="${cx.toFixed(1)}" y="${H - padB + 15}" font-size="11" fill="var(--text3)" text-anchor="middle">${esc(p.label)}</text>`;
+      }
+    });
+    const base = `<line x1="${padL}" y1="${H - padB}" x2="${vbW - padR}" y2="${H - padB}" stroke="var(--border)" stroke-width="1"/>`;
+    return `<svg viewBox="0 0 ${vbW} ${H}" preserveAspectRatio="xMidYMid meet" style="display:block;width:100%;height:auto" role="img">${base}${bars}${labels}</svg>`;
+  }
+
+  // Horizontal bars as crisp HTML (used for top items)
+  function _anHBars(points, o = {}) {
+    if (!points || !points.length) return '<div style="color:var(--text3);padding:16px 0;font-size:13px">No items recorded yet.</div>';
+    const max = Math.max(...points.map(p => Number(p.value) || 0), 0) || 1;
+    return points.map(p => {
+      const pct = Math.round(((Number(p.value) || 0) / max) * 100);
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
+        <div style="width:40%;font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.label)}</div>
+        <div style="flex:1;background:var(--bg2);border-radius:6px;height:16px;position:relative;overflow:hidden">
+          <div style="position:absolute;left:0;top:0;bottom:0;width:${pct}%;background:${o.color || 'var(--accent)'};border-radius:6px"></div>
+        </div>
+        <div style="width:112px;text-align:right;font-size:12px;color:var(--text2);font-variant-numeric:tabular-nums">${esc(p.right || '')}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function _anKpi(label, value, sub) {
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px">
+      <div style="font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--text3);font-weight:700;margin-bottom:5px">${esc(label)}</div>
+      <div style="font-size:21px;font-weight:800;color:var(--text);line-height:1.1">${value}</div>
+      ${sub ? `<div style="font-size:11.5px;color:var(--text3);margin-top:3px">${sub}</div>` : ''}</div>`;
+  }
+
+  // ─── Backfill status + action ──────────────────────────────────────
+  function _anBackfillStats() {
+    const dev = state.settings.truck_device_map || {};
+    const past = state.stops.filter(s => isStopPast(s) && dev[s.truck]);
+    const need = past.filter(s => {
+      const v = state.visits.find(x => x.stop_id === s.id);
+      if (!v) return true;                                   // never fetched
+      if (Array.isArray(v.sales_timeline) && v.sales_timeline.length > 0) return false; // has timing
+      return (Number(v.transaction_count) || 0) > 0;         // had sales but no timing captured
+    });
+    return { total: past.length, need: need.length, captured: past.length - need.length, targets: need };
+  }
+
+  function _anBackfillBannerHTML(bf) {
+    if (_an.backfilling) {
+      const pct = _an.bfTotal ? Math.round((_an.bfDone / _an.bfTotal) * 100) : 0;
+      return `<div style="margin-top:12px;background:var(--amber-bg);border:1px solid var(--amber);border-radius:var(--radius);padding:11px 14px;font-size:13px;color:var(--text)">
+        <i class="ti ti-loader-2"></i> Backfilling sales timing from Square… <b>${_an.bfDone} / ${_an.bfTotal}</b> stops (${pct}%). You can keep using the app; this runs in the background.
+        <div style="margin-top:7px;height:7px;background:var(--bg2);border-radius:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--accent)"></div></div></div>`;
+    }
+    if (bf.total === 0) {
+      return `<div style="margin-top:12px;font-size:12.5px;color:var(--text3)">No past truck stops with Square sales yet. Timing data will appear here after your first stops.</div>`;
+    }
+    if (bf.need === 0) {
+      return `<div style="margin-top:12px;font-size:12.5px;color:var(--green)"><i class="ti ti-circle-check"></i> Sales timing captured for all ${bf.total} past stops. New stops are captured automatically.</div>`;
+    }
+    return `<div style="margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px;font-size:13px;color:var(--text)"><b>${bf.captured}</b> of <b>${bf.total}</b> past stops have sales-timing captured. Backfill the remaining <b>${bf.need}</b> from Square to populate the time-of-day graphs from day one.</div>
+      <button class="btn btn-sm btn-accent" onclick="CRM.backfillAnalytics()"><i class="ti ti-history"></i> Backfill sales timing</button></div>`;
+  }
+
+  async function backfillAnalytics() {
+    if (_an.backfilling) return;
+    const bf = _anBackfillStats();
+    if (!bf.targets.length) return;
+    _an.backfilling = true; _an.bfTotal = bf.targets.length; _an.bfDone = 0;
+    renderAnalytics(_anIsMobile);
+    // Recent first, so the most useful data fills in soonest
+    const targets = bf.targets.slice().sort((a, b) => (a.scheduled_date < b.scheduled_date ? 1 : -1));
+    for (const s of targets) {
+      try { await ensureSalesForStop(s, { refetch: true }); }
+      catch (e) { console.error('[CRM] backfill failed for stop', s.id, e); }
+      _an.bfDone++;
+      if (_an.bfDone % 3 === 0 || _an.bfDone === _an.bfTotal) renderAnalytics(_anIsMobile);
+      await new Promise(r => setTimeout(r, 120));
+    }
+    _an.backfilling = false;
+    renderAnalytics(_anIsMobile);
+  }
+
+  // ─── Search ────────────────────────────────────────────────────────
+  function _anSearchResultsHTML() {
+    const q = _an.q.toLowerCase().trim();
+    if (!q) return '';
+    const matches = state.locations
+      .filter(l => (l.location_name || '').toLowerCase().includes(q) || (l.city || '').toLowerCase().includes(q))
+      .sort((a, b) => (a.location_name || '').localeCompare(b.location_name || '', 'en', { sensitivity: 'base' }))
+      .slice(0, 8);
+    const box = inner => `<div style="position:absolute;z-index:40;left:0;right:0;top:100%;background:var(--surface);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius);box-shadow:0 10px 28px rgba(0,0,0,.14);max-height:320px;overflow:auto">${inner}</div>`;
+    if (!matches.length) return box(`<div style="padding:11px 12px;color:var(--text3);font-size:13px">No matching customers</div>`);
+    return box(matches.map(l => `<button onclick="CRM._anSelect(${l.id})" style="display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;background:none;border:none;border-bottom:1px solid var(--border);cursor:pointer;color:var(--text);font-size:13.5px">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.location_name)}${l.status === 'archived' ? ' <span style="color:var(--text3);font-size:11px">(archived)</span>' : ''}</span>
+      <span style="color:var(--text3);font-size:11px;flex-shrink:0">${esc(l.city || '')}</span></button>`).join(''));
+  }
+  function _anSearch(val) { _an.q = val; const el = document.getElementById('an-search-results'); if (el) el.innerHTML = _anSearchResultsHTML(); }
+  function _anSelect(id) { _an.locId = id; _an.q = ''; renderAnalytics(_anIsMobile); const h = _anHost(); if (h) h.scrollIntoView ? h.scrollIntoView({ block: 'start' }) : 0; }
+  function _anClear() { _an.locId = null; _an.q = ''; renderAnalytics(_anIsMobile); }
+
+  // ─── Per-customer view ─────────────────────────────────────────────
+  function _anCustomerHTML(loc) {
+    const visits = state.visits.filter(v => v.location_id === loc.id)
+      .slice().sort((a, b) => (a.visit_date < b.visit_date ? -1 : 1));
+    const card = (title, icon, body, intro) => `<div class="card" style="margin-bottom:16px">
+      <div class="card-header"><span class="card-title"><i class="ti ${icon}"></i> ${title}</span></div>
+      ${intro ? `<p class="section-intro">${intro}</p>` : ''}${body}</div>`;
+
+    const header = `<div class="card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div><div style="font-family:var(--font-display);font-size:22px;color:var(--text)">${esc(loc.location_name)}</div>
+          <div style="font-size:12.5px;color:var(--text3);margin-top:3px">${esc(loc.city || '')}${loc.tier ? ` · ${esc(String(loc.tier))} tier` : ''}${loc.status === 'archived' ? ' · archived' : ''}</div></div>
+        <button class="btn btn-sm" onclick="CRM._anClear()"><i class="ti ti-arrow-left"></i> Overview</button></div></div>`;
+
+    if (!visits.length) {
+      return header + card('No visits yet', 'ti-info-circle',
+        `<div style="color:var(--text3);font-size:13.5px;padding:4px 0">There are no past stops recorded for this customer yet, so there's nothing to analyze. Once they've been visited, their sales history and best-time-to-visit graph will appear here.</div>`);
+    }
+
+    // KPIs
+    const rev = visits.map(v => Number(v.total_revenue) || 0);
+    const totalRev = rev.reduce((s, x) => s + x, 0);
+    const totalTx = visits.reduce((s, v) => s + (Number(v.transaction_count) || 0), 0);
+    const avgVisit = totalRev / visits.length;
+    const avgTx = totalTx > 0 ? totalRev / totalTx : 0;
+    const lastDate = visits[visits.length - 1].visit_date;
+    const daysSince = Math.round((Date.now() - _parseDate(lastDate).getTime()) / 86400000);
+
+    // Rank among active customers by lifetime revenue
+    const totalsByLoc = state.locations.filter(l => l.status !== 'archived').map(l => ({
+      id: l.id, t: state.visits.filter(v => v.location_id === l.id).reduce((s, v) => s + (Number(v.total_revenue) || 0), 0)
+    })).sort((a, b) => b.t - a.t);
+    const rankIdx = totalsByLoc.findIndex(x => x.id === loc.id);
+    const rankTxt = rankIdx >= 0 ? `#${rankIdx + 1} of ${totalsByLoc.length}` : '—';
+
+    const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px">
+      ${_anKpi('Lifetime sales', fmtMoney(totalRev), `${visits.length} visit${visits.length === 1 ? '' : 's'}`)}
+      ${_anKpi('Avg / visit', fmtMoney(avgVisit), avgTx ? `${fmtMoney(avgTx)} / sale` : '')}
+      ${_anKpi('Last visit', fmtDateShort(lastDate), `${daysSince} day${daysSince === 1 ? '' : 's'} ago`)}
+      ${_anKpi('Lifetime rank', rankTxt, 'by total sales')}</div>`;
+
+    // Trend
+    const trendPts = visits.map(v => ({ label: fmtDateShort(v.visit_date), value: Number(v.total_revenue) || 0, title: `${fmtDate(v.visit_date)} — ${fmtMoney(v.total_revenue)}` }));
+    const trend = card('Sales per visit', 'ti-trending-up', _anBar(trendPts, { color: 'var(--accent)', height: 170 }),
+      'Each bar is one past visit, oldest to newest. A steady decline here is your early-warning sign for a slipping account.');
+
+    // Time-of-day (clock) + offset analysis
+    const timed = visits.filter(v => Array.isArray(v.sales_timeline) && v.sales_timeline.length);
+    let timeCard;
+    if (!timed.length) {
+      timeCard = card('Best time to be here', 'ti-clock',
+        `<div style="color:var(--text3);font-size:13.5px;padding:4px 0">No sale-timing data captured for this customer yet. Use <b>Backfill sales timing</b> at the top to pull it from Square, or it will fill in automatically after the next visit.</div>`);
+    } else {
+      const SLOT = 15, slots = {};
+      timed.forEach(v => (v.sales_timeline || []).forEach(e => {
+        const d = new Date(e.t); if (isNaN(d.getTime())) return;
+        const b = Math.floor((d.getHours() * 60 + d.getMinutes()) / SLOT) * SLOT;
+        (slots[b] = slots[b] || { rev: 0, count: 0 });
+        slots[b].rev += Number(e.rev) || 0; slots[b].count++;
+      }));
+      const keys = Object.keys(slots).map(Number).sort((a, b) => a - b);
+      const lo = keys[0], hi = keys[keys.length - 1];
+      const pts = [];
+      let peakRev = -1, peakBucket = lo;
+      for (let b = lo; b <= hi; b += SLOT) {
+        const s = slots[b] || { rev: 0, count: 0 };
+        if (s.rev > peakRev) { peakRev = s.rev; peakBucket = b; }
+        pts.push({ label: _fmtClock(b).replace(':00', '').replace(' ', ''), value: s.rev, _b: b, title: `${_fmtClock(b)}–${_fmtClock(b + SLOT)} — ${fmtMoney(s.rev)} across ${s.count} sale${s.count === 1 ? '' : 's'}` });
+      }
+      const peakIdx = pts.findIndex(p => p._b === peakBucket);
+
+      // Offset-from-arrival insight
+      const OFF = 15, off = {};
+      timed.forEach(v => {
+        const stop = state.stops.find(s => s.id === v.stop_id);
+        let startMins = null;
+        if (stop && stop.start_time) { const [h, m] = stop.start_time.split(':').map(Number); startMins = h * 60 + m; }
+        else if (v.start_datetime) { const d = new Date(v.start_datetime); if (!isNaN(d.getTime())) startMins = d.getHours() * 60 + d.getMinutes(); }
+        if (startMins == null) return;
+        (v.sales_timeline || []).forEach(e => {
+          const d = new Date(e.t); if (isNaN(d.getTime())) return;
+          let o = (d.getHours() * 60 + d.getMinutes()) - startMins;
+          const b = Math.max(0, Math.floor(o / OFF) * OFF);
+          (off[b] = off[b] || { rev: 0, count: 0 }); off[b].rev += Number(e.rev) || 0; off[b].count++;
+        });
+      });
+      const offKeys = Object.keys(off).map(Number).sort((a, b) => a - b);
+      let insight = '';
+      if (offKeys.length) {
+        const offMax = Math.max(...offKeys.map(k => off[k].rev)) || 1;
+        const lastK = offKeys[offKeys.length - 1];
+        const firstShare = (off[offKeys[0]].rev) / offMax;
+        const lastShare = (off[lastK].rev) / offMax;
+        const bits = [];
+        if (lastK >= 30 && lastShare >= 0.33) bits.push(`sales are still strong right up to when you leave (${fmtMoney(off[lastK].rev)} came in ${lastK}+ min after arrival) — staying longer may be worth testing`);
+        if (offKeys[0] <= 0 && firstShare <= 0.2 && offKeys.length > 2) bits.push(`the first ${OFF} minutes are usually slow, so arriving a little later likely costs little`);
+        insight = bits.length ? `<div style="margin-top:12px;background:var(--bg2);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--text2)"><i class="ti ti-bulb"></i> ${bits.join('; and ')}.</div>` : '';
+      }
+
+      const rec = `<div style="margin-top:10px;font-size:13.5px;color:var(--text)"><i class="ti ti-target" style="color:var(--green)"></i> Strongest window: <b>${_fmtClock(peakBucket)}–${_fmtClock(peakBucket + SLOT)}</b> — ${fmtMoney(peakRev)} in sales across your visits.</div>`;
+      timeCard = card('Best time to be here', 'ti-clock',
+        _anBar(pts, { color: 'var(--accent)', height: 180, highlightIdx: peakIdx }) + rec + insight,
+        `When sales actually happened during this stop, pooled across ${timed.length} visit${timed.length === 1 ? '' : 's'} (15-minute blocks). Remember: this only reflects the times you've actually been here.`);
+    }
+
+    // Top items
+    const itemAgg = {};
+    visits.forEach(v => (v.items_sold || []).forEach(it => {
+      const nm = it.name || '—'; (itemAgg[nm] = itemAgg[nm] || { qty: 0, rev: 0 });
+      itemAgg[nm].qty += Number(it.qty) || 0; itemAgg[nm].rev += Number(it.revenue) || 0;
+    }));
+    const itemPts = Object.entries(itemAgg).map(([nm, v]) => ({ label: nm, value: v.qty, right: `${Math.round(v.qty)} sold · ${fmtMoney(v.rev)}` }))
+      .sort((a, b) => b.value - a.value).slice(0, 8);
+    const items = card('What sells here', 'ti-shopping-cart', _anHBars(itemPts, { color: 'var(--accent)' }),
+      'Total units sold at this stop, all visits combined — load the truck for what actually moves here.');
+
+    // Cadence + consistency
+    const gaps = [];
+    for (let i = 1; i < visits.length; i++) {
+      gaps.push(Math.round((_parseDate(visits[i].visit_date).getTime() - _parseDate(visits[i - 1].visit_date).getTime()) / 86400000));
+    }
+    const mean = totalRev / visits.length;
+    const variance = rev.reduce((s, x) => s + (x - mean) * (x - mean), 0) / visits.length;
+    const cv = mean > 0 ? Math.sqrt(variance) / mean : 0;
+    const steady = cv < 0.25 ? 'Very steady' : cv < 0.5 ? 'Fairly steady' : cv < 0.9 ? 'Variable' : 'Volatile';
+    const steadyColor = cv < 0.5 ? 'var(--green)' : cv < 0.9 ? 'var(--amber)' : 'var(--red)';
+    let cadenceTxt = 'Not enough visits yet to read a cadence pattern.';
+    if (gaps.length >= 3) {
+      const med = gaps.slice().sort((a, b) => a - b)[Math.floor(gaps.length / 2)];
+      const longRev = [], shortRev = [];
+      for (let i = 1; i < visits.length; i++) ((gaps[i - 1] >= med) ? longRev : shortRev).push(Number(visits[i].total_revenue) || 0);
+      const avg = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0;
+      const avgLong = avg(longRev), avgShort = avg(shortRev);
+      const avgGap = Math.round(gaps.reduce((s, x) => s + x, 0) / gaps.length);
+      if (avgLong && avgShort) {
+        if (avgLong > avgShort * 1.15) cadenceTxt = `You visit about every <b>${avgGap} days</b>. Longer gaps tend to produce bigger restocks (${fmtMoney(avgLong)} vs ${fmtMoney(avgShort)}) — there may be room to let this stop breathe a little longer between visits.`;
+        else if (avgShort > avgLong * 1.15) cadenceTxt = `You visit about every <b>${avgGap} days</b>. Sales hold up better on <b>shorter</b> gaps (${fmtMoney(avgShort)} vs ${fmtMoney(avgLong)} after long gaps) — visiting a touch more often may be paying off.`;
+        else cadenceTxt = `You visit about every <b>${avgGap} days</b>, and sales are fairly flat regardless of the gap — your current cadence looks about right.`;
+      }
+    }
+    const cadence = card('Cadence & consistency', 'ti-calendar-stats',
+      `<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <div><span style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);font-weight:700">Revenue consistency</span><br><span style="font-size:17px;font-weight:800;color:${steadyColor}">${steady}</span></div></div>
+      <div style="font-size:13.5px;color:var(--text2);line-height:1.5">${cadenceTxt}</div>`);
+
+    return header + kpis + trend + timeCard + items + cadence;
+  }
+
+  // ─── Operation-wide overview (no customer selected) ────────────────
+  function _anOverviewHTML() {
+    const card = (title, icon, body, intro) => `<div class="card" style="margin-bottom:16px">
+      <div class="card-header"><span class="card-title"><i class="ti ${icon}"></i> ${title}</span></div>
+      ${intro ? `<p class="section-intro">${intro}</p>` : ''}${body}</div>`;
+
+    // Best selling hours across ALL customers
+    const SLOT = 30, slots = {};
+    state.visits.forEach(v => (v.sales_timeline || []).forEach(e => {
+      const d = new Date(e.t); if (isNaN(d.getTime())) return;
+      const b = Math.floor((d.getHours() * 60 + d.getMinutes()) / SLOT) * SLOT;
+      (slots[b] = slots[b] || { rev: 0, count: 0 }); slots[b].rev += Number(e.rev) || 0; slots[b].count++;
+    }));
+    const keys = Object.keys(slots).map(Number).sort((a, b) => a - b);
+    let hoursCard;
+    if (!keys.length) {
+      hoursCard = card('Best selling hours', 'ti-clock-hour-9',
+        `<div style="color:var(--text3);font-size:13.5px;padding:4px 0">No sale-timing data yet. Use <b>Backfill sales timing</b> above to pull your history from Square — then this shows which hours of the day actually move the most product across the whole operation.</div>`);
+    } else {
+      const lo = keys[0], hi = keys[keys.length - 1], pts = [];
+      let peakRev = -1, peakB = lo;
+      for (let b = lo; b <= hi; b += SLOT) {
+        const s = slots[b] || { rev: 0, count: 0 };
+        if (s.rev > peakRev) { peakRev = s.rev; peakB = b; }
+        pts.push({ label: _fmtClock(b).replace(':00', '').replace(' ', ''), value: s.rev, _b: b, title: `${_fmtClock(b)}–${_fmtClock(b + SLOT)} — ${fmtMoney(s.rev)} (${s.count} sales)` });
+      }
+      const peakIdx = pts.findIndex(p => p._b === peakB);
+      hoursCard = card('Best selling hours', 'ti-clock-hour-9',
+        _anBar(pts, { color: 'var(--accent)', height: 190, highlightIdx: peakIdx }) +
+        `<div style="margin-top:10px;font-size:13.5px;color:var(--text)"><i class="ti ti-target" style="color:var(--green)"></i> Your single strongest half-hour across all stops is <b>${_fmtClock(peakB)}–${_fmtClock(peakB + SLOT)}</b> (${fmtMoney(peakRev)} in total sales).</div>`,
+        'Total sales by time of day, pooled across every customer and visit — the clearest read on when your trucks should be out selling.');
+    }
+
+    // Declining-account watchlist
+    const watch = [];
+    state.locations.filter(l => l.status !== 'archived').forEach(l => {
+      const vs = state.visits.filter(v => v.location_id === l.id).slice().sort((a, b) => (a.visit_date < b.visit_date ? -1 : 1));
+      if (vs.length < 4) return;
+      const r = vs.map(v => Number(v.total_revenue) || 0);
+      const recent = (r[r.length - 1] + r[r.length - 2]) / 2;
+      const prior = (r[r.length - 3] + r[r.length - 4]) / 2;
+      if (prior <= 0) return;
+      const drop = (prior - recent) / prior;
+      if (drop >= 0.25) watch.push({ l, drop, recent, prior, last: vs[vs.length - 1].visit_date });
+    });
+    watch.sort((a, b) => b.drop - a.drop);
+    let watchCard;
+    if (!watch.length) {
+      watchCard = card('Declining accounts', 'ti-alert-triangle',
+        `<div style="color:var(--text3);font-size:13.5px;padding:4px 0">Nothing slipping right now — no customer's recent sales are down 25%+ versus their prior visits. (Needs at least 4 visits of history to flag.)</div>`);
+    } else {
+      const rows = watch.slice(0, 12).map(w => `<button onclick="CRM._anSelect(${w.l.id})" style="display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;background:none;border:none;border-bottom:1px solid var(--border);cursor:pointer">
+        <span style="font-size:13.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(w.l.location_name)}<br><span style="font-size:11px;color:var(--text3)">last visit ${fmtDateShort(w.last)}</span></span>
+        <span style="text-align:right;flex-shrink:0"><span style="font-size:15px;font-weight:800;color:var(--red)">▼ ${Math.round(w.drop * 100)}%</span><br><span style="font-size:11px;color:var(--text3)">${fmtMoney(w.prior)} → ${fmtMoney(w.recent)}</span></span></button>`).join('');
+      watchCard = card('Declining accounts', 'ti-alert-triangle',
+        `<div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">${rows}</div>`,
+        'Customers whose last two visits averaged 25%+ below the two before them. Tap one to dig in.');
+    }
+
+    return hoursCard + watchCard;
+  }
+
+  function renderAnalytics(isMobile) {
+    _anIsMobile = !!isMobile;
+    const host = _anHost();
+    if (!host) return;
+    const loc = _an.locId ? state.locations.find(l => l.id === _an.locId) : null;
+    const bf = _anBackfillStats();
+    host.innerHTML = `
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><span class="card-title"><i class="ti ti-chart-dots"></i> Stop Analytics</span></div>
+        <p class="section-intro">Search a customer to see when they buy, what they buy, and whether the stop is growing or slipping. Timing comes from your past Square sales during each stop.</p>
+        <div style="position:relative;max-width:460px">
+          <input id="an-search" placeholder="Search a customer…" value="${esc(_an.q)}" oninput="CRM._anSearch(this.value)" autocomplete="off" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:14px;box-sizing:border-box">
+          <div id="an-search-results">${_anSearchResultsHTML()}</div>
+        </div>
+        ${_anBackfillBannerHTML(bf)}
+      </div>
+      <div id="an-body">${loc ? _anCustomerHTML(loc) : _anOverviewHTML()}</div>`;
+  }
+
   return {
     init: loadAll,
+    renderAnalytics, backfillAnalytics, _anSearch, _anSelect, _anClear,
     renderCustomers, filterCustomers, renderManualList,
     openProfile, setProfileTab, startEdit, cancelEdit, saveEdit,
     renderSchedule, shiftWeek, setScheduleTruck, setScheduleView, pickScheduleDate, reassignStopTruck, deleteStop, toggleStopStatus,
