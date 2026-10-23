@@ -3628,6 +3628,10 @@ window.CRM = (function(){
   let _lastSalesError = null;   // surfaced by the Analytics backfill diagnostics
   async function ensureSalesForStop(stop, opts = {}) {
     if (!stop || !isStopPast(stop)) return null;
+    // A visit must belong to a customer. Stops with no location_id (route/ad-hoc
+    // stops) can't produce a valid crm_visits row, so skip them rather than
+    // attempting an insert that violates the not-null constraint.
+    if (stop.location_id == null) return null;
 
     // Check Supabase first. In normal use, a visit that already has revenue is
     // returned as-is (no refetch). The Analytics backfill passes {refetch:true}
@@ -11608,7 +11612,7 @@ window.CRM = (function(){
   // ─── Backfill status + action ──────────────────────────────────────
   function _anBackfillStats() {
     const dev = state.settings.truck_device_map || {};
-    const past = state.stops.filter(s => isStopPast(s) && dev[s.truck] && _anAfter(s.scheduled_date));
+    const past = state.stops.filter(s => isStopPast(s) && dev[s.truck] && _anAfter(s.scheduled_date) && s.location_id != null);
     const need = past.filter(s => {
       const v = state.visits.find(x => x.stop_id === s.id);
       if (!v) return true;                                   // never fetched
@@ -11646,12 +11650,15 @@ window.CRM = (function(){
       if (r.phase === 'write-failed') {
         const code = r.errCode || '';
         const raw = r.errMsg ? `<div style="margin-top:6px;font-size:11.5px;color:var(--text3);font-family:monospace;word-break:break-word">${esc(code ? code + ' — ' : '')}${esc(r.errMsg)}</div>` : '';
+        const msg = r.errMsg || '';
         let guide;
-        if (code === '42P10' || /on conflict/i.test(r.errMsg || '')) {
+        if (code === '42P10' || /on conflict/i.test(msg)) {
           guide = `<b>You’re still running an older cached version of the app.</b> The save fix isn’t loaded yet — this exact error is what it fixes. Fully clear the cache: open DevTools → Application → Service Workers → <b>Unregister</b>, then hard-refresh (or Application → Clear storage → Clear site data). Then retry.`;
-        } else if (code === 'PGRST204' || code === '42703' || /schema cache|does not exist|column/i.test(r.errMsg || '')) {
+        } else if (code === '23502' || /not-null|null value in column/i.test(msg)) {
+          guide = `<b>A stop with no customer attached was hit.</b> Some stops (route or ad-hoc) have no <code>location_id</code>, so a visit can’t be created for them. The current build skips those automatically — make sure you’re on the latest app, then retry.`;
+        } else if (code === 'PGRST204' || code === '42703' || /schema cache|sales_timeline/i.test(msg)) {
           guide = `<b>The <code>sales_timeline</code> column isn’t accepting writes.</b> Run <b>migration 40</b> in Supabase; if you already did, the API schema cache is stale — run <code>NOTIFY pgrst, 'reload schema';</code> (or wait a minute), then retry.`;
-        } else if (code === '42501' || /row-level security|rls|permission/i.test(r.errMsg || '')) {
+        } else if (code === '42501' || /row-level security|rls|permission/i.test(msg)) {
           guide = `<b>The database blocked the write with a permissions (RLS) error.</b> Your account needs update rights on <code>crm_visits</code>. Then retry.`;
         } else {
           guide = `<b>Backfill reached Square but the database rejected the save.</b> The exact error is below — send it to me and I’ll pinpoint it.`;
