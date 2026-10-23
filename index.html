@@ -11693,6 +11693,15 @@ window.CRM = (function(){
       else if ((Number(v.transaction_count) || 0) > 0) res.emptyHadSales++;
       else res.emptyNoSales++;
       _an.bfDone++;
+      // Fail-fast canary: the Worker probe already passed, so if the very first
+      // save still fails, the database write is the problem (missing column /
+      // stale schema cache). Stop now instead of grinding through every stop.
+      if (_an.bfDone === 1 && res.failed === 1) {
+        _an.backfilling = false;
+        _an.bfResult = { phase: 'write-failed', ...res };
+        renderAnalytics(_anIsMobile);
+        return;
+      }
       if (_an.bfDone % 3 === 0 || _an.bfDone === _an.bfTotal) renderAnalytics(_anIsMobile);
       await new Promise(r => setTimeout(r, 120));
     }
