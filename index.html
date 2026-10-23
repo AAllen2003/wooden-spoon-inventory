@@ -11601,39 +11601,105 @@ window.CRM = (function(){
   }
 
   function _anBackfillBannerHTML(bf) {
+    const retryBtn = `<button class="btn btn-sm btn-accent" onclick="CRM.backfillAnalytics()" style="flex-shrink:0"><i class="ti ti-refresh"></i> Retry backfill</button>`;
+    const RED = (html, retry) => `<div style="margin-top:12px;background:var(--red-bg);border:1px solid var(--red);border-radius:var(--radius);padding:11px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px;font-size:13px;color:var(--text);line-height:1.5"><i class="ti ti-alert-triangle" style="color:var(--red)"></i> ${html}</div>${retry ? retryBtn : ''}</div>`;
+
     if (_an.backfilling) {
       const pct = _an.bfTotal ? Math.round((_an.bfDone / _an.bfTotal) * 100) : 0;
       return `<div style="margin-top:12px;background:var(--amber-bg);border:1px solid var(--amber);border-radius:var(--radius);padding:11px 14px;font-size:13px;color:var(--text)">
         <i class="ti ti-loader-2"></i> Backfilling sales timing from Square… <b>${_an.bfDone} / ${_an.bfTotal}</b> stops (${pct}%). You can keep using the app; this runs in the background.
         <div style="margin-top:7px;height:7px;background:var(--bg2);border-radius:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--accent)"></div></div></div>`;
     }
+
+    // A completed run can leave a diagnosis explaining why timing still isn't captured.
+    const r = _an.bfResult;
+    if (r) {
+      if (r.phase === 'probe') {
+        const msg = r.reason === 'no-worker-url' ? 'The Worker URL isn’t set, so sales can’t be pulled. Set it in Settings first.'
+          : r.reason === 'no-device' ? 'That truck has no Square device mapped. Set it under Settings → Truck Devices, then retry.'
+          : r.reason === 'worker-error' ? `The Worker responded with an error (HTTP ${r.status}). Check that it’s deployed and healthy, then retry.`
+          : 'Couldn’t reach the Worker. Check your connection and that the Worker is deployed, then retry.';
+        return RED(`<b>Backfill stopped.</b> ${msg}`, true);
+      }
+      if (r.phase === 'worker-old') {
+        return RED(`<b>Backfill stopped — the updated Worker isn’t live yet.</b> The sales endpoint is still the old version (it returns no per-sale timing). Deploy <b>Wooden_Spoon_Worker_Code.js</b> to Cloudflare, give it a minute to go live, then retry.`, true);
+      }
+      if (r.phase === 'write-failed') {
+        return RED(`<b>Backfill reached Square but couldn’t save the timing.</b> The <b>sales_timeline</b> column isn’t accepting writes — run <b>migration 40</b> in the Supabase SQL editor. If you already ran it, the database’s API schema cache may be stale: wait a minute, or run <code>NOTIFY pgrst, 'reload schema';</code>, then retry.`, true);
+      }
+      // phase 'done' falls through to the normal states below, which now reflect the saved data.
+    }
+
     if (bf.total === 0) {
       return `<div style="margin-top:12px;font-size:12.5px;color:var(--text3)">No past truck stops with Square sales yet. Timing data will appear here after your first stops.</div>`;
     }
     if (bf.need === 0) {
-      return `<div style="margin-top:12px;font-size:12.5px;color:var(--green)"><i class="ti ti-circle-check"></i> Sales timing captured for all ${bf.total} past stops. New stops are captured automatically.</div>`;
+      const note = (r && r.phase === 'done' && r.saved) ? ` Just captured <b>${r.saved}</b> this run.` : '';
+      return `<div style="margin-top:12px;font-size:12.5px;color:var(--green)"><i class="ti ti-circle-check"></i> Sales timing captured for all ${bf.total} past stops.${note} New stops are captured automatically.</div>`;
     }
+    const partial = (r && r.phase === 'done' && r.saved) ? `<div style="font-size:12px;color:var(--text3);margin-top:4px">Saved ${r.saved} this run; ${bf.need} still pending (stops with no device or mid-run hiccups) — retrying is safe.</div>` : '';
     return `<div style="margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <div style="flex:1;min-width:200px;font-size:13px;color:var(--text)"><b>${bf.captured}</b> of <b>${bf.total}</b> past stops have sales-timing captured. Backfill the remaining <b>${bf.need}</b> from Square to populate the time-of-day graphs from day one.</div>
+      <div style="flex:1;min-width:200px;font-size:13px;color:var(--text)"><b>${bf.captured}</b> of <b>${bf.total}</b> past stops have sales-timing captured. Backfill the remaining <b>${bf.need}</b> from Square to populate the time-of-day graphs from day one.${partial}</div>
       <button class="btn btn-sm btn-accent" onclick="CRM.backfillAnalytics()"><i class="ti ti-history"></i> Backfill sales timing</button></div>`;
+  }
+
+  // Probe the Worker once before a backfill run so we can tell the difference
+  // between "Worker not updated" and "DB column missing" — the two silent
+  // failure modes. The updated Worker ALWAYS returns a `timeline` field (even
+  // an empty array); the old one never does, so its presence is a clean version
+  // check that works even on a zero-sale window.
+  async function _anProbeWorker(stop) {
+    const workerUrl = (typeof S !== 'undefined' && S.workerUrl) ? S.workerUrl : null;
+    if (!workerUrl) return { ok: false, reason: 'no-worker-url' };
+    const device = state.settings.truck_device_map?.[stop.truck];
+    if (!device) return { ok: false, reason: 'no-device' };
+    const buf = (state.settings.buffer_minutes || 15) * 60000;
+    const startTs = new Date(stop.scheduled_date + 'T' + stop.start_time).getTime();
+    const endTs = new Date(stop.scheduled_date + 'T' + stop.end_time).getTime();
+    const from = new Date(startTs - buf).toISOString();
+    const to = new Date(endTs + buf).toISOString();
+    try {
+      const url = `${workerUrl.replace(/\/$/, '')}/sales/window?device=${encodeURIComponent(device)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+      const res = await fetch(url);
+      if (!res.ok) return { ok: false, reason: 'worker-error', status: res.status };
+      const data = await res.json();
+      return { ok: true, hasTimeline: ('timeline' in data) };
+    } catch (e) { return { ok: false, reason: 'fetch-failed', err: e.message }; }
   }
 
   async function backfillAnalytics() {
     if (_an.backfilling) return;
     const bf = _anBackfillStats();
     if (!bf.targets.length) return;
-    _an.backfilling = true; _an.bfTotal = bf.targets.length; _an.bfDone = 0;
-    renderAnalytics(_anIsMobile);
-    // Recent first, so the most useful data fills in soonest
     const targets = bf.targets.slice().sort((a, b) => (a.scheduled_date < b.scheduled_date ? 1 : -1));
+
+    // Preflight: confirm the updated Worker is live before spending 30 minutes.
+    _an.bfResult = null; _an.backfilling = true; _an.bfTotal = targets.length; _an.bfDone = 0;
+    renderAnalytics(_anIsMobile);
+    const probe = await _anProbeWorker(targets[0]);
+    if (!probe.ok) { _an.bfResult = { phase: 'probe', reason: probe.reason, status: probe.status }; _an.backfilling = false; renderAnalytics(_anIsMobile); return; }
+    if (!probe.hasTimeline) { _an.bfResult = { phase: 'worker-old' }; _an.backfilling = false; renderAnalytics(_anIsMobile); return; }
+
+    // Worker is good — pull each stop. Classify outcomes so a save failure
+    // (missing column / stale schema cache) is reported, not swallowed.
+    const res = { saved: 0, emptyHadSales: 0, emptyNoSales: 0, failed: 0 };
     for (const s of targets) {
-      try { await ensureSalesForStop(s, { refetch: true }); }
+      let v = null;
+      try { v = await ensureSalesForStop(s, { refetch: true }); }
       catch (e) { console.error('[CRM] backfill failed for stop', s.id, e); }
+      if (!v) res.failed++;
+      else if (Array.isArray(v.sales_timeline) && v.sales_timeline.length > 0) res.saved++;
+      else if ((Number(v.transaction_count) || 0) > 0) res.emptyHadSales++;
+      else res.emptyNoSales++;
       _an.bfDone++;
       if (_an.bfDone % 3 === 0 || _an.bfDone === _an.bfTotal) renderAnalytics(_anIsMobile);
       await new Promise(r => setTimeout(r, 120));
     }
     _an.backfilling = false;
+    // Reached Square (worker probe passed) but nothing saved and writes failed →
+    // the column isn't accepting writes.
+    _an.bfResult = (res.saved === 0 && res.failed > 0) ? { phase: 'write-failed', ...res } : { phase: 'done', ...res };
     renderAnalytics(_anIsMobile);
   }
 
