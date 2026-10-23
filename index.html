@@ -3625,6 +3625,7 @@ window.CRM = (function(){
    * 3. Otherwise, fetch from Worker /sales/window, write a visit row to Supabase, cache, return it.
    * Does nothing for future stops.
    */
+  let _lastSalesError = null;   // surfaced by the Analytics backfill diagnostics
   async function ensureSalesForStop(stop, opts = {}) {
     if (!stop || !isStopPast(stop)) return null;
 
@@ -3706,9 +3707,11 @@ window.CRM = (function(){
       else if (!state.visits.some(v => v.id === visit.id)) state.visits.push(visit);
 
       salesCache[stop.id] = { ts: Date.now(), visit };
+      _lastSalesError = null;
       return visit;
     } catch (e) {
       console.error('[CRM] fetchSalesForStop failed:', e);
+      _lastSalesError = e;
       return null;
     }
   }
@@ -11533,6 +11536,13 @@ window.CRM = (function(){
   // ═══════════════════════════════════════════════════════════════════
   const _an = { locId: null, q: '', backfilling: false, bfDone: 0, bfTotal: 0 };
   let _anIsMobile = false;
+  // Analytics-only data cutoff: this tab ignores all sales/visits before this
+  // date (sales history before here isn't reliable). Non-destructive — rows stay
+  // in the DB and every other part of the app still sees them. Change the date
+  // here if the reliable-data start ever moves.
+  const AN_CUTOFF = '2026-06-23';
+  const _anAfter = dateStr => !!dateStr && String(dateStr) >= AN_CUTOFF;   // YYYY-MM-DD lexical compare
+  const _anCutoffLabel = fmtDate(AN_CUTOFF);
 
   const _anHost = () => document.getElementById(_anIsMobile ? 'crm-analytics-mob' : 'crm-analytics-root');
   const _fmtClock = mins => {
@@ -11598,7 +11608,7 @@ window.CRM = (function(){
   // ─── Backfill status + action ──────────────────────────────────────
   function _anBackfillStats() {
     const dev = state.settings.truck_device_map || {};
-    const past = state.stops.filter(s => isStopPast(s) && dev[s.truck]);
+    const past = state.stops.filter(s => isStopPast(s) && dev[s.truck] && _anAfter(s.scheduled_date));
     const need = past.filter(s => {
       const v = state.visits.find(x => x.stop_id === s.id);
       if (!v) return true;                                   // never fetched
@@ -11634,7 +11644,19 @@ window.CRM = (function(){
         return RED(`<b>Backfill stopped — the updated Worker isn’t live yet.</b> The sales endpoint is still the old version (it returns no per-sale timing). Deploy <b>Wooden_Spoon_Worker_Code.js</b> to Cloudflare, give it a minute to go live, then retry.`, true);
       }
       if (r.phase === 'write-failed') {
-        return RED(`<b>Backfill reached Square but couldn’t save the timing.</b> The <b>sales_timeline</b> column isn’t accepting writes — run <b>migration 40</b> in the Supabase SQL editor. If you already ran it, the database’s API schema cache may be stale: wait a minute, or run <code>NOTIFY pgrst, 'reload schema';</code>, then retry.`, true);
+        const code = r.errCode || '';
+        const raw = r.errMsg ? `<div style="margin-top:6px;font-size:11.5px;color:var(--text3);font-family:monospace;word-break:break-word">${esc(code ? code + ' — ' : '')}${esc(r.errMsg)}</div>` : '';
+        let guide;
+        if (code === '42P10' || /on conflict/i.test(r.errMsg || '')) {
+          guide = `<b>You’re still running an older cached version of the app.</b> The save fix isn’t loaded yet — this exact error is what it fixes. Fully clear the cache: open DevTools → Application → Service Workers → <b>Unregister</b>, then hard-refresh (or Application → Clear storage → Clear site data). Then retry.`;
+        } else if (code === 'PGRST204' || code === '42703' || /schema cache|does not exist|column/i.test(r.errMsg || '')) {
+          guide = `<b>The <code>sales_timeline</code> column isn’t accepting writes.</b> Run <b>migration 40</b> in Supabase; if you already did, the API schema cache is stale — run <code>NOTIFY pgrst, 'reload schema';</code> (or wait a minute), then retry.`;
+        } else if (code === '42501' || /row-level security|rls|permission/i.test(r.errMsg || '')) {
+          guide = `<b>The database blocked the write with a permissions (RLS) error.</b> Your account needs update rights on <code>crm_visits</code>. Then retry.`;
+        } else {
+          guide = `<b>Backfill reached Square but the database rejected the save.</b> The exact error is below — send it to me and I’ll pinpoint it.`;
+        }
+        return RED(guide + raw, true);
       }
       // phase 'done' falls through to the normal states below, which now reflect the saved data.
     }
@@ -11706,7 +11728,7 @@ window.CRM = (function(){
       // stale schema cache). Stop now instead of grinding through every stop.
       if (_an.bfDone === 1 && res.failed === 1) {
         _an.backfilling = false;
-        _an.bfResult = { phase: 'write-failed', ...res };
+        _an.bfResult = { phase: 'write-failed', ...res, errCode: _lastSalesError?.code || null, errMsg: _lastSalesError?.message || (_lastSalesError ? String(_lastSalesError) : null) };
         renderAnalytics(_anIsMobile);
         return;
       }
@@ -11716,7 +11738,9 @@ window.CRM = (function(){
     _an.backfilling = false;
     // Reached Square (worker probe passed) but nothing saved and writes failed →
     // the column isn't accepting writes.
-    _an.bfResult = (res.saved === 0 && res.failed > 0) ? { phase: 'write-failed', ...res } : { phase: 'done', ...res };
+    _an.bfResult = (res.saved === 0 && res.failed > 0)
+      ? { phase: 'write-failed', ...res, errCode: _lastSalesError?.code || null, errMsg: _lastSalesError?.message || (_lastSalesError ? String(_lastSalesError) : null) }
+      : { phase: 'done', ...res };
     renderAnalytics(_anIsMobile);
   }
 
@@ -11740,7 +11764,7 @@ window.CRM = (function(){
 
   // ─── Per-customer view ─────────────────────────────────────────────
   function _anCustomerHTML(loc) {
-    const visits = state.visits.filter(v => v.location_id === loc.id)
+    const visits = state.visits.filter(v => v.location_id === loc.id && _anAfter(v.visit_date))
       .slice().sort((a, b) => (a.visit_date < b.visit_date ? -1 : 1));
     const card = (title, icon, body, intro) => `<div class="card" style="margin-bottom:16px">
       <div class="card-header"><span class="card-title"><i class="ti ${icon}"></i> ${title}</span></div>
@@ -11768,7 +11792,7 @@ window.CRM = (function(){
 
     // Rank among active customers by lifetime revenue
     const totalsByLoc = state.locations.filter(l => l.status !== 'archived').map(l => ({
-      id: l.id, t: state.visits.filter(v => v.location_id === l.id).reduce((s, v) => s + (Number(v.total_revenue) || 0), 0)
+      id: l.id, t: state.visits.filter(v => v.location_id === l.id && _anAfter(v.visit_date)).reduce((s, v) => s + (Number(v.total_revenue) || 0), 0)
     })).sort((a, b) => b.t - a.t);
     const rankIdx = totalsByLoc.findIndex(x => x.id === loc.id);
     const rankTxt = rankIdx >= 0 ? `#${rankIdx + 1} of ${totalsByLoc.length}` : '—';
@@ -11894,11 +11918,11 @@ window.CRM = (function(){
 
     // Best selling hours across ALL customers
     const SLOT = 30, slots = {};
-    state.visits.forEach(v => (v.sales_timeline || []).forEach(e => {
+    state.visits.forEach(v => { if (!_anAfter(v.visit_date)) return; (v.sales_timeline || []).forEach(e => {
       const d = new Date(e.t); if (isNaN(d.getTime())) return;
       const b = Math.floor((d.getHours() * 60 + d.getMinutes()) / SLOT) * SLOT;
       (slots[b] = slots[b] || { rev: 0, count: 0 }); slots[b].rev += Number(e.rev) || 0; slots[b].count++;
-    }));
+    }); });
     const keys = Object.keys(slots).map(Number).sort((a, b) => a - b);
     let hoursCard;
     if (!keys.length) {
@@ -11922,7 +11946,7 @@ window.CRM = (function(){
     // Declining-account watchlist
     const watch = [];
     state.locations.filter(l => l.status !== 'archived').forEach(l => {
-      const vs = state.visits.filter(v => v.location_id === l.id).slice().sort((a, b) => (a.visit_date < b.visit_date ? -1 : 1));
+      const vs = state.visits.filter(v => v.location_id === l.id && _anAfter(v.visit_date)).slice().sort((a, b) => (a.visit_date < b.visit_date ? -1 : 1));
       if (vs.length < 4) return;
       const r = vs.map(v => Number(v.total_revenue) || 0);
       const recent = (r[r.length - 1] + r[r.length - 2]) / 2;
@@ -11957,7 +11981,7 @@ window.CRM = (function(){
     host.innerHTML = `
       <div class="card" style="margin-bottom:16px">
         <div class="card-header"><span class="card-title"><i class="ti ti-chart-dots"></i> Stop Analytics</span></div>
-        <p class="section-intro">Search a customer to see when they buy, what they buy, and whether the stop is growing or slipping. Timing comes from your past Square sales during each stop.</p>
+        <p class="section-intro">Search a customer to see when they buy, what they buy, and whether the stop is growing or slipping. Timing comes from your past Square sales during each stop. Analytics use sales from <b>${_anCutoffLabel}</b> onward; anything earlier is ignored here (and untouched everywhere else).</p>
         <div style="position:relative;max-width:460px">
           <input id="an-search" placeholder="Search a customer…" value="${esc(_an.q)}" oninput="CRM._anSearch(this.value)" autocomplete="off" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:14px;box-sizing:border-box">
           <div id="an-search-results">${_anSearchResultsHTML()}</div>
